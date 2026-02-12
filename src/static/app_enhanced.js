@@ -453,6 +453,10 @@ function initializeModelStatus() {
     if (refreshButton) {
         refreshButton.addEventListener('click', loadModelStatus);
     }
+
+    // Load once on page entry
+    loadModelStatus();
+    loadAIEngineStatus();
 }
 
 async function loadModelStatus() {
@@ -471,6 +475,66 @@ async function loadModelStatus() {
     } catch (error) {
         console.error('Model status error:', error);
         showNotification('Error loading model status', 'warning');
+    }
+}
+
+// Ollama / AI Engine Status
+async function loadAIEngineStatus() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/ai/status`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        displayAIEngineStatus(data);
+    } catch (error) {
+        console.error('AI engine status error:', error);
+        displayAIEngineStatus({ success: false });
+    }
+}
+
+function displayAIEngineStatus(data) {
+    const providerEl = document.getElementById('ai-engine-provider');
+    const statusEl = document.getElementById('ai-engine-status');
+    const modelsEl = document.getElementById('ai-engine-models');
+    const noteEl = document.getElementById('ai-engine-note');
+
+    if (!providerEl || !statusEl || !modelsEl) return;
+
+    if (!data || data.error) {
+        providerEl.textContent = 'Unknown';
+        statusEl.textContent = 'Error';
+        statusEl.style.color = '#b91c1c';
+        modelsEl.textContent = '--';
+        if (noteEl) noteEl.textContent = data && data.error ? data.error : 'Unable to reach AI status endpoint.';
+        return;
+    }
+
+    const provider = data.ai_client ? data.ai_client.provider : 'ollama';
+    const ollama = data.ollama || {};
+
+    providerEl.textContent = `${provider} (on-device)`;
+
+    if (ollama.status === 'running') {
+        statusEl.textContent = 'Online';
+        statusEl.style.color = '#065f46';
+    } else if (ollama.status === 'unavailable') {
+        statusEl.textContent = 'Unavailable';
+        statusEl.style.color = '#b91c1c';
+    } else {
+        statusEl.textContent = ollama.status || 'Unknown';
+        statusEl.style.color = '#92400e';
+    }
+
+    if (Array.isArray(ollama.models) && ollama.models.length > 0) {
+        modelsEl.textContent = ollama.models.join(', ');
+    } else {
+        modelsEl.textContent = 'No models reported';
+    }
+
+    if (noteEl) {
+        noteEl.textContent = data.note || 'All AI processing happens locally on this device.';
     }
 }
 

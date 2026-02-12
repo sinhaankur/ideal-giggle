@@ -54,6 +54,11 @@
             font-size: 0.8em;
         }
 
+        .ai-status {
+            font-size: 0.75em;
+            margin-top: 4px;
+        }
+
         .header-controls {
             display: flex;
             gap: 6px;
@@ -327,6 +332,10 @@
                                 <button class="header-btn" id="voiceBtn">Voice</button>
                                 <button class="header-btn" id="cameraBtn">Camera</button>
                             </div>
+                            <div id="aiStatus" class="ai-status">AI: checking…</div>
+                            <div id="emotionStatus" style="font-size: 0.75em; margin-top: 4px; font-family: 'Monaco', monospace; color: #000; background: #fff; padding: 2px 4px; border: 1px solid #000; display: none;">
+                                You look: --
+                            </div>
                         </div>
                     </header>
 
@@ -365,6 +374,18 @@
                         <div style="text-align: center; margin-bottom: 10px;">
                             <img id="cameraFeed" src="" alt="Camera feed will appear here" 
                                  style="max-width: 100%; border: 2px solid #000; display: none;">
+                        </div>
+
+                        <!-- Minimal emotion readout below the preview -->
+                        <div id="cameraEmotionPanel" style="border: 2px solid #000; padding: 6px 8px; margin-bottom: 10px; font-family: 'Monaco', monospace; font-size: 0.85em; background: #fff; color: #000;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                <span>Emotion</span>
+                                <span id="cameraEmotionIcon" style="font-size: 1.2em;">😐</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span id="cameraEmotionLabel">--</span>
+                                <span id="cameraEmotionConfidence">0%</span>
+                            </div>
                         </div>
 
                         <div class="btn-group">
@@ -465,6 +486,11 @@
                 <div class="form-group">
                     <label>Name</label>
                     <input type="text" id="editName" placeholder="Anita" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Core Rules (one per line)</label>
+                    <textarea id="editCoreRules" rows="4" style="width: 100%; font-family: 'Monaco', monospace; font-size: 0.8em; resize: vertical;"></textarea>
                 </div>
 
                 <div class="form-group">
@@ -578,6 +604,21 @@
         // Server-side camera monitoring state (Vision AI)
         let cameraMonitoring = false;
         let cameraInterval = null;
+        let emotionUpdateCounter = 0;
+
+        async function refreshAIStatus() {
+            const el = document.getElementById('aiStatus');
+            if (!el) return;
+
+            try {
+                const resp = await fetch(`${API_BASE}/ai/status`);
+                const data = await resp.json();
+                const ok = data.success && data.ollama && data.ollama.status === 'running';
+                el.textContent = ok ? 'AI: online (Ollama)' : 'AI: degraded';
+            } catch (e) {
+                el.textContent = 'AI: offline';
+            }
+        }
 
         // Initialize
         document.addEventListener('DOMContentLoaded', async () => {
@@ -588,6 +629,10 @@
                 localStorage.setItem('companionUserId', userId);
             }
             currentUserId = userId;
+
+            // Check AI/Ollama status
+            refreshAIStatus();
+            setInterval(refreshAIStatus, 30000);
 
             // Load companions list
             await loadCompanionsList();
@@ -702,7 +747,9 @@
                     body: JSON.stringify({
                         camera_index: 0,
                         enable_audio: false
-                    })
+                    }),
+                    // Ensure browser cookies/session are sent with camera control
+                    credentials: 'include'
                 });
 
                 const data = await resp.json();
@@ -732,7 +779,10 @@
             const feed = document.getElementById('cameraFeed');
 
             try {
-                await fetch(`${API_BASE}/vision/stop`, { method: 'POST' });
+                await fetch(`${API_BASE}/vision/stop`, {
+                    method: 'POST',
+                    credentials: 'include'
+                });
             } catch (error) {
                 console.error('Error stopping camera monitoring:', error);
             }
@@ -757,13 +807,90 @@
             if (!feed) return;
 
             try {
-                const resp = await fetch(`${API_BASE}/vision/frame?encrypted=false&annotated=true`);
+                const resp = await fetch(`${API_BASE}/vision/frame?encrypted=false&annotated=true`, {
+                    credentials: 'include'
+                });
                 const data = await resp.json();
                 if (data.image) {
                     feed.src = 'data:image/jpeg;base64,' + data.image;
                 }
+
+                // Throttled emotion analysis (every 3rd frame)
+                emotionUpdateCounter++;
+                if (emotionUpdateCounter % 3 === 0) {
+                    await updateCameraEmotion();
+                    emotionUpdateCounter = 0;
+                }
             } catch (error) {
                 console.error('Error updating camera feed:', error);
+            }
+        }
+
+        // Analyze current camera frame for facial emotion and update UI
+        async function updateCameraEmotion() {
+            const feed = document.getElementById('cameraFeed');
+            const labelEl = document.getElementById('cameraEmotionLabel');
+            const iconEl = document.getElementById('cameraEmotionIcon');
+            const confEl = document.getElementById('cameraEmotionConfidence');
+            const headerEmotion = document.getElementById('emotionStatus');
+
+            if (!feed || !feed.src || !feed.src.startsWith('data:image')) {
+                return;
+            }
+
+            try {
+                const base64Data = feed.src.split(',')[1];
+                const resp = await fetch(`${API_BASE}/emotion/frame-analysis`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ frame: base64Data }),
+                    credentials: 'include'
+                });
+
+                const emotionResult = await resp.json();
+                if (!emotionResult || !emotionResult.facial) {
+                    return;
+                }
+
+                const facial = emotionResult.facial;
+
+                if (facial.faces_detected > 0 && facial.emotions && facial.emotions.length > 0) {
+                    const first = facial.emotions[0];
+
+                    detectedEmotion = first.emotion || 'neutral';
+                    emotionScores = first.all_emotions || { [detectedEmotion]: first.confidence || 0 };
+
+                    if (labelEl) {
+                        labelEl.textContent = (first.emotion || '--').toUpperCase();
+                    }
+                    if (iconEl) {
+                        iconEl.textContent = first.icon || '😐';
+                    }
+                    if (confEl) {
+                        const conf = typeof first.confidence === 'number' ? first.confidence : 0;
+                        confEl.textContent = conf.toFixed(1) + '%';
+                    }
+
+                    if (headerEmotion) {
+                        headerEmotion.style.display = 'block';
+                        const label = (first.emotion || '--').toUpperCase();
+                        const icon = first.icon || '😐';
+                        headerEmotion.textContent = `You look: ${label} ${icon}`;
+                    }
+                } else {
+                    // No clear face/emotion detected - reset to neutral
+                    detectedEmotion = 'neutral';
+                    emotionScores = {};
+                    if (labelEl) labelEl.textContent = '--';
+                    if (iconEl) iconEl.textContent = '😐';
+                    if (confEl) confEl.textContent = '0%';
+                    if (headerEmotion) {
+                        headerEmotion.style.display = 'none';
+                        headerEmotion.textContent = 'You look: --';
+                    }
+                }
+            } catch (error) {
+                console.error('Error updating camera emotion:', error);
             }
         }
 
@@ -1022,6 +1149,15 @@
             const content = document.getElementById('sidePanelContent');
             const comp = currentCompanion;
 
+            const rules = (comp.core_rules && comp.core_rules.length)
+                ? comp.core_rules
+                : [
+                    'Every life matters',
+                    "Listen and understand but don\'t judge",
+                    "Solutions can be good but only if it doesn\'t hurt.",
+                    'Try to be empathetic'
+                ];
+
             content.innerHTML = `
                 <div class="info-section">
                     <h3>Personality</h3>
@@ -1061,6 +1197,11 @@
                     <div class="info-item">Intimacy: ${(comp.intimacy_level * 100).toFixed(0)}%</div>
                     <div class="info-item">Interactions: ${comp.interactions_count}</div>
                 </div>
+
+                <div class="info-section">
+                    <h3>Core Rules</h3>
+                    ${rules.map(r => `<div class=\"info-item\">• ${r}</div>`).join('')}
+                </div>
             `;
         }
 
@@ -1092,6 +1233,20 @@
             document.getElementById('editMysteryValue').textContent = Math.round(currentCompanion.traits.mystery * 100);
             document.getElementById('editAmbition').value = Math.round(currentCompanion.traits.ambition * 100);
             document.getElementById('editAmbitionValue').textContent = Math.round(currentCompanion.traits.ambition * 100);
+
+            // Core rules text area (show existing or defaults)
+            const rulesArea = document.getElementById('editCoreRules');
+            if (rulesArea) {
+                const rules = currentCompanion.core_rules && currentCompanion.core_rules.length
+                    ? currentCompanion.core_rules
+                    : [
+                        'Every life matters',
+                        "Listen and understand but don\'t judge",
+                        "Solutions can be good but only if it doesn\'t hurt.",
+                        'Try to be empathetic'
+                    ];
+                rulesArea.value = rules.join('\n');
+            }
             
             editModal.classList.add('open');
         }
@@ -1102,8 +1257,62 @@
 
         async function saveCompanionEdits(e) {
             e.preventDefault();
-            alert('Edit feature coming soon! For now, create a new companion with the desired traits.');
-            closeEditModal();
+            if (!currentCompanion) return;
+
+            const updatedName = document.getElementById('editName').value.trim();
+            if (!updatedName) {
+                alert('Please enter a name');
+                return;
+            }
+
+            const traits = {
+                warmth: parseInt(document.getElementById('editWarmth').value, 10) / 100,
+                humor: parseInt(document.getElementById('editHumor').value, 10) / 100,
+                intelligence: parseInt(document.getElementById('editIntelligence').value, 10) / 100,
+                mystery: parseInt(document.getElementById('editMystery').value, 10) / 100,
+                ambition: parseInt(document.getElementById('editAmbition').value, 10) / 100,
+            };
+
+            // Parse core rules from textarea
+            const rulesArea = document.getElementById('editCoreRules');
+            let coreRules = [];
+            if (rulesArea && rulesArea.value) {
+                coreRules = rulesArea.value
+                    .split('\n')
+                    .map(r => r.trim())
+                    .filter(r => r.length > 0);
+            }
+
+            const payload = {
+                name: updatedName,
+                traits: traits,
+                core_rules: coreRules,
+            };
+
+            try {
+                const resp = await fetch(`${API_BASE}/companion/update/${currentCompanion.companion_id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+
+                const data = await resp.json();
+                if (!data.success) {
+                    alert('Failed to update companion: ' + (data.error || 'Unknown error'));
+                    return;
+                }
+
+                // Update local state to reflect changes
+                currentCompanion.name = updatedName;
+                currentCompanion.traits = traits;
+                currentCompanion.core_rules = coreRules;
+
+                updateHeader();
+                closeEditModal();
+            } catch (error) {
+                console.error('Error updating companion:', error);
+                alert('Error updating companion. Check console for details.');
+            }
         }
 
         async function createCompanion(e) {

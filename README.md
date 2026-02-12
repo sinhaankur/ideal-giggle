@@ -3,6 +3,8 @@
 ## Overview
 A modern web-based AI dashboard for optimizing building management processes. The system includes AI models for predicting energy consumption, managing occupancy rates, and enhancing overall building efficiency with a beautiful, responsive user interface.
 
+This project is open source under the MIT License (see `LICENSE`). Contributions are welcome via pull requests, but all changes are subject to review and must be explicitly approved before they are merged. See `CONTRIBUTING.md` for details.
+
 ## Features
 ✨ **Modern Dashboard UI**
 - Real-time building statistics and metrics

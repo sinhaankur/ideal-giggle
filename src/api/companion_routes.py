@@ -122,6 +122,8 @@ def get_companion_info(companion_id: str):
                 'intimacy_level': profile.intimacy_level,
                 'affection_level': profile.affection_level,
                 'interactions_count': profile.interactions_count,
+                # Expose any custom safety/ethics rules if present
+                'core_rules': getattr(profile, 'core_rules', None),
             }
         })
     
@@ -316,3 +318,46 @@ def register_companion_routes(app):
     """Register companion routes with Flask app"""
     app.register_blueprint(companion_bp)
     logger.info("Companion routes registered")
+
+
+@companion_bp.route('/update/<companion_id>', methods=['PUT'])
+def update_companion(companion_id: str):
+    """Update companion settings (name, traits, and core rules)"""
+    try:
+        data = request.get_json() or {}
+
+        memory_manager = get_companion_memory_manager()
+        profile = memory_manager.get_companion(companion_id)
+
+        if not profile:
+            return jsonify({'success': False, 'error': 'Companion not found'}), 404
+
+        # Basic fields
+        if 'name' in data:
+            profile.name = data['name'].strip() or profile.name
+
+        # Personality traits (0-1)
+        traits = data.get('traits', {})
+        for key in ['warmth', 'humor', 'intelligence', 'mystery', 'ambition']:
+            if key in traits:
+                try:
+                    value = float(traits[key])
+                    profile.__setattr__(key, max(0.0, min(1.0, value)))
+                except (TypeError, ValueError):
+                    continue
+
+        # Optional core rules / safety guidelines
+        if 'core_rules' in data:
+            # Attach as simple list of strings on the profile
+            rules = data.get('core_rules') or []
+            if isinstance(rules, list):
+                profile.core_rules = [str(r).strip() for r in rules if str(r).strip()]
+
+        # Persist changes
+        memory_manager.save_companion(profile)
+
+        return jsonify({'success': True, 'message': 'Companion updated'})
+
+    except Exception as e:
+        logger.error(f"Error updating companion: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500

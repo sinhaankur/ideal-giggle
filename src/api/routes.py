@@ -104,11 +104,12 @@ def login():
     """Login user"""
     try:
         data = request.json
-        username = data.get('username')
+        # Allow login with either username or email
+        username = data.get('username') or data.get('email')
         password = data.get('password')
         
         if not all([username, password]):
-            return jsonify({'error': 'Missing username or password'}), 400
+            return jsonify({'error': 'Missing email/username or password'}), 400
         
         user = db.authenticate_user(username, password)
         

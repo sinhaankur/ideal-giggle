@@ -252,6 +252,17 @@
                     <p>Monitor your AI models performance</p>
                 </div>
 
+                <!-- On-device AI Engine (Ollama) Status -->
+                <div class="info-card" id="ai-engine-card" style="margin-bottom: 20px;">
+                    <i class="fas fa-microchip"></i>
+                    <div>
+                        <p><strong>AI Engine:</strong> <span id="ai-engine-provider">--</span></p>
+                        <p><strong>Status:</strong> <span id="ai-engine-status">Checking...</span></p>
+                        <p><strong>Models:</strong> <span id="ai-engine-models">--</span></p>
+                        <p style="font-size: 0.8rem; color: #6b7280;" id="ai-engine-note"></p>
+                    </div>
+                </div>
+
                 <div class="models-grid">
                     <div class="model-card" id="model-building">
                         <div class="model-header">
@@ -354,7 +365,7 @@
             </div>
             <form id="auth-form" class="auth-form">
                 <div class="form-group" id="username-group">
-                    <label for="auth-username">Username</label>
+                    <label for="auth-username">Email or Username</label>
                     <input type="text" id="auth-username" name="username" required>
                 </div>
                 <div class="form-group" id="email-group" style="display: none;">

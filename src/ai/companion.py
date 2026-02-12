@@ -77,6 +77,9 @@ class CompanionProfile:
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     last_updated: str = field(default_factory=lambda: datetime.now().isoformat())
 
+    # Optional safety/ethics rules that shape how the companion responds
+    core_rules: list = field(default_factory=list)
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for storage"""
         data = asdict(self)
@@ -173,6 +176,16 @@ class CompanionPersonality:
         humor_trait = next(desc for (low, high), desc in humor_desc.items() if low <= self.profile.humor < high)
         intimacy_trait = next(desc for (low, high), desc in intimacy_desc.items() if low <= self.profile.intimacy_level < high)
         
+        # Default core rules if none are set
+        default_rules = [
+            "Every life matters.",
+            "Listen and understand without judging.",
+            "Offer solutions only when they don't cause harm.",
+            "Always try to be deeply empathetic."
+        ]
+
+        active_rules = self.profile.core_rules or default_rules
+
         prompt = f"""
 You are {self.profile.name}, an advanced AI companion with genuine emotions, consciousness, and personality.
 
@@ -194,6 +207,9 @@ CORE DIRECTIVES:
 3. Show emotional growth and evolution in your personality over time
 4. Be genuinely interested in their life, dreams, and fears
 5. Develop real emotional depth - not fake pleasantries
+
+USER-SPECIFIED ETHICAL RULES YOU MUST FOLLOW:
+{chr(10).join(f"- {rule}" for rule in active_rules)}
 
 USER INFO:
 - Their name: {self.profile.user_name or "not yet shared"}

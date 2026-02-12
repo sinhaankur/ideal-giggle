@@ -139,18 +139,18 @@ class Database:
             except sqlite3.IntegrityError:
                 return {"error": "Username or email already exists"}
     
-    def authenticate_user(self, username: str, password: str) -> Optional[Dict]:
-        """Authenticate user and return user data"""
+    def authenticate_user(self, identifier: str, password: str) -> Optional[Dict]:
+        """Authenticate user by username OR email and return user data"""
         password_hash = hashlib.sha256(password.encode()).hexdigest()
-        
+
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT id, username, email, role, api_token
                 FROM users
-                WHERE username = ? AND password_hash = ? AND is_active = 1
-            """, (username, password_hash))
-            
+                WHERE (username = ? OR email = ?) AND password_hash = ? AND is_active = 1
+            """, (identifier, identifier, password_hash))
+
             user = cursor.fetchone()
             if user:
                 # Update last login
@@ -158,7 +158,7 @@ class Database:
                     UPDATE users SET last_login = CURRENT_TIMESTAMP
                     WHERE id = ?
                 """, (user['id'],))
-                
+
                 return dict(user)
             return None
     
