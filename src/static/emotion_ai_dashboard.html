@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emotion AI Command System - Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.95;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #667eea;
+        }
+
+        .card-header h2 {
+            font-size: 1.3em;
+            color: #333;
+            flex: 1;
+        }
+
+        .emoji-icon {
+            font-size: 2em;
+        }
+
+        .emotion-input {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+
+        .emotion-button-group {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .emotion-btn {
+            padding: 10px 15px;
+            border: 2px solid #ddd;
+            background: white;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 0.9em;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .emotion-btn:hover {
+            border-color: #667eea;
+            color: #667eea;
+            background: #f5f5f5;
+        }
+
+        .emotion-btn.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .slider-container {
+            margin: 15px 0;
+        }
+
+        .slider-container label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #ddd;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+            border: none;
+        }
+
+        .confidence-value {
+            text-align: right;
+            color: #667eea;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+
+        .input-field {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            font-size: 0.95em;
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 10px;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        .response-section {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            border-left: 4px solid #667eea;
+        }
+
+        .response-section h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 1em;
+        }
+
+        .response-text {
+            color: #555;
+            line-height: 1.6;
+            margin-bottom: 10px;
+            font-style: italic;
+        }
+
+        .response-meta {
+            display: flex;
+            gap: 15px;
+            font-size: 0.85em;
+            color: #888;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            background: #667eea;
+            color: white;
+            font-size: 0.85em;
+            font-weight: bold;
+        }
+
+        .action-list {
+            list-style: none;
+            margin-top: 10px;
+        }
+
+        .action-list li {
+            padding: 10px;
+            background: white;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            border-left: 3px solid #667eea;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .action-priority {
+            font-size: 0.8em;
+            padding: 3px 8px;
+            border-radius: 4px;
+            background: #ffe0b2;
+            color: #d84315;
+            font-weight: bold;
+        }
+
+        .action-priority.critical {
+            background: #ffcdd2;
+            color: #c62828;
+        }
+
+        .action-priority.high {
+            background: #fff3e0;
+            color: #e65100;
+        }
+
+        .recommendations {
+            background: #e3f2fd;
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 10px;
+        }
+
+        .recommendations h4 {
+            color: #1565c0;
+            margin-bottom: 8px;
+            font-size: 0.95em;
+        }
+
+        .recommendations ul {
+            margin-left: 20px;
+            color: #0d47a1;
+        }
+
+        .recommendations li {
+            margin-bottom: 5px;
+            line-height: 1.5;
+        }
+
+        .statistics-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .stat-item {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 0.85em;
+            color: #888;
+            margin-top: 3px;
+        }
+
+        .emotion-trend {
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 10px;
+            background: #f0f0f0;
+            border-left: 3px solid #667eea;
+        }
+
+        .emotion-trend strong {
+            color: #667eea;
+        }
+
+        .loading {
+            text-align: center;
+            color: #667eea;
+            padding: 20px;
+            font-weight: bold;
+        }
+
+        .error {
+            background: #ffebee;
+            border: 1px solid #ef5350;
+            color: #c62828;
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 10px;
+        }
+
+        .success {
+            background: #e8f5e9;
+            border: 1px solid #66bb6a;
+            color: #2e7d32;
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 10px;
+        }
+
+        .history-item {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            border-left: 3px solid #667eea;
+            font-size: 0.9em;
+        }
+
+        .history-item .timestamp {
+            color: #888;
+            font-size: 0.85em;
+        }
+
+        .full-width {
+            grid-column: 1 / -1;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.8em;
+            }
+
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .emotion-button-group {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>
+                <span class="emoji-icon">🧠</span>
+                Emotion AI Command System
+            </h1>
+            <p>Detect emotions, execute smart commands, and get intelligent responses</p>
+        </div>
+
+        <div class="dashboard-grid">
+            <!-- Emotion Detection & Command Card -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="emoji-icon">😊</span>
+                    <h2>Emotion Detection</h2>
+                </div>
+                
+                <div class="emotion-input">
+                    <p style="margin-bottom: 10px; font-weight: bold;">Select Emotion:</p>
+                    <div class="emotion-button-group">
+                        <button class="emotion-btn" data-emotion="happy">😊 Happy</button>
+                        <button class="emotion-btn" data-emotion="sad">😢 Sad</button>
+                        <button class="emotion-btn" data-emotion="angry">😠 Angry</button>
+                        <button class="emotion-btn" data-emotion="fear">😨 Fear</button>
+                        <button class="emotion-btn" data-emotion="surprise">😲 Surprise</button>
+                        <button class="emotion-btn" data-emotion="disgust">🤢 Disgust</button>
+                        <button class="emotion-btn" data-emotion="neutral">😐 Neutral</button>
+                    </div>
+
+                    <div class="slider-container">
+                        <label for="confidence">Confidence Score:</label>
+                        <input type="range" id="confidence" min="0" max="100" value="75">
+                        <div class="confidence-value"><span id="confidenceValue">75%</span></div>
+                    </div>
+
+                    <input type="text" id="userId" class="input-field" placeholder="User ID (optional)" value="user1">
+                    <input type="text" id="contextDetail" class="input-field" placeholder="Additional context (optional)">
+
+                    <button class="btn-primary" id="analyzeBtn">🚀 Analyze & Get Commands</button>
+                </div>
+
+                <div id="commandResult"></div>
+            </div>
+
+            <!-- AI Response Card -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="emoji-icon">🤖</span>
+                    <h2>AI Response</h2>
+                </div>
+                
+                <div id="responseResult">
+                    <p style="color: #999; text-align: center; padding: 20px;">
+                        Select an emotion and click "Analyze" to see AI response
+                    </p>
+                </div>
+            </div>
+
+            <!-- Voice Command Card -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="emoji-icon">🎤</span>
+                    <h2>Voice Command</h2>
+                </div>
+
+                <div class="emotion-input">
+                    <textarea id="voiceCommand" class="input-field" placeholder="Enter voice command..." rows="3" 
+                              style="resize: vertical;"></textarea>
+                    
+                    <div class="slider-container">
+                        <label for="cmdConfidence">Emotion Confidence:</label>
+                        <input type="range" id="cmdConfidence" min="0" max="100" value="70">
+                        <div class="confidence-value"><span id="cmdConfidenceValue">70%</span></div>
+                    </div>
+
+                    <button class="btn-primary" id="processVoiceBtn">🎙️ Process Command</button>
+                </div>
+
+                <div id="voiceResult"></div>
+            </div>
+
+            <!-- User Analytics Card -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="emoji-icon">📊</span>
+                    <h2>User Analytics</h2>
+                </div>
+
+                <div class="emotion-input">
+                    <input type="text" id="analyticsUserId" class="input-field" placeholder="Enter User ID" value="user1">
+                    <button class="btn-primary" id="getAnalyticsBtn">📈 Get User Summary</button>
+                </div>
+
+                <div id="analyticsResult"></div>
+            </div>
+
+            <!-- Emotion Recommendations Card -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="emoji-icon">💡</span>
+                    <h2>Quick Recommendations</h2>
+                </div>
+
+                <div class="emotion-input">
+                    <p style="margin-bottom: 10px; font-weight: bold;">Get recommendations for:</p>
+                    <div class="emotion-button-group" style="grid-template-columns: repeat(2, 1fr);">
+                        <button class="emotion-btn" data-recommend="happy">😊 Happy</button>
+                        <button class="emotion-btn" data-recommend="sad">😢 Sad</button>
+                        <button class="emotion-btn" data-recommend="angry">😠 Angry</button>
+                        <button class="emotion-btn" data-recommend="fear">😨 Fear</button>
+                        <button class="emotion-btn" data-recommend="surprise">😲 Surprise</button>
+                        <button class="emotion-btn" data-recommend="disgust">🤢 Disgust</button>
+                    </div>
+                </div>
+
+                <div id="recommendationsResult"></div>
+            </div>
+
+            <!-- Action History Card -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="emoji-icon">⏱️</span>
+                    <h2>Action History</h2>
+                </div>
+
+                <button class="btn-primary" id="getHistoryBtn">📜 Load History</button>
+                <div id="historyResult" style="margin-top: 15px;"></div>
+            </div>
+
+            <!-- System Status Card (Full Width) -->
+            <div class="card full-width">
+                <div class="card-header">
+                    <span class="emoji-icon">⚙️</span>
+                    <h2>System Information</h2>
+                </div>
+
+                <div class="statistics-grid">
+                    <div class="stat-item">
+                        <div class="stat-value" id="totalInteractions">0</div>
+                        <div class="stat-label">Total Interactions</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="activeUsers">0</div>
+                        <div class="stat-label">Active Users</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="systemStatus">✅ Active</div>
+                        <div class="stat-label">System Status</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="avgConfidence">0%</div>
+                        <div class="stat-label">Avg Confidence</div>
+                    </div>
+                </div>
+
+                <p style="margin-top: 15px; color: #888; font-size: 0.9em;">
+                    Last Updated: <span id="lastUpdate">Never</span>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:5000/api';
+        let selectedEmotion = null;
+        let selectedRecommendation = null;
+
+        // Confidence slider updates
+        document.getElementById('confidence').addEventListener('input', (e) => {
+            document.getElementById('confidenceValue').textContent = e.target.value + '%';
+        });
+
+        document.getElementById('cmdConfidence').addEventListener('input', (e) => {
+            document.getElementById('cmdConfidenceValue').textContent = e.target.value + '%';
+        });
+
+        // Emotion button selection
+        document.querySelectorAll('[data-emotion]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('[data-emotion]').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                selectedEmotion = e.target.dataset.emotion;
+            });
+        });
+
+        // Recommendation button selection
+        document.querySelectorAll('[data-recommend]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('[data-recommend]').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                getRecommendations(e.target.dataset.recommend);
+            });
+        });
+
+        // Analyze emotion and get commands
+        document.getElementById('analyzeBtn').addEventListener('click', analyzeEmotion);
+
+        // Process voice command
+        document.getElementById('processVoiceBtn').addEventListener('click', processVoiceCommand);
+
+        // Get user analytics
+        document.getElementById('getAnalyticsBtn').addEventListener('click', getUserAnalytics);
+
+        // Get history
+        document.getElementById('getHistoryBtn').addEventListener('click', getActionHistory);
+
+        async function analyzeEmotion() {
+            if (!selectedEmotion) {
+                alert('Please select an emotion');
+                return;
+            }
+
+            const emotion = selectedEmotion;
+            const confidence = parseInt(document.getElementById('confidence').value) / 100;
+            const userId = document.getElementById('userId').value || 'default_user';
+            const context = document.getElementById('contextDetail').value;
+
+            showLoading('commandResult', 'Analyzing emotion...');
+
+            try {
+                // Get commands
+                const cmdResponse = await fetch(`${API_BASE}/ai/emotion-command`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        emotion: emotion,
+                        confidence: confidence,
+                        context: { detail: context }
+                    })
+                });
+
+                const cmdData = await cmdResponse.json();
+
+                // Get AI response
+                const respResponse = await fetch(`${API_BASE}/ai/emotion-response`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: userId,
+                        emotion: emotion,
+                        confidence: confidence,
+                        detail: context
+                    })
+                });
+
+                const respData = await respResponse.json();
+
+                displayCommandResult(cmdData, respData);
+                displayResponseResult(respData);
+                updateSystemStats();
+
+            } catch (error) {
+                showError('commandResult', 'Error analyzing emotion: ' + error.message);
+            }
+        }
+
+        function displayCommandResult(cmdData, respData) {
+            const resultDiv = document.getElementById('commandResult');
+            let html = `
+                <div class="response-section">
+                    <h3>🎯 Actions & Recommendations</h3>
+                    <div class="response-meta">
+                        <span><strong>Emotion:</strong> ${capitalizeFirstLetter(cmdData.emotion)}</span>
+                        <span><strong>Confidence:</strong> <span class="badge">${(cmdData.confidence * 100).toFixed(0)}%</span></span>
+                        <span><strong>Trend:</strong> <span class="badge">${respData.user_trend}</span></span>
+                    </div>
+                    
+                    <h4 style="margin-top: 15px; margin-bottom: 10px;">⚡ Recommended Actions:</h4>
+                    <ul class="action-list">
+                        ${cmdData.actions.map(action => `
+                            <li>
+                                <span>${capitalizeFirstLetter(action.action_name)}</span>
+                                <span class="action-priority ${getActionPriorityClass(action.parameters.priority)}">
+                                    ${capitalizeFirstLetter(action.parameters.priority)}
+                                </span>
+                            </li>
+                        `).join('')}
+                    </ul>
+
+                    <div class="recommendations">
+                        <h4>💡 Recommendations:</h4>
+                        <ul>
+                            ${cmdData.ai_response.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+                        </ul>
+                    </div>
+                </div>
+            `;
+            resultDiv.innerHTML = html;
+        }
+
+        function displayResponseResult(respData) {
+            const resultDiv = document.getElementById('responseResult');
+            let html = `
+                <div class="response-section">
+                    <h3>💬 AI Response</h3>
+                    <p class="response-text">"${respData.response}"</p>
+                    
+                    <div class="response-meta">
+                        <span><strong>Tone:</strong> ${capitalizeFirstLetter(respData.tone)}</span>
+                        <span><strong>Approach:</strong> ${capitalizeFirstLetter(respData.approach.replace(/_/g, ' '))}</span>
+                    </div>
+
+                    <div style="background: #fff3e0; padding: 10px; border-radius: 6px; margin-top: 10px;">
+                        <p style="margin-bottom: 8px;"><strong>❓ Follow-up Question:</strong></p>
+                        <p style="color: #d84315; font-style: italic;">"${respData.followup}"</p>
+                    </div>
+
+                    <h4 style="margin-top: 15px; margin-bottom: 10px;">📋 Suggested Actions:</h4>
+                    <ul class="action-list">
+                        ${respData.next_actions.map(action => `
+                            <li>
+                                <span>${capitalizeFirstLetter(action.action)}</span>
+                                <span class="action-priority ${getActionPriorityClass(action.priority)}">
+                                    ${capitalizeFirstLetter(action.priority)}
+                                </span>
+                            </li>
+                        `).join('')}
+                    </ul>
+                </div>
+            `;
+            resultDiv.innerHTML = html;
+        }
+
+        async function processVoiceCommand() {
+            const text = document.getElementById('voiceCommand').value;
+            if (!text) {
+                alert('Please enter a command');
+                return;
+            }
+
+            const userId = document.getElementById('userId').value || 'default_user';
+            const confidence = parseInt(document.getElementById('cmdConfidence').value) / 100;
+
+            showLoading('voiceResult', 'Processing command...');
+
+            try {
+                const response = await fetch(`${API_BASE}/ai/voice-command`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        text: text,
+                        user_id: userId,
+                        confidence: confidence
+                    })
+                });
+
+                const data = await response.json();
+
+                let html = `
+                    <div class="response-section">
+                        <h3>🎙️ Command Processing Result</h3>
+                        <p><strong>Original:</strong> "${data.command.original_text}"</p>
+                        <p><strong>Type:</strong> <span class="badge">${data.command.command_type}</span></p>
+                `;
+
+                if (data.response) {
+                    html += `
+                        <p style="margin-top: 10px;"><strong>AI Response:</strong></p>
+                        <p class="response-text">"${data.response.response}"</p>
+                    `;
+                }
+
+                html += `</div>`;
+                document.getElementById('voiceResult').innerHTML = html;
+                updateSystemStats();
+
+            } catch (error) {
+                showError('voiceResult', 'Error processing command: ' + error.message);
+            }
+        }
+
+        async function getUserAnalytics() {
+            const userId = document.getElementById('analyticsUserId').value || 'user1';
+            
+            showLoading('analyticsResult', 'Loading analytics...');
+
+            try {
+                const response = await fetch(`${API_BASE}/ai/emotion-summary/${userId}`);
+                const data = await response.json();
+
+                if (data.error) {
+                    showError('analyticsResult', data.error);
+                    return;
+                }
+
+                let html = `
+                    <div class="response-section">
+                        <h3>👤 User: ${data.user_id}</h3>
+                        <div class="statistics-grid">
+                            <div class="stat-item">
+                                <div class="stat-value">${data.total_interactions}</div>
+                                <div class="stat-label">Total Interactions</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value">${capitalizeFirstLetter(data.current_emotion)}</div>
+                                <div class="stat-label">Current Emotion</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value">${capitalizeFirstLetter(data.most_common_emotion)}</div>
+                                <div class="stat-label">Most Common</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value">${data.emotion_trend}</div>
+                                <div class="stat-label">Trend</div>
+                            </div>
+                        </div>
+
+                        <h4 style="margin-top: 15px;">Emotion Distribution:</h4>
+                        <ul style="margin-left: 20px;">
+                `;
+
+                for (const [emotion, count] of Object.entries(data.emotion_distribution)) {
+                    html += `<li>${capitalizeFirstLetter(emotion)}: ${count}</li>`;
+                }
+
+                html += `</ul></div>`;
+                document.getElementById('analyticsResult').innerHTML = html;
+
+            } catch (error) {
+                showError('analyticsResult', 'Error loading analytics: ' + error.message);
+            }
+        }
+
+        async function getRecommendations(emotion) {
+            showLoading('recommendationsResult', 'Loading recommendations...');
+
+            try {
+                const response = await fetch(`${API_BASE}/ai/emotion-recommendations/${emotion}`);
+                const data = await response.json();
+
+                let html = `
+                    <div class="recommendations" style="background: #e3f2fd; margin-top: 0;">
+                        <h4>💡 Recommendations for ${capitalizeFirstLetter(emotion)}:</h4>
+                        <ul>
+                            ${data.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+                document.getElementById('recommendationsResult').innerHTML = html;
+
+            } catch (error) {
+                showError('recommendationsResult', 'Error loading recommendations: ' + error.message);
+            }
+        }
+
+        async function getActionHistory() {
+            showLoading('historyResult', 'Loading history...');
+
+            try {
+                const response = await fetch(`${API_BASE}/ai/emotion-history?limit=10`);
+                const data = await response.json();
+
+                let html = `<p style="color: #667eea; margin-bottom: 10px;"><strong>Recent Actions:</strong></p>`;
+                
+                if (data.history.length === 0) {
+                    html += '<p style="color: #999;">No history available</p>';
+                } else {
+                    data.history.forEach(item => {
+                        html += `
+                            <div class="history-item">
+                                <strong>${capitalizeFirstLetter(item.emotion)}</strong> - ${item.emotion} detected
+                                <div class="timestamp">${new Date(item.timestamp).toLocaleString()}</div>
+                            </div>
+                        `;
+                    });
+                }
+
+                document.getElementById('historyResult').innerHTML = html;
+
+            } catch (error) {
+                showError('historyResult', 'Error loading history: ' + error.message);
+            }
+        }
+
+        function showLoading(elementId, message) {
+            document.getElementById(elementId).innerHTML = `<div class="loading">${message}</div>`;
+        }
+
+        function showError(elementId, message) {
+            document.getElementById(elementId).innerHTML = `<div class="error">❌ ${message}</div>`;
+        }
+
+        function capitalizeFirstLetter(string) {
+            return string.charAt(0).toUpperCase() + string.slice(1).replace(/_/g, ' ');
+        }
+
+        function getActionPriorityClass(priority) {
+            if (priority === 'critical') return 'critical';
+            if (priority === 'high') return 'high';
+            return '';
+        }
+
+        function updateSystemStats() {
+            document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+        }
+
+        // Initialize
+        updateSystemStats();
+    </script>
+</body>
+</html>

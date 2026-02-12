@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mood Assistant - Your Personal AI</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+        }
+
+        .main-container {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 0;
+        }
+
+        /* Compact Header */
+        .header {
+            background: rgba(0,0,0,0.2);
+            padding: 12px 16px;
+            backdrop-filter: blur(10px);
+            color: white;
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .header h1 {
+            font-size: 1.3em;
+            font-weight: 600;
+        }
+
+        .status-badge {
+            background: rgba(76, 175, 80, 0.6);
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.75em;
+            font-weight: 500;
+        }
+
+        .current-mood {
+            font-size: 0.85em;
+            opacity: 0.9;
+        }
+
+        /* Single Screen Layout */
+        .content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Single Screen Layout */
+        .content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Tab Navigation */
+        .tabs {
+            display: flex;
+            background: rgba(255,255,255,0.15);
+            backdrop-filter: blur(10px);
+        }
+
+        .tab {
+            flex: 1;
+            padding: 14px 8px;
+            text-align: center;
+            color: rgba(255,255,255,0.7);
+            cursor: pointer;
+            font-size: 0.85em;
+            font-weight: 500;
+            border: none;
+            background: none;
+            transition: all 0.3s;
+            position: relative;
+        }
+
+        .tab.active {
+            color: white;
+            background: rgba(255,255,255,0.2);
+        }
+
+        .tab-icon {
+            font-size: 1.4em;
+            display: block;
+            margin-bottom: 2px;
+        }
+
+        /* Tab Content */
+        .tab-content {
+            display: none;
+            flex: 1;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .tab-content.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Mood Selection - Compact Grid */
+        .mood-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            padding: 16px;
+        }
+
+        .mood-card {
+            aspect-ratio: 1;
+            background: white;
+            border-radius: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 3px solid transparent;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .mood-card:active {
+            transform: scale(0.95);
+        }
+
+        .mood-card.selected {
+            border-color: #667eea;
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+            transform: scale(1.05);
+        }
+
+        .mood-emoji {
+            font-size: 2.5em;
+            margin-bottom: 4px;
+        }
+
+        .mood-label {
+            font-size: 0.85em;
+            font-weight: 600;
+            color: #333;
+        }
+
+        /* Tasks - Compact Cards */
+        .tasks-container {
+            padding: 16px;
+        }
+
+        .task-card {
+            background: white;
+            border-radius: 12px;
+            padding: 14px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .task-header {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 8px;
+        }
+
+        .task-emoji {
+            font-size: 1.8em;
+            margin-right: 10px;
+        }
+
+        .task-info {
+            flex: 1;
+        }
+
+        .task-title {
+            font-weight: 600;
+            color: #333;
+            font-size: 0.95em;
+            margin-bottom: 4px;
+        }
+
+        .task-meta {
+            display: flex;
+            gap: 8px;
+            margin-top: 4px;
+        }
+
+        .task-badge {
+            font-size: 0.7em;
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-weight: 600;
+        }
+
+        .badge-critical { background: #ffcdd2; color: #c62828; }
+        .badge-high { background: #fff3e0; color: #e65100; }
+        .badge-medium { background: #e8f5e9; color: #2e7d32; }
+
+        .task-desc {
+            font-size: 0.85em;
+            color: #666;
+            margin: 8px 0;
+            line-height: 1.4;
+        }
+
+        .task-why {
+            font-size: 0.8em;
+            color: #999;
+            font-style: italic;
+            padding: 8px;
+            background: #f5f5f5;
+            border-radius: 8px;
+            margin-top: 8px;
+        }
+
+        /* Chat - Compact */
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 16px;
+        }
+
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            margin-bottom: 12px;
+        }
+
+        .message {
+            padding: 10px 12px;
+            border-radius: 12px;
+            margin-bottom: 8px;
+            max-width: 85%;
+            font-size: 0.9em;
+            line-height: 1.4;
+        }
+
+        .message-ai {
+            background: #e3f2fd;
+            border-left: 3px solid #2196f3;
+            margin-right: auto;
+        }
+
+        .message-user {
+            background: #667eea;
+            color: white;
+            margin-left: auto;
+        }
+
+        .chat-input-area {
+            display: flex;
+            gap: 8px;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 24px;
+            font-size: 0.9em;
+        }
+
+        .btn-send {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 24px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        /* Quick Actions - Bottom Sheet Style */
+        .actions-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            padding: 16px;
+        }
+
+        .action-btn {
+            aspect-ratio: 1;
+            background: white;
+            border: none;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: all 0.2s;
+        }
+
+        .action-btn:active {
+            transform: scale(0.9);
+        }
+
+        .action-icon {
+            font-size: 1.8em;
+            margin-bottom: 4px;
+        }
+
+        .action-label {
+            font-size: 0.7em;
+            font-weight: 600;
+            color: #333;
+        }
+
+        /* Affirmation Banner */
+        .affirmation-banner {
+            background: rgba(255,255,255,0.95);
+            padding: 12px 16px;
+            margin: 12px 16px;
+            border-radius: 12px;
+            border-left: 4px solid #4caf50;
+        }
+
+        .affirmation-text {
+            font-size: 0.9em;
+            color: #2e7d32;
+            font-weight: 500;
+            line-height: 1.4;
+        }
+
+        /* Loading & Empty States */
+        .empty-state {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+            text-align: center;
+            color: white;
+        }
+
+        .empty-icon {
+            font-size: 3em;
+            margin-bottom: 16px;
+            opacity: 0.8;
+        }
+
+        .empty-text {
+            font-size: 1.1em;
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+
+        .empty-hint {
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+
+        /* Animations */
+        @keyframes slideUp {
+            from {
+                transform: translateY(20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .task-card {
+            animation: slideUp 0.3s ease;
+        }
+
+        /* Dark scroll bars */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.1);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.3);
+            border-radius: 3px;
+        }
+
+        /* Touch Optimization */
+        button, .mood-card, .action-btn, .tab {
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        /* Safe area for notched phones */
+        @supports (padding: env(safe-area-inset-bottom)) {
+            .main-container {
+                padding-bottom: env(safe-area-inset-bottom);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <!-- Compact Header -->
+        <div class="header">
+            <div class="header-top">
+                <h1>🧠 Mood Assistant</h1>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <span class="status-badge">● Active</span>
+                    <button id="settingsBtn" style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 1.2em; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px;">⚙️</button>
+                </div>
+            </div>
+            <div class="current-mood" id="currentMoodDisplay">
+                Select your mood to get started
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="content">
+            <!-- Tab Navigation -->
+            <div class="tabs">
+                <button class="tab active" data-tab="mood">
+                    <span class="tab-icon">😊</span>
+                    <span>Mood</span>
+                </button>
+                <button class="tab" data-tab="tasks">
+                    <span class="tab-icon">✅</span>
+                    <span>Tasks</span>
+                </button>
+                <button class="tab" data-tab="chat">
+                    <span class="tab-icon">💬</span>
+                    <span>Chat</span>
+                </button>
+                <button class="tab" data-tab="actions">
+                    <span class="tab-icon">⚡</span>
+                    <span>Actions</span>
+                </button>
+            </div>
+
+            <!-- Tab Content Sections -->
+            
+            <!-- TAB 1: Mood Selection -->
+            <div class="tab-content active" data-tab-content="mood">
+                <div class="mood-grid" id="moodGrid">
+                    <div class="mood-card" data-mood="happy">
+                        <span class="mood-emoji">😊</span>
+                        <span class="mood-label">Happy</span>
+                    </div>
+                    <div class="mood-card" data-mood="sad">
+                        <span class="mood-emoji">😢</span>
+                        <span class="mood-label">Sad</span>
+                    </div>
+                    <div class="mood-card" data-mood="angry">
+                        <span class="mood-emoji">😠</span>
+                        <span class="mood-label">Angry</span>
+                    </div>
+                    <div class="mood-card" data-mood="fear">
+                        <span class="mood-emoji">😨</span>
+                        <span class="mood-label">Fear</span>
+                    </div>
+                    <div class="mood-card" data-mood="surprise">
+                        <span class="mood-emoji">😲</span>
+                        <span class="mood-label">Surprise</span>
+                    </div>
+                    <div class="mood-card" data-mood="neutral">
+                        <span class="mood-emoji">😐</span>
+                        <span class="mood-label">Neutral</span>
+                    </div>
+                </div>
+                
+                <div class="empty-state" id="moodEmptyState">
+                    <div class="empty-icon">👆</div>
+                    <div class="empty-text">Tap a mood above</div>
+                    <div class="empty-hint">Let me know how you're feeling today</div>
+                </div>
+            </div>
+
+            <!-- TAB 2: Tasks -->
+            <div class="tab-content" data-tab-content="tasks">
+                <div id="affirmationDiv"></div>
+                <div class="tasks-container" id="tasksContainer">
+                    <div class="empty-state">
+                        <div class="empty-icon">✨</div>
+                        <div class="empty-text">No tasks yet</div>
+                        <div class="empty-hint">Select your mood to get personalized tasks</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: Chat -->
+            <div class="tab-content" data-tab-content="chat">
+                <div class="chat-container">
+                    <div class="messages" id="chatMessages">
+                        <div class="message message-ai">
+                            👋 Hi! Select your mood and I'll help you with tasks that match your energy level
+                        </div>
+                    </div>
+                    <div class="chat-input-area">
+                        <input type="text" class="chat-input" id="chatInput" placeholder="Type your message...">
+                        <button class="btn-send" id="sendBtn">▶</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 4: Quick Actions -->
+            <div class="tab-content" data-tab-content="actions">
+                <div class="actions-grid" id="actionsGrid">
+                    <button class="action-btn" data-action="focus">
+                        <span class="action-icon">🎯</span>
+                        <span class="action-label">Focus</span>
+                    </button>
+                    <button class="action-btn" data-action="break">
+                        <span class="action-icon">☕</span>
+                        <span class="action-label">Break</span>
+                    </button>
+                    <button class="action-btn" data-action="music">
+                        <span class="action-icon">🎵</span>
+                        <span class="action-label">Music</span>
+                    </button>
+                    <button class="action-btn" data-action="stretch">
+                        <span class="action-icon">🏃</span>
+                        <span class="action-label">Stretch</span>
+                    </button>
+                    <button class="action-btn" data-action="motivation">
+                        <span class="action-icon">⭐</span>
+                        <span class="action-label">Motivate</span>
+                    </button>
+                    <button class="action-btn" data-action="resources">
+                        <span class="action-icon">📚</span>
+                        <span class="action-label">Learn</span>
+                    </button>
+                    <button class="action-btn" data-action="timer">
+                        <span class="action-icon">⏱️</span>
+                        <span class="action-label">Timer</span>
+                    </button>
+                    <button class="action-btn" data-action="help">
+                        <span class="action-icon">🆘</span>
+                        <span class="action-label">Help</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Mobile-Optimized Mood Assistant with Session & Cookie Support
+        const API_BASE = '/api';
+        let currentMood = null;
+        let currentTasks = [];
+        let sessionStartTime = Date.now();
+        let currentSessionId = null;
+
+        const moodEmojis = {
+            'happy': '😊',
+            'sad': '😢',
+            'angry': '😠',
+            'fear': '😨',
+            'surprise': '😲',
+            'neutral': '😐'
+        };
+
+        // Initialize session and load settings on page load
+        document.addEventListener('DOMContentLoaded', async () => {
+            await initializeSession();
+        });
+
+        // Initialize or retrieve session
+        async function initializeSession() {
+            try {
+                // Check if we have a session ID in localStorage
+                let sessionId = localStorage.getItem('sessionId');
+                
+                if (!sessionId) {
+                    // Create new session with timezone info
+                    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                    const offset = -new Date().getTimezoneOffset();
+                    
+                    const response = await fetch(`${API_BASE}/session/create`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            timezone: timezone,
+                            timezone_offset: offset
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    if (data.success) {
+                        sessionId = data.session_id;
+                        localStorage.setItem('sessionId', sessionId);
+                    }
+                }
+                
+                currentSessionId = sessionId;
+                
+                // Setup all event listeners after session is ready
+                setupTabSwitching();
+                setupMoodSelection();
+                setupChatInterface();
+                setupSettingsButton();
+                setupQuickActions();
+                
+                // Try to restore last mood from history
+                restoreLastMood();
+            } catch (error) {
+                console.error('Session init error:', error);
+                // Fall back to offline mode
+                setupTabSwitching();
+                setupMoodSelection();
+                setupChatInterface();
+                setupSettingsButton();
+                setupQuickActions();
+            }
+        }
+
+        // Restore last mood from session history
+        async function restoreLastMood() {
+            try {
+                const response = await fetch(
+                    `${API_BASE}/session/mood/history/${currentSessionId}?limit=1`
+                );
+                const data = await response.json();
+                
+                if (data.success && data.mood_history.length > 0) {
+                    const lastMood = data.mood_history[0].mood;
+                    // Auto-select last mood
+                    setTimeout(() => {
+                        const card = document.querySelector(`[data-mood="${lastMood}"]`);
+                        if (card) {
+                            card.click();
+                        }
+                    }, 500);
+                }
+            } catch (error) {
+                console.error('Restore mood error:', error);
+            }
+        }
+
+        // Tab Switching
+        function setupTabSwitching() {
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    const targetTab = tab.dataset.tab;
+                    
+                    // Switch active tab button
+                    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    
+                    // Switch active content
+                    document.querySelectorAll('.tab-content').forEach(content => {
+                        content.classList.remove('active');
+                    });
+                    document.querySelector(`[data-tab-content="${targetTab}"]`).classList.add('active');
+                });
+            });
+        }
+
+        // Mood Selection
+        function setupMoodSelection() {
+            document.querySelectorAll('.mood-card').forEach(card => {
+                card.addEventListener('click', async () => {
+                    const mood = card.dataset.mood;
+                    await selectMood(mood);
+                });
+            });
+        }
+
+        async function selectMood(mood) {
+            currentMood = mood;
+            
+            // Update UI
+            document.querySelectorAll('.mood-card').forEach(c => c.classList.remove('selected'));
+            document.querySelector(`[data-mood="${mood}"]`).classList.add('selected');
+            
+            // Update header
+            document.getElementById('currentMoodDisplay').textContent = 
+                `You're feeling ${mood} ${moodEmojis[mood]}`;
+            
+            // Hide empty state
+            const emptyState = document.getElementById('moodEmptyState');
+            if (emptyState) emptyState.style.display = 'none';
+            
+            // Record mood to session history
+            if (currentSessionId) {
+                try {
+                    await fetch(`${API_BASE}/session/mood/record`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            session_id: currentSessionId,
+                            mood: mood,
+                            confidence: 1.0,
+                            context: 'manual_selection'
+                        })
+                    });
+                } catch (error) {
+                    console.error('Mood record error:', error);
+                }
+            }
+            
+            // Add to chat
+            addMessage(`I'm feeling ${mood} today ${moodEmojis[mood]}`, 'user');
+            
+            // Get recommendations
+            await getTaskRecommendations(mood);
+            
+            // Auto-switch to tasks tab after a moment
+            setTimeout(() => {
+                document.querySelector('[data-tab="tasks"]').click();
+            }, 800);
+        }
+
+        // Setup Chat Interface
+        function setupChatInterface() {
+            const sendBtn = document.getElementById('sendBtn');
+            const chatInput = document.getElementById('chatInput');
+            
+            sendBtn.addEventListener('click', () => {
+                const text = chatInput.value.trim();
+                if (text) {
+                    sendChatMessage(text);
+                    chatInput.value = '';
+                }
+            });
+            
+            chatInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    const text = chatInput.value.trim();
+                    if (text) {
+                        sendChatMessage(text);
+                        chatInput.value = '';
+                    }
+                }
+            });
+        }
+
+        // Setup Settings Button
+        function setupSettingsButton() {
+            const settingsBtn = document.getElementById('settingsBtn');
+            if (settingsBtn) {
+                settingsBtn.addEventListener('click', () => {
+                    // Open settings in same tab or modal
+                    window.location.href = '/static/ai_settings.html';
+                });
+            }
+        }
+
+        // Setup Quick Actions
+        function setupQuickActions() {
+            document.querySelectorAll('.action-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const action = btn.dataset.action;
+                    executeQuickAction(action);
+                });
+            });
+        }
+
+        async function sendChatMessage(text) {
+            addMessage(text, 'user');
+            
+            // Get contextual AI response
+            if (!currentMood) {
+                addMessage('Please select your mood first so I can help you better! 😊', 'ai');
+                return;
+            }
+            
+            try {
+                // Try to get AI response (local Ollama or cloud)
+                const response = await fetch(`${API_BASE}/ai/response/mood`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        mood: currentMood,
+                        context: text,
+                        confidence: 1.0
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.success && data.response.text) {
+                    addMessage(data.response.text, 'ai');
+                } else {
+                    addMessage(getDefaultResponse(currentMood, text), 'ai');
+                }
+            } catch (error) {
+                console.error('Chat error:', error);
+                addMessage(getDefaultResponse(currentMood, text), 'ai');
+            }
+        }
+
+        function getDefaultResponse(mood, context) {
+            const responses = {
+                happy: `That's awesome! With your happy mood, you have the energy to make this happen! 🚀`,
+                sad: `I understand. It's okay to feel this way. Let's focus on gentle, restorative activities. 💙`,
+                angry: `I can sense your intensity. Let's channel that energy into something productive! 💪`,
+                fear: `Facing this takes courage. You're not alone. Let's break this down into manageable steps. 🤗`,
+                surprise: `What an interesting turn of events! Let's process this together. ✨`,
+                neutral: `With your calm and focused state, you're ready for steady progress! 🎯`
+            };
+            return responses[mood] || "I'm here to help!";
+        }
+
+        // Get Task Recommendations from API
+        async function getTaskRecommendations(mood) {
+            try {
+                const response = await fetch(`${API_BASE}/task/recommendations`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        mood: mood, 
+                        user_id: 'mobile_user_' + Date.now(),
+                        current_context: 'mobile_app'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success && data.recommendation) {
+                    displayTasks(data.recommendation);
+                    displayAffirmation(data.recommendation.affirmation);
+                    addMessage(`Great! I've found ${data.recommendation.tasks.length} tasks perfect for your ${mood} mood.`, 'ai');
+                } else {
+                    console.error('No recommendations:', data);
+                    showFallbackTasks(mood);
+                }
+            } catch (error) {
+                console.error('API Error:', error);
+                addMessage('Sorry, I had trouble connecting. Showing default tasks.', 'ai');
+                showFallbackTasks(mood);
+            }
+        }
+
+        // Display Tasks
+        function displayTasks(recommendation) {
+            const container = document.getElementById('tasksContainer');
+            container.innerHTML = '';
+            
+            if (!recommendation.tasks || recommendation.tasks.length === 0) {
+                container.innerHTML = '<div class="empty-state"><div class="empty-icon">🤔</div><div class="empty-text">No tasks available</div></div>';
+                return;
+            }
+            
+            recommendation.tasks.forEach(task => {
+                const priorityClass = task.priority === 'CRITICAL' ? 'badge-critical' : 
+                                     task.priority === 'HIGH' ? 'badge-high' : 'badge-medium';
+                
+                const card = document.createElement('div');
+                card.className = 'task-card';
+                card.innerHTML = `
+                    <div class="task-header">
+                        <div class="task-emoji">${task.emoji || '📝'}</div>
+                        <div class="task-info">
+                            <div class="task-title">${task.title}</div>
+                            <div class="task-meta">
+                                <span class="task-badge ${priorityClass}">${task.priority}</span>
+                                <span class="task-badge" style="background: #e3f2fd; color: #1976d2">
+                                    ⏱️ ${task.estimated_time || '15 min'}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="task-desc">${task.description}</div>
+                    ${task.why_now ? `<div class="task-why">💡 ${task.why_now}</div>` : ''}
+                `;
+                container.appendChild(card);
+            });
+            
+            currentTasks = recommendation.tasks;
+        }
+
+        // Fallback tasks when API is not available
+        function showFallbackTasks(mood) {
+            const fallbackTasks = {
+                happy: [
+                    { emoji: '🚀', title: 'Start New Project', description: 'Use this positive energy to begin something exciting', priority: 'HIGH', estimated_time: '30 min', why_now: 'Your happiness boosts creativity and motivation' },
+                    { emoji: '🤝', title: 'Collaborate & Help Others', description: 'Share your positive vibe with teammates', priority: 'MEDIUM', estimated_time: '20 min', why_now: 'Happiness is contagious and collaboration amplifies it' },
+                    { emoji: '💪', title: 'Tackle Challenge Tasks', description: 'Take on that difficult problem you\'ve been avoiding', priority: 'HIGH', estimated_time: '45 min', why_now: 'You have the energy and optimism to overcome obstacles' }
+                ],
+                sad: [
+                    { emoji: '📝', title: 'Journal Your Feelings', description: 'Write down what\'s on your mind', priority: 'CRITICAL', estimated_time: '15 min', why_now: 'Expression helps process emotions' },
+                    { emoji: '☕', title: 'Take a Restorative Break', description: 'Step away and recharge', priority: 'CRITICAL', estimated_time: '10 min', why_now: 'Rest is healing for the mind' },
+                    { emoji: '💬', title: 'Talk to Someone', description: 'Reach out to a friend or loved one', priority: 'HIGH', estimated_time: '20 min', why_now: 'Connection helps ease emotional pain' }
+                ],
+                angry: [
+                    { emoji: '🏃', title: 'Physical Activity / Exercise', description: 'Channel this energy into movement', priority: 'CRITICAL', estimated_time: '20 min', why_now: 'Physical exertion releases tension' },
+                    { emoji: '✍️', title: 'Write Out Your Frustration', description: 'Get it all on paper without judgment', priority: 'HIGH', estimated_time: '15 min', why_now: 'Expression prevents destructive actions' },
+                    { emoji: '🎧', title: 'Listen to Intense Music', description: 'Let music match your energy', priority: 'MEDIUM', estimated_time: '10 min', why_now: 'Music can provide safe emotional release' }
+                ],
+                fear: [
+                    { emoji: '🧘', title: 'Deep Breathing Exercise', description: 'Calm your nervous system', priority: 'CRITICAL', estimated_time: '5 min', why_now: 'Breath control reduces anxiety immediately' },
+                    { emoji: '📋', title: 'Break Task Into Steps', description: 'Make it less overwhelming', priority: 'HIGH', estimated_time: '15 min', why_now: 'Small steps feel manageable' },
+                    { emoji: '🤗', title: 'Seek Support', description: 'Ask for help or guidance', priority: 'HIGH', estimated_time: '10 min', why_now: 'You don\'t have to face fears alone' }
+                ],
+                surprise: [
+                    { emoji: '💭', title: 'Process the News', description: 'Take time to understand what happened', priority: 'HIGH', estimated_time: '10 min', why_now: 'Surprises need mental processing' },
+                    { emoji: '📱', title: 'Share Your Experience', description: 'Talk about the surprise with others', priority: 'MEDIUM', estimated_time: '15 min', why_now: 'Sharing helps integrate surprise' },
+                    { emoji: '🎯', title: 'Adjust Your Plans', description: 'Update your approach based on new info', priority: 'HIGH', estimated_time: '20 min', why_now: 'Adaptation is key after surprises' }
+                ],
+                neutral: [
+                    { emoji: '📊', title: 'Plan Your Day', description: 'Organize and prioritize tasks', priority: 'MEDIUM', estimated_time: '15 min', why_now: 'Calm focus is ideal for planning' },
+                    { emoji: '🔄', title: 'Review Progress', description: 'Check what you\'ve accomplished', priority: 'MEDIUM', estimated_time: '20 min', why_now: 'Stable mood supports reflection' },
+                    { emoji: '📚', title: 'Learn Something New', description: 'Explore a topic of interest', priority: 'MEDIUM', estimated_time: '30 min', why_now: 'Neutral state is great for learning' }
+                ]
+            };
+            
+            const tasks = fallbackTasks[mood] || fallbackTasks.neutral;
+            displayTasks({ tasks: tasks });
+        }
+
+        // Display Affirmation
+        function displayAffirmation(affirmation) {
+            const div = document.getElementById('affirmationDiv');
+            if (affirmation) {
+                div.innerHTML = `
+                    <div class="affirmation-banner">
+                        <div class="affirmation-text">💚 ${affirmation}</div>
+                    </div>
+                `;
+                div.style.display = 'block';
+            }
+        }
+
+        // Chat Functions
+        function addMessage(text, type) {
+            const messagesDiv = document.getElementById('chatMessages');
+            const msg = document.createElement('div');
+            msg.className = `message message-${type}`;
+            msg.textContent = text;
+            messagesDiv.appendChild(msg);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // Execute Quick Action
+        function executeQuickAction(action) {
+            const actions = {
+                'focus': '🎯 Focus mode activated! Minimize distractions and dive in for the next 25 minutes.',
+                'break': '☕ Time for a break! Take 5-10 minutes to step away and recharge. You deserve it!',
+                'music': '🎵 Music time! Try lo-fi beats for focus, or upbeat tunes to boost energy.',
+                'stretch': '🏃 Stand up and stretch! Reach for the sky, touch your toes, roll your shoulders.',
+                'motivation': '⭐ You\'re doing amazing! Every step forward is progress. Keep going!',
+                'resources': '📚 Learning resources ready! Check out guides, tutorials, and growth materials.',
+                'timer': '⏱️ Pomodoro timer started! 25 minutes of focused work, then a 5-minute break.',
+                'help': '🆘 I\'m here to help! What do you need assistance with? Just ask in the chat.'
+            };
+            
+            addMessage(actions[action] || 'Action executed successfully! ✨', 'ai');
+            
+            // Switch to chat to show the action response
+            setTimeout(() => {
+                document.querySelector('[data-tab="chat"]').click();
+            }, 100);
+        }
+
+        // Initialize with welcome message
+        setTimeout(() => {
+            if (!currentMood) {
+                addMessage('👋 Welcome! Start by selecting your current mood in the Mood tab.', 'ai');
+            }
+        }, 1000);
+    </script>
+</body>
+</html>

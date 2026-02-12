@@ -1,0 +1,49 @@
+{
+  "buildings": [
+    {
+      "id": 1,
+      "name": "Building A",
+      "location": "123 Main St",
+      "energy_usage": {
+        "january": 1500,
+        "february": 1400,
+        "march": 1600
+      },
+      "occupancy_rate": {
+        "january": 85,
+        "february": 80,
+        "march": 90
+      }
+    },
+    {
+      "id": 2,
+      "name": "Building B",
+      "location": "456 Elm St",
+      "energy_usage": {
+        "january": 2000,
+        "february": 2100,
+        "march": 1900
+      },
+      "occupancy_rate": {
+        "january": 75,
+        "february": 70,
+        "march": 80
+      }
+    },
+    {
+      "id": 3,
+      "name": "Building C",
+      "location": "789 Oak St",
+      "energy_usage": {
+        "january": 1200,
+        "february": 1300,
+        "march": 1250
+      },
+      "occupancy_rate": {
+        "january": 90,
+        "february": 85,
+        "march": 95
+      }
+    }
+  ]
+}

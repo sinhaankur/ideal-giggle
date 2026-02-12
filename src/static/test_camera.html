@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Camera & Mic Control</title>
+    <style>
+        body { 
+            background: #1a1a1a; 
+            color: white; 
+            font-family: Arial; 
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .controls {
+            background: #2a2a2a;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        select, input[type="checkbox"] {
+            padding: 8px;
+            font-size: 14px;
+            border-radius: 5px;
+            border: 1px solid #444;
+            background: #333;
+            color: white;
+        }
+        select {
+            width: 100%;
+            max-width: 400px;
+        }
+        input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+        .checkbox-label {
+            display: inline;
+            font-weight: normal;
+        }
+        img { 
+            max-width: 100%; 
+            border: 2px solid #4CAF50; 
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 5px;
+            margin: 10px 5px;
+        }
+        button:hover { background: #45a049; }
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        .stop-btn {
+            background: #f44336;
+        }
+        .stop-btn:hover {
+            background: #da190b;
+        }
+        #status { 
+            padding: 10px; 
+            margin: 10px 0; 
+            background: #333; 
+            border-radius: 5px;
+        }
+        .success { color: #4CAF50; }
+        .error { color: #f44336; }
+        .info { color: #2196F3; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎥 Camera & Microphone Control</h1>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label>📹 Select Camera:</label>
+                <select id="cameraSelect">
+                    <option value="">Loading cameras...</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <input type="checkbox" id="enableAudio" checked>
+                <label for="enableAudio" class="checkbox-label">🎤 Enable Microphone (for Insta360 X3 audio)</label>
+            </div>
+        </div>
+        
+        <div id="status">Click "Start" to begin camera feed...</div>
+        
+        <button id="startBtn" onclick="startCamera()">▶ Start Camera</button>
+        <button id="stopBtn" class="stop-btn" onclick="stopCamera()" disabled>⬛ Stop</button>
+        
+        <br><br>
+        <img id="feed" src="" alt="Camera feed will appear here" style="display:none;">
+    </div>
+    
+    <script>
+        let interval = null;
+        let isRunning = false;
+        
+        // Load available cameras on page load
+        window.addEventListener('load', loadCameras);
+        
+        async function loadCameras() {
+            try {
+                const resp = await fetch('/api/vision/cameras');
+                const data = await resp.json();
+                
+                const select = document.getElementById('cameraSelect');
+                select.innerHTML = '';
+                
+                if (data.cameras && data.cameras.length > 0) {
+                    data.cameras.forEach(cam => {
+                        const option = document.createElement('option');
+                        option.value = cam.index;
+                        option.textContent = `${cam.name} (Device ${cam.index}) - ${cam.backend}`;
+                        select.appendChild(option);
+                    });
+                    
+                    // Auto-select Insta360 or second camera if available
+                    if (data.cameras.length > 1) {
+                        select.value = data.cameras[1].index;
+                    }
+                    
+                    document.getElementById('status').innerHTML = 
+                        `<span class="success">✅ Found ${data.cameras.length} camera(s)</span>`;
+                } else {
+                    select.innerHTML = '<option value="0">No cameras detected</option>';
+                    document.getElementById('status').innerHTML = 
+                        '<span class="error">❌ No cameras found</span>';
+                }
+            } catch (err) {
+                console.error('Error loading cameras:', err);
+                document.getElementById('status').innerHTML = 
+                    '<span class="error">❌ Error loading cameras: ' + err.message + '</span>';
+            }
+        }
+        
+        async function startCamera() {
+            if (isRunning) return;
+            
+            try {
+                const cameraIndex = parseInt(document.getElementById('cameraSelect').value) || 0;
+                const enableAudio = document.getElementById('enableAudio').checked;
+                
+                document.getElementById('status').innerHTML = 
+                    '<span class="info">⏳ Starting camera...</span>';
+                document.getElementById('startBtn').disabled = true;
+                
+                // Start monitoring with selected camera and audio settings
+                const startResp = await fetch('/api/vision/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        camera_index: cameraIndex,
+                        enable_audio: enableAudio
+                    })
+                });
+                
+                const startData = await startResp.json();
+                
+                if (!startData.success) {
+                    throw new Error(startData.error || startData.message);
+                }
+                
+                const camInfo = startData.camera_info || {};
+                const audioStatus = startData.audio_enabled ? '🎤 ON' : '🎤 OFF';
+                
+                document.getElementById('status').innerHTML = 
+                    `<span class="success">✅ Started! Camera ${startData.camera_index} - ${camInfo.width}x${camInfo.height} @ ${camInfo.fps}fps - ${audioStatus}</span>`;
+                
+                document.getElementById('feed').style.display = 'block';
+                document.getElementById('stopBtn').disabled = false;
+                isRunning = true;
+                
+                // Update feed every 500ms
+                interval = setInterval(async () => {
+                    try {
+                        const resp = await fetch('/api/vision/frame?encrypted=false&annotated=true');
+                        const data = await resp.json();
+                        
+                        if (data.image) {
+                            document.getElementById('feed').src = 
+                                'data:image/jpeg;base64,' + data.image;
+                        }
+                    } catch (err) {
+                        console.error('Frame error:', err);
+                    }
+                }, 500);
+                
+            } catch (err) {
+                document.getElementById('status').innerHTML = 
+                    '<span class="error">❌ Error: ' + err.message + '</span>';
+                document.getElementById('startBtn').disabled = false;
+                console.error(err);
+            }
+        }
+        
+        async function stopCamera() {
+            if (!isRunning) return;
+            
+            if (interval) {
+                clearInterval(interval);
+                interval = null;
+            }
+            
+            try {
+                await fetch('/api/vision/stop', { method: 'POST' });
+                
+                document.getElementById('status').innerHTML = 
+                    '<span class="info">⬛ Stopped</span>';
+                document.getElementById('feed').style.display = 'none';
+                document.getElementById('startBtn').disabled = false;
+                document.getElementById('stopBtn').disabled = true;
+                isRunning = false;
+            } catch (err) {
+                console.error('Error stopping:', err);
+            }
+        }
+    </script>
+</body>
+</html>

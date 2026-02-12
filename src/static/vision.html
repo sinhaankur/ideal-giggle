@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vision AI - Private Movement Tracking</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #667eea;
+            font-size: 28px;
+        }
+
+        .encryption-badge {
+            background: #10b981;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .card h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 20px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .video-container {
+            position: relative;
+            background: #000;
+            border-radius: 10px;
+            overflow: hidden;
+            aspect-ratio: 4/3;
+        }
+
+        #cameraFeed {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .video-overlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .recording-indicator {
+            display: none;
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #ef4444;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            animation: pulse 2s infinite;
+        }
+
+        .recording-indicator.active {
+            display: block;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        button {
+            flex: 1;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+            transform: translateY(-2px);
+        }
+
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #059669;
+            transform: translateY(-2px);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            opacity: 0.9;
+            text-transform: uppercase;
+        }
+
+        .movement-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+
+        .movement-item {
+            background: #f3f4f6;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 4px solid #667eea;
+        }
+
+        .movement-time {
+            font-size: 12px;
+            color: #6b7280;
+            margin-bottom: 5px;
+        }
+
+        .movement-details {
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+        }
+
+        .ai-analysis {
+            background: #fef3c7;
+            border: 2px solid #f59e0b;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+
+        .ai-analysis h3 {
+            color: #f59e0b;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .ai-analysis p {
+            color: #78350f;
+            line-height: 1.6;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-indicator.active {
+            background: #10b981;
+            box-shadow: 0 0 10px #10b981;
+        }
+
+        .status-indicator.inactive {
+            background: #6b7280;
+        }
+
+        .privacy-info {
+            background: #e0e7ff;
+            border: 2px solid #667eea;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+
+        .privacy-info h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .privacy-info ul {
+            list-style: none;
+            font-size: 12px;
+            color: #4338ca;
+        }
+
+        .privacy-info li {
+            padding: 5px 0;
+            padding-left: 20px;
+            position: relative;
+        }
+
+        .privacy-info li:before {
+            content: "🔒";
+            position: absolute;
+            left: 0;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+        }
+
+        @media (max-width: 1024px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎥 Vision AI - Private Movement Tracking</h1>
+            <div class="encryption-badge">
+                🔐 End-to-End Encrypted
+            </div>
+        </div>
+
+        <div class="grid">
+            <!-- Camera Feed -->
+            <div class="card">
+                <h2>Live Camera Feed</h2>
+                <div class="video-container">
+                    <img id="cameraFeed" src="" alt="Camera feed will appear here">
+                    <div class="video-overlay">
+                        <span class="status-indicator inactive" id="statusIndicator"></span>
+                        <span id="statusText">Camera Offline</span>
+                    </div>
+                    <div class="recording-indicator" id="recordingIndicator">
+                        ⚫ MONITORING
+                    </div>
+                </div>
+                <div class="controls">
+                    <button class="btn-primary" id="startBtn" onclick="startMonitoring()">
+                        Start Monitoring
+                    </button>
+                    <button class="btn-danger" id="stopBtn" onclick="stopMonitoring()" disabled>
+                        Stop Monitoring
+                    </button>
+                    <button class="btn-success" id="analyzeBtn" onclick="analyzeNow()">
+                        Analyze Now
+                    </button>
+                </div>
+
+                <!-- AI Analysis Box -->
+                <div class="ai-analysis" id="aiAnalysis" style="display: none;">
+                    <h3>🤖 Ollama AI Analysis</h3>
+                    <p id="analysisText">Loading analysis...</p>
+                </div>
+
+                <!-- Privacy Information -->
+                <div class="privacy-info">
+                    <h3>🔐 Privacy & Security</h3>
+                    <ul>
+                        <li>All video data is processed locally</li>
+                        <li>Movement data encrypted with AES-128</li>
+                        <li>AI analysis via local Ollama instance</li>
+                        <li>No data sent to external servers</li>
+                        <li>Automatic data cleanup after session</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Stats & Movement History -->
+            <div>
+                <div class="card">
+                    <h2>Statistics</h2>
+                    <div class="stats-grid">
+                        <div class="stat-box">
+                            <div class="stat-value" id="totalFrames">0</div>
+                            <div class="stat-label">Total Frames</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value" id="movementsDetected">0</div>
+                            <div class="stat-label">Movements</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value" id="aiAnalyses">0</div>
+                            <div class="stat-label">AI Analyses</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value" id="avgIntensity">0%</div>
+                            <div class="stat-label">Avg Intensity</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Recent Movements</h2>
+                    <div class="movement-list" id="movementList">
+                        <div class="loading">No movements detected yet</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let isMonitoring = false;
+        let updateInterval = null;
+
+        // API Helper
+        async function apiCall(endpoint, options = {}) {
+            const defaultOptions = {
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            };
+            
+            const response = await fetch(endpoint, { ...defaultOptions, ...options });
+            return response.json();
+        }
+
+        // Start camera monitoring
+        async function startMonitoring() {
+            try {
+                document.getElementById('startBtn').disabled = true;
+                const result = await apiCall('/api/vision/start', { method: 'POST' });
+                
+                if (result.success) {
+                    isMonitoring = true;
+                    document.getElementById('stopBtn').disabled = false;
+                    document.getElementById('statusIndicator').className = 'status-indicator active';
+                    document.getElementById('statusText').textContent = 'Camera Active';
+                    document.getElementById('recordingIndicator').classList.add('active');
+                    
+                    // Start updating feed and stats
+                    updateInterval = setInterval(() => {
+                        updateCameraFeed();
+                        updateStatistics();
+                        updateMovementHistory();
+                    }, 1000);
+                    
+                    alert('Monitoring started! All data is encrypted and processed locally.');
+                } else {
+                    alert('Failed to start monitoring: ' + (result.error || result.message));
+                    document.getElementById('startBtn').disabled = false;
+                }
+            } catch (error) {
+                console.error('Error starting monitoring:', error);
+                alert('Error starting monitoring');
+                document.getElementById('startBtn').disabled = false;
+            }
+        }
+
+        // Stop camera monitoring
+        async function stopMonitoring() {
+            try {
+                document.getElementById('stopBtn').disabled = true;
+                const result = await apiCall('/api/vision/stop', { method: 'POST' });
+                
+                isMonitoring = false;
+                document.getElementById('startBtn').disabled = false;
+                document.getElementById('statusIndicator').className = 'status-indicator inactive';
+                document.getElementById('statusText').textContent = 'Camera Offline';
+                document.getElementById('recordingIndicator').classList.remove('active');
+                
+                // Stop updates
+                if (updateInterval) {
+                    clearInterval(updateInterval);
+                    updateInterval = null;
+                }
+                
+                alert('Monitoring stopped. Stats: ' + JSON.stringify(result.stats || {}));
+            } catch (error) {
+                console.error('Error stopping monitoring:', error);
+                alert('Error stopping monitoring');
+            }
+        }
+
+        // Update camera feed
+        async function updateCameraFeed() {
+            if (!isMonitoring) return;
+            
+            try {
+                const data = await apiCall('/api/vision/frame?encrypted=false&annotated=true');
+                if (data.image) {
+                    document.getElementById('cameraFeed').src = 'data:image/jpeg;base64,' + data.image;
+                }
+            } catch (error) {
+                console.error('Error updating feed:', error);
+            }
+        }
+
+        // Update statistics
+        async function updateStatistics() {
+            try {
+                const stats = await apiCall('/api/vision/stats');
+                
+                document.getElementById('totalFrames').textContent = stats.total_frames || 0;
+                document.getElementById('movementsDetected').textContent = stats.movements_detected || 0;
+                document.getElementById('aiAnalyses').textContent = stats.ai_analyses || 0;
+                
+                const avgIntensity = stats.movement_summary?.average_intensity || 0;
+                document.getElementById('avgIntensity').textContent = avgIntensity.toFixed(1) + '%';
+            } catch (error) {
+                console.error('Error updating statistics:', error);
+            }
+        }
+
+        // Update movement history
+        async function updateMovementHistory() {
+            try {
+                const data = await apiCall('/api/vision/movement/history?limit=10');
+                const movementList = document.getElementById('movementList');
+                
+                if (data.history && data.history.length > 0) {
+                    movementList.innerHTML = data.history.slice(0, 5).map(movement => `
+                        <div class="movement-item">
+                            <div class="movement-time">${new Date(movement.timestamp).toLocaleTimeString()}</div>
+                            <div class="movement-details">
+                                <span>Regions: ${movement.region_count}</span>
+                                <span>Intensity: ${movement.intensity}%</span>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    movementList.innerHTML = '<div class="loading">No movements detected yet</div>';
+                }
+            } catch (error) {
+                console.error('Error updating movement history:', error);
+            }
+        }
+
+        // Analyze current situation with AI
+        async function analyzeNow() {
+            try {
+                document.getElementById('analyzeBtn').disabled = true;
+                document.getElementById('aiAnalysis').style.display = 'block';
+                document.getElementById('analysisText').textContent = 'Analyzing with Ollama AI...';
+                
+                const result = await apiCall('/api/vision/analyze-now', { method: 'POST' });
+                
+                if (result.success) {
+                    document.getElementById('analysisText').textContent = result.ai_analysis;
+                } else {
+                    document.getElementById('analysisText').textContent = 'Analysis failed: ' + result.error;
+                }
+                
+                document.getElementById('analyzeBtn').disabled = false;
+            } catch (error) {
+                console.error('Error analyzing:', error);
+                document.getElementById('analysisText').textContent = 'Error running analysis';
+                document.getElementById('analyzeBtn').disabled = false;
+            }
+        }
+
+        // Check encryption status on load
+        async function checkEncryption() {
+            try {
+                const status = await apiCall('/api/vision/encryption-status');
+                console.log('Encryption Status:', status);
+            } catch (error) {
+                console.error('Error checking encryption:', error);
+            }
+        }
+
+        // Initialize
+        window.addEventListener('load', () => {
+            checkEncryption();
+        });
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (isMonitoring) {
+                stopMonitoring();
+            }
+        });
+    </script>
+</body>
+</html>

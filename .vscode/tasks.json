@@ -1,0 +1,41 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "podman: start ollama",
+      "type": "shell",
+      "command": "podman rm -f ollama || true; podman run -d --name ollama -p 11434:11434 -v ollama:/root/.ollama docker.io/ollama/ollama:latest",
+      "problemMatcher": []
+    },
+    {
+      "label": "podman: stop ollama",
+      "type": "shell",
+      "command": "podman rm -f ollama || true",
+      "problemMatcher": []
+    },
+    {
+      "label": "podman: start cloudflared",
+      "type": "shell",
+      "command": "podman rm -f cloudflared || true; podman run -d --name cloudflared --network host -v /home/ankursinha/.cloudflared:/home/nonroot/.cloudflared:Z docker.io/cloudflare/cloudflared:latest tunnel --config /home/nonroot/.cloudflared/config.yml run",
+      "problemMatcher": []
+    },
+    {
+      "label": "podman: stop cloudflared",
+      "type": "shell",
+      "command": "podman rm -f cloudflared || true",
+      "problemMatcher": []
+    },
+    {
+      "label": "podman: start all",
+      "type": "shell",
+      "dependsOn": ["podman: start ollama", "podman: start cloudflared"],
+      "problemMatcher": []
+    },
+    {
+      "label": "podman: stop all",
+      "type": "shell",
+      "dependsOn": ["podman: stop cloudflared", "podman: stop ollama"],
+      "problemMatcher": []
+    }
+  ]
+}

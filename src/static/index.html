@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Building Management AI Dashboard</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="stylesheet" href="/static/chat.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="dashboard">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <i class="fas fa-building"></i>
+                <h2>Building AI</h2>
+            </div>
+            <nav class="nav-menu">
+                <a href="#" class="nav-item active" data-page="overview">
+                    <i class="fas fa-home"></i>
+                    <span>Overview</span>
+                </a>
+                <a href="#" class="nav-item" data-page="chat">
+                    <i class="fas fa-comments"></i>
+                    <span>AI Chat</span>
+                </a>
+                <a href="#" class="nav-item" data-page="predictions">
+                    <i class="fas fa-chart-line"></i>
+                    <span>Predictions</span>
+                </a>
+                <a href="#" class="nav-item" data-page="energy">
+                    <i class="fas fa-bolt"></i>
+                    <span>Energy</span>
+                </a>
+                <a href="#" class="nav-item" data-page="models">
+                    <i class="fas fa-brain"></i>
+                    <span>AI Models</span>
+                </a>
+                <a href="/static/vision_enhanced.html" class="nav-item">
+                    <i class="fas fa-video"></i>
+                    <span>🎥 Vision AI Pro</span>
+                </a>
+                <a href="/static/vision.html" class="nav-item">
+                    <i class="fas fa-camera"></i>
+                    <span>Vision AI Basic</span>
+                </a>
+                <a href="#" class="nav-item" data-page="users">
+                    <i class="fas fa-users-cog"></i>
+                    <span>Users</span>
+                </a>
+                <a href="#" class="nav-item" data-page="settings">
+                    <i class="fas fa-cog"></i>
+                    <span>Settings</span>
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="top-bar">
+                <div class="search-bar">
+                    <i class="fas fa-search"></i>
+                    <input type="text" placeholder="Search...">
+                </div>
+                <div class="user-section">
+                    <button class="notification-btn">
+                        <i class="fas fa-bell"></i>
+                        <span class="badge">3</span>
+                    </button>
+                    <div class="user-profile">
+                        <img src="https://via.placeholder.com/40" alt="User">
+                        <span>Admin User</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Overview Page -->
+            <div class="page-content" id="overview-page">
+                <div class="page-header">
+                    <h1>Building Management Overview</h1>
+                    <p>Real-time insights and AI-powered analytics</p>
+                </div>
+
+                <!-- Stats Cards -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon energy">
+                            <i class="fas fa-bolt"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3>Energy Usage</h3>
+                            <p class="stat-value" id="energy-value">Loading...</p>
+                            <span class="stat-change positive">
+                                <i class="fas fa-arrow-down"></i> 12% vs last month
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-icon occupancy">
+                            <i class="fas fa-users"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3>Occupancy Rate</h3>
+                            <p class="stat-value" id="occupancy-value">Loading...</p>
+                            <span class="stat-change positive">
+                                <i class="fas fa-arrow-up"></i> 8% vs last month
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-icon temperature">
+                            <i class="fas fa-thermometer-half"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3>Avg Temperature</h3>
+                            <p class="stat-value" id="temp-value">Loading...</p>
+                            <span class="stat-change neutral">
+                                <i class="fas fa-minus"></i> Stable
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-icon alerts">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3>Active Alerts</h3>
+                            <p class="stat-value" id="alerts-value">Loading...</p>
+                            <span class="stat-change negative">
+                                <i class="fas fa-arrow-up"></i> 2 new alerts
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Section -->
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <h3>Energy Consumption Trend</h3>
+                        <div id="energy-chart" class="chart-placeholder">
+                            <i class="fas fa-chart-area"></i>
+                            <p>Chart visualization</p>
+                        </div>
+                    </div>
+
+                    <div class="chart-card">
+                        <h3>Building Performance</h3>
+                        <div id="performance-chart" class="chart-placeholder">
+                            <i class="fas fa-chart-pie"></i>
+                            <p>Performance metrics</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Chat Page -->
+            <div class="page-content hidden" id="chat-page">
+                <div class="page-header">
+                    <h1>AI Assistant</h1>
+                    <p>Chat with AI about building management, energy optimization, and more</p>
+                </div>
+
+                <div class="chat-container">
+                    <div class="chat-messages" id="chat-messages">
+                        <div class="chat-message assistant">
+                            <div class="message-avatar assistant">
+                                <i class="fas fa-robot"></i>
+                            </div>
+                            <div class="message-content">
+                                <p>Hello! I'm your Building Management AI assistant. I can help you with:</p>
+                                <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
+                                    <li>Energy consumption analysis</li>
+                                    <li>Building optimization recommendations</li>
+                                    <li>Predictive maintenance insights</li>
+                                    <li>HVAC system optimization</li>
+                                    <li>Occupancy patterns analysis</li>
+                                </ul>
+                                <p>How can I assist you today?</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="chat-input-container">
+                        <textarea 
+                            id="chat-input" 
+                            class="chat-input" 
+                            placeholder="Ask me anything about building management..."
+                            rows="1"
+                        ></textarea>
+                        <button id="chat-send-btn" class="chat-send-btn">
+                            <i class="fas fa-paper-plane"></i>
+                            <span>Send</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Predictions Page -->
+            <div class="page-content hidden" id="predictions-page">
+                <div class="page-header">
+                    <h1>AI Predictions</h1>
+                    <p>Make predictions using AI models</p>
+                </div>
+
+                <div class="prediction-form-card">
+                    <h3>Generate Prediction</h3>
+                    <form id="prediction-form">
+                        <div class="form-group">
+                            <label for="temperature">Temperature (°C)</label>
+                            <input type="number" id="temperature" name="temperature" step="0.1" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="occupancy">Occupancy Count</label>
+                            <input type="number" id="occupancy" name="occupancy" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="time">Time of Day</label>
+                            <input type="time" id="time" name="time" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="day">Day of Week</label>
+                            <select id="day" name="day" required>
+                                <option value="Monday">Monday</option>
+                                <option value="Tuesday">Tuesday</option>
+                                <option value="Wednesday">Wednesday</option>
+                                <option value="Thursday">Thursday</option>
+                                <option value="Friday">Friday</option>
+                                <option value="Saturday">Saturday</option>
+                                <option value="Sunday">Sunday</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn-primary">
+                            <i class="fas fa-brain"></i> Generate Prediction
+                        </button>
+                    </form>
+
+                    <div id="prediction-result" class="prediction-result hidden">
+                        <h4>Prediction Result</h4>
+                        <div id="prediction-output"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Models Page -->
+            <div class="page-content hidden" id="models-page">
+                <div class="page-header">
+                    <h1>AI Model Status</h1>
+                    <p>Monitor your AI models performance</p>
+                </div>
+
+                <div class="models-grid">
+                    <div class="model-card" id="model-building">
+                        <div class="model-header">
+                            <h3>Building Model</h3>
+                            <span class="status-badge loading">Loading...</span>
+                        </div>
+                        <div class="model-details">
+                            <p><strong>Type:</strong> Deep Learning</p>
+                            <p><strong>Accuracy:</strong> <span class="accuracy">--</span></p>
+                            <p><strong>Last Updated:</strong> <span class="last-updated">--</span></p>
+                        </div>
+                    </div>
+
+                    <div class="model-card" id="model-energy">
+                        <div class="model-header">
+                            <h3>Energy Consumption Model</h3>
+                            <span class="status-badge loading">Loading...</span>
+                        </div>
+                        <div class="model-details">
+                            <p><strong>Type:</strong> Machine Learning</p>
+                            <p><strong>Accuracy:</strong> <span class="accuracy">--</span></p>
+                            <p><strong>Last Updated:</strong> <span class="last-updated">--</span></p>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn-primary" id="refresh-models">
+                    <i class="fas fa-sync-alt"></i> Refresh Model Status
+                </button>
+            </div>
+
+            <!-- Energy Page -->
+            <div class="page-content hidden" id="energy-page">
+                <div class="page-header">
+                    <h1>Energy Management</h1>
+                    <p>Monitor and optimize energy consumption</p>
+                </div>
+                <div class="info-card">
+                    <i class="fas fa-bolt"></i>
+                    <p>Energy management features coming soon...</p>
+                </div>
+            </div>
+
+            <!-- Users Page -->
+            <div class="page-content hidden" id="users-page">
+                <div class="page-header">
+                    <h1>User Management</h1>
+                    <p>View and manage registered users</p>
+                </div>
+                <div id="users-loading" style="text-align: center; padding: 40px;">
+                    <i class="fas fa-spinner fa-spin" style="font-size: 2em; color: #667eea;"></i>
+                    <p>Loading users...</p>
+                </div>
+                <div id="users-error" class="info-card" style="display: none; background: #fee; border-left: 4px solid #f44;">
+                    <i class="fas fa-exclamation-triangle" style="color: #f44;"></i>
+                    <p id="users-error-message"></p>
+                </div>
+                <div id="users-content" style="display: none;">
+                    <div style="background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <thead>
+                                <tr style="border-bottom: 2px solid #e5e7eb;">
+                                    <th style="text-align: left; padding: 12px; color: #6b7280; font-weight: 600;">ID</th>
+                                    <th style="text-align: left; padding: 12px; color: #6b7280; font-weight: 600;">Username</th>
+                                    <th style="text-align: left; padding: 12px; color: #6b7280; font-weight: 600;">Email</th>
+                                    <th style="text-align: left; padding: 12px; color: #6b7280; font-weight: 600;">Role</th>
+                                    <th style="text-align: left; padding: 12px; color: #6b7280; font-weight: 600;">Status</th>
+                                    <th style="text-align: left; padding: 12px; color: #6b7280; font-weight: 600;">Created</th>
+                                    <th style="text-align: left; padding: 12px; color: #6b7280; font-weight: 600;">Last Login</th>
+                                </tr>
+                            </thead>
+                            <tbody id="users-table-body">
+                                <!-- Users will be loaded here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Page -->
+            <div class="page-content hidden" id="settings-page">
+                <div class="page-header">
+                    <h1>Settings</h1>
+                    <p>Configure your dashboard preferences</p>
+                </div>
+                <div class="info-card">
+                    <i class="fas fa-cog"></i>
+                    <p>Settings panel coming soon...</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Authentication Modal -->
+    <div id="auth-modal" class="auth-modal hidden">
+        <div class="auth-modal-content">
+            <div class="auth-modal-header">
+                <h2 id="auth-modal-title">Login</h2>
+                <p id="auth-modal-subtitle">Access your Building AI dashboard</p>
+            </div>
+            <form id="auth-form" class="auth-form">
+                <div class="form-group" id="username-group">
+                    <label for="auth-username">Username</label>
+                    <input type="text" id="auth-username" name="username" required>
+                </div>
+                <div class="form-group" id="email-group" style="display: none;">
+                    <label for="auth-email">Email</label>
+                    <input type="email" id="auth-email" name="email">
+                </div>
+                <div class="form-group">
+                    <label for="auth-password">Password</label>
+                    <input type="password" id="auth-password" name="password" required>
+                </div>
+                <button type="submit" class="btn-primary">
+                    <i class="fas fa-sign-in-alt"></i>
+                    <span id="auth-btn-text">Login</span>
+                </button>
+            </form>
+            <div class="auth-switch">
+                <span id="auth-switch-text">Don't have an account?</span>
+                <a id="auth-switch-link">Register</a>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app_enhanced.js"></script>
+</body>
+</html>

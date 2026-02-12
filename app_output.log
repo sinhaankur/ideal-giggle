@@ -1,0 +1,32 @@
+Warning: AI models not available. Using mock responses.
+
+    ╔═══════════════════════════════════════════════════════╗
+    ║  Building Management AI Dashboard & AI Client         ║
+    ║                                                       ║
+    ║  🌐 Server running on:                                ║
+    ║     http://localhost:5000                              ║
+    ║                                                       ║
+    ║  🤖 AI Client Features:                               ║
+    ║     - Multi-provider support (Ollama, OpenAI, etc.)  ║
+    ║     - Real-time chat interface                       ║
+    ║     - Building data analysis                         ║
+    ║                                                       ║
+    ║  📊 API Endpoints:                                    ║
+    ║     - POST /api/auth/register  - Register user       ║
+    ║     - POST /api/auth/login     - Login user          ║
+    ║     - POST /api/chat           - Chat with AI        ║
+    ║     - POST /api/predict        - Get predictions     ║
+    ║     - GET  /api/model-status   - Model status        ║
+    ║     - GET  /api/ai/health      - AI health check     ║
+    ║                                                       ║
+    ║  🔐 Default Admin Credentials:                        ║
+    ║     Username: admin                                  ║
+    ║     Password: admin123                               ║
+    ║                                                       ║
+    ║  💡 Make sure Ollama is running on port 11434        ║
+    ╚═══════════════════════════════════════════════════════╝
+    
+ * Serving Flask app 'app'
+ * Debug mode: off
+Address already in use
+Port 5000 is in use by another program. Either identify and stop that program, or start the server with a different port.

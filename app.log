@@ -1,0 +1,39 @@
+Warning: AI models not available. Using mock responses.
+
+    ╔═══════════════════════════════════════════════════════╗
+    ║  AI Companion - On-Device AI (Edge AI)                ║
+    ║                                                       ║
+    ║  🌐 Server running on:                                ║
+    ║     http://localhost:5000                              ║
+    ║                                                       ║
+    ║  🤖 On-Device AI Features:                            ║
+    ║     - Local Ollama Integration (Port 11434)          ║
+    ║     - Privacy-First - All data stays local           ║
+    ║     - No cloud API calls needed                      ║
+    ║     - Real-time chat & emotion detection            ║
+    ║                                                       ║
+    ║  📊 API Endpoints:                                    ║
+    ║     - POST /api/companion/chat     - Chat with AI    ║
+    ║     - POST /api/companion/create   - Create companion║
+    ║     - GET  /api/ai/health          - AI health check ║
+    ║     - GET  /api/ai/models          - Available models║
+    ║                                                       ║
+    ║  🎙️  Features:                                        ║
+    ║     ✓ Continuous voice input                         ║
+    ║     ✓ Emotion detection (ML5.js)                     ║
+    ║     ✓ Calendar sync support                          ║
+    ║     ✓ Multi-companion support                        ║
+    ║                                                       ║
+    ║  💡 Make sure Ollama is running on port 11434        ║
+    ╚═══════════════════════════════════════════════════════╝
+    
+ * Serving Flask app 'app'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://10.88.111.101:5000
+[33mPress CTRL+C to quit[0m
+127.0.0.1 - - [12/Feb/2026 02:39:28] "GET /api/ai/status HTTP/1.1" 200 -
+127.0.0.1 - - [12/Feb/2026 02:39:55] "[31m[1mGET /api/companion/chat HTTP/1.1[0m" 405 -
+127.0.0.1 - - [12/Feb/2026 02:40:04] "GET / HTTP/1.1" 200 -

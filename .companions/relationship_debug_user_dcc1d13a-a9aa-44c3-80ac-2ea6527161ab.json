@@ -1,0 +1,22 @@
+{
+  "user_id": "debug_user",
+  "companion_id": "dcc1d13a-a9aa-44c3-80ac-2ea6527161ab",
+  "user_name": null,
+  "user_interests": [],
+  "user_dreams": [],
+  "user_fears": [],
+  "intimacy_level": 0.024,
+  "affection_level": 0.0,
+  "familiarity_level": 0.01,
+  "emotional_openness": 0.20500000000000002,
+  "interactions_count": 1,
+  "conversation_history": [
+    {
+      "timestamp": "2026-02-12T11:09:25.833096",
+      "user": "Hello after restart",
+      "companion": "I'm here with you."
+    }
+  ],
+  "last_interaction": "2026-02-12T11:09:25.833105",
+  "created_at": "2026-02-12T02:24:58.711051"
+}

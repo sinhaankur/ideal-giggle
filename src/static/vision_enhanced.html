@@ -1,0 +1,1054 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Vision AI - Multimodal Monitoring</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0b0b0b;
+            min-height: 100vh;
+            padding: 15px;
+            color: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: #111;
+            padding: 15px 25px;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            border: 1px solid #1f1f1f;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #f5f5f5;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-badges {
+            display: flex;
+            gap: 10px;
+        }
+
+        .badge {
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            border: 1px solid #2a2a2a;
+        }
+
+        .badge.encryption {
+            background: #f5f5f5;
+            color: #111;
+        }
+
+        .badge.audio {
+            background: #f5f5f5;
+            color: #111;
+        }
+
+        .badge.ai {
+            background: #f5f5f5;
+            color: #111;
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .card {
+            background: #111;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            color: #eaeaea;
+            border: 1px solid #1f1f1f;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #232323;
+        }
+
+        .card-header h2 {
+            font-size: 18px;
+            color: #f5f5f5;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .status-dot.active {
+            background: #f5f5f5;
+            box-shadow: 0 0 8px rgba(255,255,255,0.5);
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.inactive {
+            background: #6b7280;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.1); }
+        }
+
+        .video-container {
+            position: relative;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            aspect-ratio: 4/3;
+            margin-bottom: 15px;
+            border: 1px solid #1f1f1f;
+        }
+
+        #cameraFeed {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .video-overlays {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+        }
+
+        .overlay-top {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .overlay-badge {
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(6px);
+            color: #f5f5f5;
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .recording-badge {
+            background: #111;
+            border: 1px solid #f5f5f5;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .rec-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #f5f5f5;
+            animation: blink 1.5s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .audio-visualizer {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            height: 50px;
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(6px);
+            border-radius: 6px;
+            padding: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .audio-icon {
+            color: #f5f5f5;
+            font-size: 20px;
+        }
+
+        .audio-bars {
+            flex: 1;
+            display: flex;
+            align-items: flex-end;
+            gap: 3px;
+            height: 30px;
+        }
+
+        .audio-bar {
+            flex: 1;
+            background: #f5f5f5;
+            border-radius: 2px;
+            transition: height 0.1s;
+            min-height: 2px;
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        button {
+            padding: 12px;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background: #f5f5f5;
+            color: #111;
+            letter-spacing: 0.3px;
+        }
+
+        .btn-start {
+            background: #f5f5f5;
+            color: #111;
+        }
+
+        .btn-stop {
+            background: #111;
+            color: #f5f5f5;
+            border-color: #f5f5f5;
+        }
+
+        .btn-analyze {
+            background: #1b1b1b;
+            color: #f5f5f5;
+            border-color: #2a2a2a;
+        }
+
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-bottom: 15px;
+        }
+
+        .metric-box {
+            background: #0f0f0f;
+            color: #f5f5f5;
+            border: 1px solid #1f1f1f;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 28px;
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+
+        .metric-label {
+            font-size: 11px;
+            opacity: 0.9;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .live-feed-section {
+            margin-bottom: 15px;
+        }
+
+        .transcription-box {
+            background: #0f0f0f;
+            border: 1px solid #1f1f1f;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 15px;
+            min-height: 80px;
+        }
+
+        .transcription-box h3 {
+            color: #f5f5f5;
+            font-size: 14px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .transcription-text {
+            color: #dcdcdc;
+            font-size: 13px;
+            line-height: 1.5;
+            font-style: italic;
+        }
+
+        .transcription-text.empty {
+            opacity: 0.5;
+        }
+
+        .ai-insights {
+            background: #0f0f0f;
+            border: 1px solid #1f1f1f;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 15px;
+        }
+
+        .ai-insights h3 {
+            color: #f5f5f5;
+            font-size: 14px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .ai-insights-text {
+            color: #dcdcdc;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .activity-log {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .activity-item {
+            background: #0f0f0f;
+            border-left: 3px solid #f5f5f5;
+            padding: 10px;
+            margin-bottom: 8px;
+            border-radius: 4px;
+        }
+
+        .activity-time {
+            font-size: 11px;
+            color: #9a9a9a;
+            margin-bottom: 4px;
+        }
+
+        .activity-desc {
+            font-size: 13px;
+            color: #f0f0f0;
+            font-weight: 500;
+        }
+
+        .activity-details {
+            font-size: 12px;
+            color: #9a9a9a;
+            margin-top: 4px;
+        }
+
+        .system-status {
+            background: #0f0f0f;
+            color: #f5f5f5;
+            border: 1px solid #1f1f1f;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+
+        .system-status h3 {
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+
+        .status-items {
+            display: grid;
+            gap: 8px;
+        }
+
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+        }
+
+        .status-value {
+            font-weight: bold;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #1b1b1b;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 4px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: #f5f5f5;
+            border-radius: 3px;
+            transition: width 0.3s;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #111;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #f5f5f5;
+            border-radius: 4px;
+        }
+
+        #cameraSelect,
+        #enableAudio {
+            accent-color: #f5f5f5;
+        }
+
+        #cameraSelect {
+            background: #111 !important;
+            color: #f5f5f5 !important;
+            border: 1px solid #2a2a2a !important;
+        }
+
+        .controls label {
+            color: #dcdcdc !important;
+        }
+
+        @media (max-width: 1200px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>
+                <span>🎥</span>
+                Enhanced Vision AI - Multimodal Monitoring
+            </h1>
+            <div class="status-badges">
+                <div class="badge encryption">
+                    <span>🔐</span> Encrypted
+                </div>
+                <div class="badge audio">
+                    <span>🎤</span> Audio Active
+                </div>
+                <div class="badge ai">
+                    <span>🤖</span> AI Powered
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Grid -->
+        <div class="main-grid">
+            <!-- Left Column - Video Feed -->
+            <div>
+                <div class="card">
+                    <div class="card-header">
+                        <h2>
+                            <span class="status-dot inactive" id="cameraStatus"></span>
+                            Live Camera Feed
+                        </h2>
+                        <span style="font-size: 12px; color: #6b7280;" id="fps">0 FPS</span>
+                    </div>
+                    
+                    <div class="video-container">
+                        <img id="cameraFeed" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='480'%3E%3Crect fill='%23222' width='640' height='480'/%3E%3Ctext x='50%25' y='50%25' fill='%23666' text-anchor='middle' dominant-baseline='middle' font-family='sans-serif' font-size='20'%3ECamera Offline%3C/text%3E%3C/svg%3E" alt="Camera feed">
+                        <div class="video-overlays">
+                            <div class="overlay-top">
+                                <div class="overlay-badge" id="timeOverlay">
+                                    --:--:--
+                                </div>
+                                <div class="recording-badge" id="recordingBadge" style="display: none;">
+                                    <span class="rec-dot"></span>
+                                    MONITORING
+                                </div>
+                            </div>
+                            <div class="audio-visualizer">
+                                <div class="audio-icon">🎤</div>
+                                <div class="audio-bars" id="audioBars">
+                                    <div class="audio-bar"></div>
+                                    <div class="audio-bar"></div>
+                                    <div class="audio-bar"></div>
+                                    <div class="audio-bar"></div>
+                                    <div class="audio-bar"></div>
+                                    <div class="audio-bar"></div>
+                                    <div class="audio-bar"></div>
+                                    <div class="audio-bar"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Camera & Audio Settings -->
+                    <div class="controls" style="border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; margin-bottom: 15px;">
+                        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 15px; margin-bottom: 15px;">
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-size: 12px; color: #9ca3af;">📹 Camera Device:</label>
+                                <select id="cameraSelect" style="width: 100%; padding: 8px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); color: white; font-size: 14px;">
+                                    <option value="0">Loading...</option>
+                                </select>
+                            </div>
+                            <div style="display: flex; align-items: flex-end;">
+                                <label style="font-size: 14px; color: white; cursor: pointer; user-select: none;">
+                                    <input type="checkbox" id="enableAudio" checked style="width: 18px; height: 18px; margin-right: 8px; vertical-align: middle;">
+                                    <span>🎤 Enable Mic</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Controls -->
+                    <div class="controls">
+                        <button class="btn-start" id="startBtn" onclick="startMonitoring()">
+                            <span>▶</span> Start Monitoring
+                        </button>
+                        <button class="btn-stop" id="stopBtn" onclick="stopMonitoring()" disabled>
+                            <span>⬛</span> Stop Monitoring
+                        </button>
+                        <button class="btn-analyze" id="analyzeBtn" onclick="analyzeNow()">
+                            <span>🤖</span> Analyze Now
+                        </button>
+                    </div>
+
+                    <!-- Audio Transcription -->
+                    <div class="transcription-box">
+                        <h3>
+                            <span>🎤</span> Live Audio Transcription
+                        </h3>
+                        <div class="transcription-text empty" id="transcriptionText">
+                            Waiting for audio input...
+                        </div>
+                    </div>
+
+                    <!-- AI Insights -->
+                    <div class="ai-insights">
+                        <h3>
+                            <span>🤖</span> Ollama AI Analysis
+                        </h3>
+                        <div class="ai-insights-text" id="aiInsightsText">
+                            No analysis yet. Start monitoring to begin AI-powered insights.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column - Stats & Activity -->
+            <div>
+                <!-- Metrics -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Real-Time Metrics</h2>
+                    </div>
+                    <div class="metrics-grid">
+                        <div class="metric-box">
+                            <div class="metric-value" id="metricFrames">0</div>
+                            <div class="metric-label">Total Frames</div>
+                        </div>
+                        <div class="metric-box">
+                            <div class="metric-value" id="metricMovements">0</div>
+                            <div class="metric-label">Movements</div>
+                        </div>
+                        <div class="metric-box">
+                            <div class="metric-value" id="metricAI">0</div>
+                            <div class="metric-label">AI Analyses</div>
+                        </div>
+                        <div class="metric-box">
+                            <div class="metric-value" id="metricAudio">0</div>
+                            <div class="metric-label">Transcriptions</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- System Status -->
+                <div class="card">
+                    <div class="system-status">
+                        <h3>System Status</h3>
+                        <div class="status-items">
+                            <div class="status-item">
+                                <span>Camera</span>
+                                <span class="status-value" id="statusCamera">Offline</span>
+                            </div>
+                            <div class="status-item">
+                                <span>Audio</span>
+                                <span class="status-value" id="statusAudio">Offline</span>
+                            </div>
+                            <div class="status-item">
+                                <span>Audio Level</span>
+                                <span class="status-value" id="statusAudioLevel">0%</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="audioLevelBar" style="width: 0%"></div>
+                            </div>
+                            <div class="status-item">
+                                <span>Movement Intensity</span>
+                                <span class="status-value" id="statusMovement">0%</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="movementBar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Emotion Analysis -->
+                <div class="card">
+                    <div class="system-status">
+                        <h3>😊 Facial Emotion Detection</h3>
+                        <div class="status-items">
+                            <div class="status-item">
+                                <span>Detected Emotion</span>
+                                <span class="status-value" id="emotionLabel">--</span>
+                            </div>
+                            <div class="status-item">
+                                <span>Emotion Icon</span>
+                                <span class="status-value" id="emotionIcon" style="font-size: 20px;">😐</span>
+                            </div>
+                            <div class="status-item">
+                                <span>Faces Detected</span>
+                                <span class="status-value" id="facesDetected">0</span>
+                            </div>
+                            <div class="status-item">
+                                <span>Confidence</span>
+                                <span class="status-value" id="emotionConfidence">0%</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="emotionBar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Audio Sentiment Analysis -->
+                <div class="card">
+                    <div class="system-status">
+                        <h3>🎤 Audio Sentiment Analysis</h3>
+                        <div class="status-items">
+                            <div class="status-item">
+                                <span>Detected Sentiment</span>
+                                <span class="status-value" id="sentimentLabel">--</span>
+                            </div>
+                            <div class="status-item">
+                                <span>Emotion</span>
+                                <span class="status-value" id="soundEmotionIcon" style="font-size: 20px;">😐</span>
+                            </div>
+                            <div class="status-item">
+                                <span>Confidence</span>
+                                <span class="status-value" id="sentimentConfidence">0%</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="sentimentBar" style="width: 0%"></div>
+                            </div>
+                            <div class="status-item">
+                                <span>Text</span>
+                                <span class="status-value" id="sentimentText" style="font-size: 11px; word-break: break-all;">--</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Activity Log -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Activity Log</h2>
+                    </div>
+                    <div class="activity-log" id="activityLog">
+                        <div class="activity-item">
+                            <div class="activity-time">System Ready</div>
+                            <div class="activity-desc">Waiting to start monitoring...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let isMonitoring = false;
+        let updateInterval = null;
+        let statsInterval = null;
+        let activityCount = 0;
+
+        // API Helper
+        async function apiCall(endpoint, options = {}) {
+            const defaultOptions = {
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            };
+            return fetch(endpoint, { ...defaultOptions, ...options }).then(r => r.json());
+        }
+
+        // Emotion icons mapping
+        const emotionIcons = {
+            'happy': '😊',
+            'sad': '😢',
+            'angry': '😠',
+            'neutral': '😐',
+            'fear': '😨',
+            'surprise': '😮',
+            'disgust': '🤮'
+        };
+
+        const sentimentIcons = {
+            'POSITIVE': '😊',
+            'NEGATIVE': '😢',
+            'NEUTRAL': '😐'
+        };
+
+        // Add activity log entry
+        function addActivity(desc, details = '') {
+            const log = document.getElementById('activityLog');
+            const time = new Date().toLocaleTimeString();
+            const item = document.createElement('div');
+            item.className = 'activity-item';
+            item.innerHTML = `
+                <div class="activity-time">${time}</div>
+                <div class="activity-desc">${desc}</div>
+                ${details ? `<div class="activity-details">${details}</div>` : ''}
+            `;
+            log.insertBefore(item, log.firstChild);
+            
+            // Keep only last 20 items
+            while (log.children.length > 20) {
+                log.removeChild(log.lastChild);
+            }
+        }
+
+        // Update time overlay
+        function updateTime() {
+            document.getElementById('timeOverlay').textContent = new Date().toLocaleTimeString();
+        }
+
+        // Update audio visualizer
+        function updateAudioBars(level) {
+            const bars = document.querySelectorAll('.audio-bar');
+            const activeBars = Math.floor((level / 100) * bars.length);
+            bars.forEach((bar, index) => {
+                if (index < activeBars) {
+                    bar.style.height = `${20 + Math.random() * 10}px`;
+                    bar.style.opacity = '1';
+                } else {
+                    bar.style.height = '2px';
+                    bar.style.opacity = '0.3';
+                }
+            });
+        }
+
+        // Load available cameras
+        async function loadCameras() {
+            try {
+                const data = await apiCall('/api/vision/cameras');
+                const select = document.getElementById('cameraSelect');
+                select.innerHTML = '';
+                
+                if (data.cameras && data.cameras.length > 0) {
+                    data.cameras.forEach(cam => {
+                        const option = document.createElement('option');
+                        option.value = cam.index;
+                        option.textContent = `${cam.name} (Device ${cam.index}) - ${cam.backend}`;
+                        select.appendChild(option);
+                    });
+                    
+                    // Auto-select second camera if available (likely Insta360 X3)
+                    if (data.cameras.length > 1) {
+                        select.value = data.cameras[1].index;
+                    }
+                    
+                    addActivity('Cameras Detected', `Found ${data.cameras.length} device(s)`);
+                } else {
+                    select.innerHTML = '<option value="0">No cameras detected</option>';
+                }
+            } catch (error) {
+                console.error('Error loading cameras:', error);
+                document.getElementById('cameraSelect').innerHTML = '<option value="0">Error loading cameras</option>';
+            }
+        }
+
+        // Start monitoring
+        async function startMonitoring() {
+            try {
+                document.getElementById('startBtn').disabled = true;
+                
+                const cameraIndex = parseInt(document.getElementById('cameraSelect').value) || 0;
+                const enableAudio = document.getElementById('enableAudio').checked;
+                
+                const result = await apiCall('/api/vision/start', { 
+                    method: 'POST',
+                    body: JSON.stringify({
+                        camera_index: cameraIndex,
+                        enable_audio: enableAudio
+                    })
+                });
+                
+                if (result.success) {
+                    isMonitoring = true;
+                    document.getElementById('stopBtn').disabled = false;
+                    document.getElementById('cameraStatus').className = 'status-dot active';
+                    document.getElementById('recordingBadge').style.display = 'flex';
+                    
+                    const audioStatus = result.audio_enabled ? 'Camera & Audio' : 'Camera Only';
+                    addActivity('Monitoring Started', `${audioStatus} active on Camera ${result.camera_index}`);
+                    
+                    // Separate intervals for different update frequencies
+                    // Camera feed: faster (200ms) for smoother video
+                    updateInterval = setInterval(() => {
+                        updateTime();
+                        updateCameraFeed();
+                    }, 200);
+                    
+                    // Statistics & emotions: slower (800ms) to reduce CPU load
+                    statsInterval = setInterval(() => {
+                        updateStatistics();
+                    }, 800);
+                } else {
+                    alert('Failed to start: ' + (result.error || result.message));
+                    document.getElementById('startBtn').disabled = false;
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error starting monitoring');
+                document.getElementById('startBtn').disabled = false;
+            }
+        }
+
+        // Stop monitoring
+        async function stopMonitoring() {
+            try {
+                document.getElementById('stopBtn').disabled = true;
+                await apiCall('/api/vision/stop', { method: 'POST' });
+                
+                isMonitoring = false;
+                document.getElementById('startBtn').disabled = false;
+                document.getElementById('cameraStatus').className = 'status-dot inactive';
+                document.getElementById('recordingBadge').style.display = 'none';
+                
+                clearInterval(updateInterval);
+                clearInterval(statsInterval);  // Clear the separate stats interval
+                addActivity('Monitoring Stopped', 'Session ended');
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        // Update camera feed
+        async function updateCameraFeed() {
+            if (!isMonitoring) return;
+            
+            try {
+                const data = await apiCall('/api/vision/frame?encrypted=false&annotated=true');
+                if (data.image) {
+                    document.getElementById('cameraFeed').src = 'data:image/jpeg;base64,' + data.image;
+                }
+            } catch (error) {
+                console.error('Error updating feed:', error);
+            }
+        }
+
+        // Update statistics - with reduced emotion analysis frequency
+        let emotionUpdateCounter = 0;
+        async function updateStatistics() {
+            try {
+                const stats = await apiCall('/api/vision/stats');
+                
+                document.getElementById('metricFrames').textContent = stats.total_frames || 0;
+                document.getElementById('metricMovements').textContent = stats.movements_detected || 0;
+                document.getElementById('metricAI').textContent = stats.ai_analyses || 0;
+                document.getElementById('metricAudio').textContent = stats.audio_transcriptions || 0;
+                
+                document.getElementById('statusCamera').textContent = stats.camera_active ? 'Active' : 'Offline';
+                document.getElementById('statusAudio').textContent = stats.audio_recording ? 'Recording' : 'Offline';
+                
+                const audioLevel = stats.audio_level || 0;
+                document.getElementById('statusAudioLevel').textContent = audioLevel.toFixed(1) + '%';
+                document.getElementById('audioLevelBar').style.width = Math.min(audioLevel, 100) + '%';
+                updateAudioBars(audioLevel);
+                
+                const movement = stats.movement_summary?.average_intensity || 0;
+                document.getElementById('statusMovement').textContent = movement.toFixed(1) + '%';
+                document.getElementById('movementBar').style.width = Math.min(movement, 100) + '%';
+                
+                // Update transcription
+                if (stats.last_audio_transcription) {
+                    const transEl = document.getElementById('transcriptionText');
+                    transEl.textContent = '"' + stats.last_audio_transcription + '"';
+                    transEl.className = 'transcription-text';
+                }
+                
+                // Update emotion analysis EVERY 3RD CALL ONLY (reduces lag)
+                // This means emotion updates every 1.5s instead of 500ms
+                emotionUpdateCounter++;
+                if (emotionUpdateCounter % 3 === 0) {
+                    await updateEmotionAnalysis(stats.last_audio_transcription);
+                    emotionUpdateCounter = 0;
+                }
+            } catch (error) {
+                console.error('Error updating statistics:', error);
+            }
+        }
+
+        // Update emotion analysis
+        async function updateEmotionAnalysis(audioText = null) {
+            try {
+                // Get facial emotion from current frame
+                const frame = document.getElementById('cameraFeed').src;
+                if (frame && frame.includes('data:image')) {
+                    const emotionResult = await apiCall('/api/emotion/frame-analysis', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            frame: frame.split(',')[1],
+                            audio_text: audioText
+                        })
+                    });
+                    
+                    if (emotionResult.success || emotionResult.facial) {
+                        const facial = emotionResult.facial;
+                        if (facial.faces_detected > 0 && facial.emotions.length > 0) {
+                            const firstEmotion = facial.emotions[0];
+                            document.getElementById('emotionLabel').textContent = firstEmotion.emotion.toUpperCase();
+                            document.getElementById('emotionIcon').textContent = emotionIcons[firstEmotion.emotion] || '😐';
+                            document.getElementById('emotionConfidence').textContent = firstEmotion.confidence.toFixed(1) + '%';
+                            document.getElementById('emotionBar').style.width = Math.min(firstEmotion.confidence, 100) + '%';
+                            document.getElementById('facesDetected').textContent = facial.faces_detected;
+                        }
+                        
+                        // Update audio sentiment if available
+                        if (emotionResult.audio && emotionResult.audio.success) {
+                            const audioSent = emotionResult.audio;
+                            document.getElementById('sentimentLabel').textContent = audioSent.sentiment;
+                            document.getElementById('soundEmotionIcon').textContent = sentimentIcons[audioSent.sentiment] || '😐';
+                            document.getElementById('sentimentConfidence').textContent = audioSent.confidence.toFixed(1) + '%';
+                            document.getElementById('sentimentBar').style.width = Math.min(audioSent.confidence, 100) + '%';
+                            if (audioSent.text) {
+                                const textDisplay = audioSent.text.length > 30 ? audioSent.text.substring(0, 30) + '...' : audioSent.text;
+                                document.getElementById('sentimentText').textContent = textDisplay;
+                            }
+                        } else if (audioText) {
+                            // Analyze transcribed audio text for sentiment
+                            const sentimentResult = await apiCall('/api/audio/sentiment-text', {
+                                method: 'POST',
+                                body: JSON.stringify({ text: audioText })
+                            });
+                            
+                            if (sentimentResult.success) {
+                                document.getElementById('sentimentLabel').textContent = sentimentResult.sentiment;
+                                document.getElementById('soundEmotionIcon').textContent = sentimentIcons[sentimentResult.sentiment] || '😐';
+                                document.getElementById('sentimentConfidence').textContent = sentimentResult.confidence.toFixed(1) + '%';
+                                document.getElementById('sentimentBar').style.width = Math.min(sentimentResult.confidence, 100) + '%';
+                                const textDisplay = audioText.length > 30 ? audioText.substring(0, 30) + '...' : audioText;
+                                document.getElementById('sentimentText').textContent = textDisplay;
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error updating emotion analysis:', error);
+            }
+        }
+
+        // Analyze now
+        async function analyzeNow() {
+            try {
+                document.getElementById('analyzeBtn').disabled = true;
+                document.getElementById('aiInsightsText').textContent = 'Analyzing with Ollama AI...';
+                
+                const result = await apiCall('/api/vision/analyze-now', { method: 'POST' });
+                
+                if (result.success) {
+                    document.getElementById('aiInsightsText').textContent = result.ai_analysis;
+                    
+                    let details = `Movement: ${result.movement_data?.region_count || 0} regions`;
+                    if (result.audio_transcription) {
+                        details += ` | Audio: "${result.audio_transcription}"`;
+                    }
+                    addActivity('AI Analysis Complete', details);
+                } else {
+                    document.getElementById('aiInsightsText').textContent = 'Analysis failed: ' + result.error;
+                }
+                
+                document.getElementById('analyzeBtn').disabled = false;
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('aiInsightsText').textContent = 'Error running analysis';
+                document.getElementById('analyzeBtn').disabled = false;
+            }
+        }
+
+        // Initialize
+        window.addEventListener('load', () => {
+            loadCameras();
+            updateTime();
+            setInterval(updateTime, 1000);
+            addActivity('System Initialized', 'Ready for multimodal monitoring');
+        });
+
+        // Cleanup
+        window.addEventListener('beforeunload', () => {
+            if (isMonitoring) {
+                stopMonitoring();
+            }
+        });
+    </script>
+</body>
+</html>
