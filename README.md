@@ -1,0 +1,2 @@
+# ideal-giggle
+AI Companion
