@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Empathy AI – Camera &amp; Audio | buildingai.cloud</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+            height: 100vh;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 350px 1fr 350px;
+            gap: 12px;
+            height: 100vh;
+            padding: 12px;
+            background: #f5f5f5;
+        }
+
+        .panel {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .panel-title {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 16px;
+            font-weight: bold;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .panel-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+        }
+
+        /* ===== LEFT PANEL: CAMERA & SETTINGS ===== */
+        .camera-box {
+            width: 100%;
+            aspect-ratio: 4/3;
+            background: #000;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+            font-size: 12px;
+            margin-bottom: 12px;
+            overflow: hidden;
+        }
+
+        #cameraFeed {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 8px;
+            margin: 4px 0;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+
+        .btn:hover {
+            background: #5568d3;
+        }
+
+        .btn.secondary {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .btn.secondary:hover {
+            background: #d0d0d0;
+        }
+
+        .form-group {
+            margin: 12px 0;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 4px;
+            color: #333;
+        }
+
+        .form-group select,
+        .form-group input {
+            width: 100%;
+            padding: 6px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 12px;
+            font-family: inherit;
+        }
+
+        .emotion-badge {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            margin: 2px;
+        }
+
+        /* ===== CENTER PANEL: CHAT ===== */
+        .messages-container {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .message {
+            padding: 10px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            line-height: 1.4;
+            max-width: 85%;
+            word-wrap: break-word;
+        }
+
+        .message.user {
+            background: #667eea;
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 2px;
+        }
+
+        .message.ai {
+            background: #f0f0f0;
+            color: #333;
+            align-self: flex-start;
+            border-bottom-left-radius: 2px;
+        }
+
+        .message-time {
+            font-size: 11px;
+            color: #999;
+            margin-top: 2px;
+        }
+
+        .input-area {
+            display: flex;
+            gap: 8px;
+        }
+
+        .message-input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: inherit;
+        }
+
+        .send-btn {
+            padding: 8px 16px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 12px;
+        }
+
+        .send-btn:hover {
+            background: #5568d3;
+        }
+
+        /* ===== RIGHT PANEL: EMPATHY MAP ===== */
+        .empathy-map {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            height: 100%;
+        }
+
+        .empathy-quadrant {
+            border: 2px solid #667eea;
+            border-radius: 6px;
+            padding: 12px;
+            background: #fafafa;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .empathy-label {
+            font-weight: 700;
+            color: #667eea;
+            font-size: 13px;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .empathy-content {
+            flex: 1;
+            font-size: 12px;
+            line-height: 1.5;
+            color: #555;
+            overflow-y: auto;
+        }
+
+        .empathy-item {
+            margin: 4px 0;
+            padding: 4px;
+            background: white;
+            border-left: 3px solid #667eea;
+            border-radius: 2px;
+            padding-left: 8px;
+        }
+
+        .empty-state {
+            color: #999;
+            font-style: italic;
+            text-align: center;
+            padding: 20px 0;
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #667eea;
+            border-radius: 3px;
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.open {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 24px;
+            border-radius: 8px;
+            max-width: 450px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 16px;
+            color: #333;
+        }
+
+        .modal-btn-group {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+        }
+
+        .modal-btn {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        .modal-btn.primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .modal-btn.secondary {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .header-controls button {
+            flex: 1;
+            padding: 6px 12px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .empathy-nav {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            z-index: 100;
+        }
+        .empathy-nav a {
+            color: #667eea;
+            text-decoration: none;
+            font-size: 12px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 6px 10px;
+            border-radius: 4px;
+            background: white;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            font-weight: 500;
+        }
+        .empathy-nav a:hover {
+            background: #f0f0ff;
+            box-shadow: 0 2px 8px rgba(102,126,234,0.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="empathy-nav">
+        <a href="/"><span>←</span> buildingai.cloud</a>
+    </div>
+    <div class="container">
+        <!-- LEFT PANEL: CAMERA & SETTINGS -->
+        <div class="panel">
+            <div class="panel-title">📹 Camera & Settings</div>
+            <div class="panel-content">
+                <div class="camera-box">
+                    <video id="cameraFeed" autoplay muted playsinline style="display:none;"></video>
+                    <div id="cameraStatus">📹 Camera off</div>
+                </div>
+
+                <button class="btn" id="cameraToggleBtn">Start Camera</button>
+
+                <div class="form-group">
+                    <label>AI Companion Name</label>
+                    <input type="text" id="companionName" value="Sage" placeholder="Enter name">
+                </div>
+
+                <div class="form-group">
+                    <label>AI Model</label>
+                    <select id="aiModelSelect">
+                        <option value="">Loading models...</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Personality</label>
+                    <select id="personality">
+                        <option value="warm">Warm & Empathetic</option>
+                        <option value="analytical">Analytical & Logical</option>
+                        <option value="playful">Playful & Creative</option>
+                        <option value="professional">Professional & Direct</option>
+                    </select>
+                </div>
+
+                <button class="btn secondary" id="createBtn">Create Companion</button>
+
+                <hr style="margin: 12px 0; border: none; border-top: 1px solid #eee;">
+
+                <div style="font-size: 12px; color: #666; line-height: 1.6;">
+                    <strong>Current Emotion:</strong>
+                    <div id="currentEmotion" style="margin-top: 4px;">
+                        <span class="emotion-badge">Neutral</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CENTER PANEL: CHAT -->
+        <div class="panel">
+            <div class="panel-title">💬 Conversation</div>
+            <div class="panel-content">
+                <div id="companionNameDisplay" style="font-weight: bold; color: #667eea; margin-bottom: 8px; font-size: 14px;">Companion</div>
+                <div class="messages-container" id="messagesContainer"></div>
+                <div class="input-area">
+                    <input 
+                        type="text" 
+                        class="message-input" 
+                        id="messageInput" 
+                        placeholder="Share your thoughts, feelings, or experiences..."
+                        autocomplete="off">
+                    <button class="send-btn" id="sendBtn">Send</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT PANEL: EMPATHY MAP -->
+        <div class="panel">
+            <div class="panel-title">🗺️ Empathy Map</div>
+            <div class="panel-content">
+                <div class="empathy-map">
+                    <!-- SAYS Quadrant -->
+                    <div class="empathy-quadrant">
+                        <div class="empathy-label">Says</div>
+                        <div class="empathy-content" id="empathySays">
+                            <div class="empty-state">Listen and record what they say...</div>
+                        </div>
+                    </div>
+
+                    <!-- THINKS Quadrant -->
+                    <div class="empathy-quadrant">
+                        <div class="empathy-label">Thinks</div>
+                        <div class="empathy-content" id="empathyThinks">
+                            <div class="empty-state">Infer what they might think...</div>
+                        </div>
+                    </div>
+
+                    <!-- DOES Quadrant -->
+                    <div class="empathy-quadrant">
+                        <div class="empathy-label">Does</div>
+                        <div class="empathy-content" id="empathyDoes">
+                            <div class="empty-state">Notice what they do...</div>
+                        </div>
+                    </div>
+
+                    <!-- FEELS Quadrant -->
+                    <div class="empathy-quadrant">
+                        <div class="empathy-label">Feels</div>
+                        <div class="empathy-content" id="empathyFeels">
+                            <div class="empty-state">Recognize what they feel...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Modal -->
+    <div class="modal" id="createModal">
+        <div class="modal-content">
+            <div class="modal-title">Create Your Companion</div>
+            <form id="createForm">
+                <div class="form-group">
+                    <label>Companion Name</label>
+                    <input type="text" id="modalCompanionName" required placeholder="e.g., Luna, Sage, Echo">
+                </div>
+
+                <div class="form-group">
+                    <label>Personality Type</label>
+                    <select id="modalPersonality" required>
+                        <option value="warm">Warm & Empathetic</option>
+                        <option value="analytical">Analytical & Logical</option>
+                        <option value="playful">Playful & Creative</option>
+                        <option value="professional">Professional & Direct</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>AI Model</label>
+                    <select id="modalAiModel" required>
+                        <option value="">Loading models...</option>
+                    </select>
+                </div>
+
+                <div class="modal-btn-group">
+                    <button type="submit" class="modal-btn primary">Create Companion</button>
+                    <button type="button" class="modal-btn secondary" id="cancelCreateBtn">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // ===== GLOBAL STATE =====
+        let companionId = null;
+        let companionName = 'Sage';
+        let personality = 'warm';
+        let conversationHistory = [];
+        let empathyData = {
+            says: [],
+            thinks: [],
+            does: [],
+            feels: []
+        };
+
+        // ===== INITIALIZATION =====
+        async function init() {
+            await loadAvailableModels();
+            await initializeCompanion();
+            setupEventListeners();
+            startCamera();
+        }
+
+        async function initializeCompanion() {
+            try {
+                const response = await fetch('/api/companion/list');
+                const companions = await response.json();
+                if (companions.length > 0) {
+                    companionId = companions[0].id;
+                    companionName = companions[0].name;
+                    updateUI();
+                } else {
+                    document.getElementById('createModal').classList.add('open');
+                }
+            } catch (error) {
+                console.error('Failed to load companion:', error);
+                document.getElementById('createModal').classList.add('open');
+            }
+        }
+
+        async function loadAvailableModels() {
+            try {
+                const response = await fetch('/api/ai/models');
+                const models = await response.json();
+                const selects = [
+                    document.getElementById('aiModelSelect'),
+                    document.getElementById('modalAiModel')
+                ];
+                
+                selects.forEach(select => {
+                    select.innerHTML = '';
+                    models.forEach(model => {
+                        const option = document.createElement('option');
+                        option.value = model.name;
+                        option.textContent = model.name;
+                        select.appendChild(option);
+                    });
+                });
+            } catch (error) {
+                console.error('Failed to load models:', error);
+            }
+        }
+
+        function updateUI() {
+            document.getElementById('companionNameDisplay').textContent = companionName;
+            document.getElementById('companionName').value = companionName;
+            personality = document.getElementById('personality').value || 'warm';
+        }
+
+        // ===== CAMERA ===== 
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: { ideal: 320 }, height: { ideal: 240 } }
+                });
+                const video = document.getElementById('cameraFeed');
+                video.srcObject = stream;
+                video.style.display = 'block';
+                document.getElementById('cameraStatus').style.display = 'none';
+                document.getElementById('cameraToggleBtn').textContent = 'Stop Camera';
+            } catch (error) {
+                console.log('Camera access denied or unavailable');
+                document.getElementById('cameraToggleBtn').textContent = 'Enable Camera';
+            }
+        }
+
+        function stopCamera() {
+            const video = document.getElementById('cameraFeed');
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+                video.style.display = 'none';
+                document.getElementById('cameraStatus').style.display = 'block';
+                document.getElementById('cameraToggleBtn').textContent = 'Start Camera';
+            }
+        }
+
+        // ===== EMPATHY ANALYSIS =====
+        function analyzeForEmpathy(text) {
+            // Simple NLP-like analysis to extract empathy signals
+            const lowerText = text.toLowerCase();
+
+            // Action words (DOES)
+            const actionWords = ['did', 'do', 'going', 'went', 'tried', 'started', 'finished', 'completed', 'worked'];
+            if (actionWords.some(word => lowerText.includes(word))) {
+                empathyData.does.push(text.substring(0, 50) + '...');
+            }
+
+            // Emotional words (FEELS)
+            const emotionalWords = ['happy', 'sad', 'angry', 'anxious', 'excited', 'worried', 'scared', 'proud', 'grateful', 'frustrated'];
+            emotionalWords.forEach(word => {
+                if (lowerText.includes(word)) {
+                    empathyData.feels.push(`${text.substring(0, 40)}... (${word})`);
+                }
+            });
+
+            // Thinking/beliefs (THINKS)
+            const thinkingWords = ['think', 'believe', 'feel like', 'suppose', 'wonder', 'doubt'];
+            if (thinkingWords.some(word => lowerText.includes(word))) {
+                empathyData.thinks.push(text.substring(0, 50) + '...');
+            }
+
+            // Direct quotes (SAYS)
+            if (text.length > 10) {
+                empathyData.says.push(`"${text.substring(0, 45)}..."`);
+            }
+
+            // Limit each quadrant to 5 items
+            Object.keys(empathyData).forEach(key => {
+                if (empathyData[key].length > 5) {
+                    empathyData[key].shift();
+                }
+            });
+
+            updateEmpathyMap();
+        }
+
+        function updateEmpathyMap() {
+            const quadrants = {
+                says: 'empathySays',
+                thinks: 'empathyThinks',
+                does: 'empathyDoes',
+                feels: 'empathyFeels'
+            };
+
+            Object.entries(quadrants).forEach(([key, elementId]) => {
+                const element = document.getElementById(elementId);
+                if (empathyData[key].length === 0) {
+                    element.innerHTML = '<div class="empty-state">Waiting to understand...</div>';
+                } else {
+                    element.innerHTML = empathyData[key]
+                        .map(item => `<div class="empathy-item">${item}</div>`)
+                        .join('');
+                }
+            });
+        }
+
+        // ===== CHAT ===== 
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            if (!message || !companionId) return;
+
+            input.value = '';
+
+            // Add user message to UI
+            addMessageToUI(message, 'user');
+            analyzeForEmpathy(message);
+
+            try {
+                const selectedModel = document.getElementById('aiModelSelect').value;
+                const response = await fetch('/api/companion/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        companion_id: companionId,
+                        message: message,
+                        user_emotion: detectEmotion(message),
+                        ai_model: selectedModel
+                    })
+                });
+
+                const data = await response.json();
+                addMessageToUI(data.response, 'ai');
+                conversationHistory.push({ user: message, ai: data.response });
+
+                // Update emotion display
+                const emotionElement = document.getElementById('currentEmotion');
+                emotionElement.innerHTML = `<span class="emotion-badge">${data.emotion_detected || 'neutral'}</span>`;
+
+            } catch (error) {
+                console.error('Chat error:', error);
+                addMessageToUI('Error connecting to AI. Please try again.', 'ai');
+            }
+        }
+
+        function detectEmotion(text) {
+            const lowerText = text.toLowerCase();
+            if (lowerText.match(/happy|great|awesome|love|excited/)) return 'happy';
+            if (lowerText.match(/sad|depressed|lonely|terrible/)) return 'sad';
+            if (lowerText.match(/angry|furious|mad/)) return 'angry';
+            if (lowerText.match(/scared|afraid|anxious|worried/)) return 'fear';
+            return 'neutral';
+        }
+
+        function addMessageToUI(text, sender) {
+            const container = document.getElementById('messagesContainer');
+            const messageEl = document.createElement('div');
+            messageEl.className = `message ${sender}`;
+            messageEl.innerHTML = `
+                <div>${text}</div>
+                <div class="message-time">${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</div>
+            `;
+            container.appendChild(messageEl);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // ===== EVENT LISTENERS =====
+        function setupEventListeners() {
+            document.getElementById('sendBtn').addEventListener('click', sendMessage);
+            document.getElementById('messageInput').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') sendMessage();
+            });
+
+            document.getElementById('cameraToggleBtn').addEventListener('click', () => {
+                const video = document.getElementById('cameraFeed');
+                if (video.style.display === 'none') {
+                    startCamera();
+                } else {
+                    stopCamera();
+                }
+            });
+
+            document.getElementById('createBtn').addEventListener('click', () => {
+                document.getElementById('createModal').classList.add('open');
+            });
+
+            document.getElementById('cancelCreateBtn').addEventListener('click', () => {
+                document.getElementById('createModal').classList.remove('open');
+            });
+
+            document.getElementById('createForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const name = document.getElementById('modalCompanionName').value;
+                try {
+                    const response = await fetch('/api/companion/create', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name })
+                    });
+                    const data = await response.json();
+                    companionId = data.companion_id || data.id;
+                    companionName = name;
+                    updateUI();
+                    document.getElementById('createModal').classList.remove('open');
+                } catch (error) {
+                    console.error('Failed to create companion:', error);
+                }
+            });
+
+            document.getElementById('personality').addEventListener('change', (e) => {
+                personality = e.target.value;
+            });
+
+            document.getElementById('aiModelSelect').addEventListener('change', async (e) => {
+                if (companionId) {
+                    try {
+                        await fetch(`/api/companion/set-model/${companionId}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ ai_model: e.target.value })
+                        });
+                    } catch (error) {
+                        console.error('Failed to set model:', error);
+                    }
+                }
+            });
+        }
+
+        // Start the app
+        init();
+    </script>
+</body>
+</html>

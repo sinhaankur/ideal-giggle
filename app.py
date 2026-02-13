@@ -3,6 +3,9 @@ Building Management AI Application
 Main entry point for the Flask application
 """
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from flask import Flask
 from src.api.routes import setup_routes
 import os

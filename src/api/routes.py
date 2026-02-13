@@ -251,17 +251,18 @@ def ai_status():
             'environment': 'On-Device AI'
         }
         
-        # Check Ollama status
+        # Check Ollama status (use env or ai_config)
+        ollama_url = os.getenv('OLLAMA_URL', os.getenv('OLLAMA_BASE', 'http://localhost:11434'))
         ollama_status = {
-            'service': 'Ollama (Local LLM)',
+            'service': 'Ollama (Local LLM)' if 'localhost' in ollama_url else 'Ollama (Buildingai.cloud)',
             'status': 'unknown',
-            'url': 'http://localhost:11434',
+            'url': ollama_url,
             'models': []
         }
         
         try:
             # Try to reach Ollama
-            response = requests.get('http://localhost:11434/api/tags', timeout=5)
+            response = requests.get(f'{ollama_url}/api/tags', timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 ollama_status['status'] = 'running'
@@ -1505,13 +1506,29 @@ def setup_routes(app):
     
     @app.route('/')
     def index():
-        """Serve the AI companion app"""
-        return send_from_directory(static_folder, 'companion_app.html')
+        """Main website - buildingai.cloud (Building Management AI Dashboard)"""
+        return send_from_directory(static_folder, 'index.html')
     
     @app.route('/dashboard')
     def dashboard():
-        """Serve the building management dashboard (optional)"""
+        """Building Management AI Dashboard"""
         return send_from_directory(static_folder, 'index.html')
+    
+    @app.route('/empathy')
+    def empathy():
+        """Empathy AI - Camera & Audio tool (branched from main site)"""
+        return send_from_directory(static_folder, 'companion_app_empathy.html')
+    
+    @app.route('/companion')
+    def companion():
+        """AI Companion app"""
+        return send_from_directory(static_folder, 'companion_app.html')
+
+    @app.route('/llm-console')
+    def llm_console():
+        """Serve the React-based LLM & media console built by Vite"""
+        console_folder = os.path.join(static_folder, 'llm-console')
+        return send_from_directory(console_folder, 'index.html')
     
     @app.route('/static/<path:filename>')
     def static_files(filename):

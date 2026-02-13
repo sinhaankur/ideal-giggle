@@ -3,18 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Building Management AI Dashboard</title>
+    <title>Building AI – buildingai.cloud</title>
     <link rel="stylesheet" href="/static/styles.css">
     <link rel="stylesheet" href="/static/chat.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
+    <!-- Mobile Menu Toggle -->
+    <button class="mobile-menu-toggle" id="mobile-menu-toggle">
+        <i class="fas fa-bars"></i>
+    </button>
+    
     <div class="dashboard">
         <!-- Sidebar -->
         <aside class="sidebar">
             <div class="logo">
                 <i class="fas fa-building"></i>
-                <h2>Building AI</h2>
+                <div>
+                    <h2>Building AI</h2>
+                    <span class="logo-subtitle">buildingai.cloud</span>
+                </div>
             </div>
             <nav class="nav-menu">
                 <a href="#" class="nav-item active" data-page="overview">
@@ -37,11 +45,11 @@
                     <i class="fas fa-brain"></i>
                     <span>AI Models</span>
                 </a>
-                <a href="/static/vision_enhanced.html" class="nav-item">
+                <a href="#" class="nav-item" data-page="vision-pro">
                     <i class="fas fa-video"></i>
-                    <span>🎥 Vision AI Pro</span>
+                    <span>Vision AI Pro</span>
                 </a>
-                <a href="/static/vision.html" class="nav-item">
+                <a href="#" class="nav-item" data-page="vision-basic">
                     <i class="fas fa-camera"></i>
                     <span>Vision AI Basic</span>
                 </a>
@@ -53,7 +61,33 @@
                     <i class="fas fa-cog"></i>
                     <span>Settings</span>
                 </a>
+                <div class="nav-divider"></div>
+                <a href="https://ai.buildingai.cloud" target="_blank" rel="noopener" class="nav-item nav-external">
+                    <i class="fas fa-external-link-alt"></i>
+                    <span>Open WebUI</span>
+                    <small>ai.buildingai.cloud</small>
+                </a>
+                <a href="/empathy" class="nav-item">
+                    <i class="fas fa-heart"></i>
+                    <span>Empathy AI</span>
+                    <small>Camera &amp; Audio</small>
+                </a>
             </nav>
+            
+            <!-- User Profile Section -->
+            <div class="user-section">
+                <div class="user-profile">
+                    <i class="fas fa-user-circle"></i>
+                    <div class="user-info">
+                        <span class="user-name">Guest</span>
+                        <span class="user-status">Not logged in</span>
+                    </div>
+                </div>
+                <button id="logout-btn" class="logout-btn hidden">
+                    <i class="fas fa-sign-out-alt"></i>
+                    Logout
+                </button>
+            </div>
         </aside>
 
         <!-- Main Content -->
@@ -80,6 +114,26 @@
                 <div class="page-header">
                     <h1>Building Management Overview</h1>
                     <p>Real-time insights and AI-powered analytics</p>
+                </div>
+
+                <!-- Building AI Ecosystem: 3 Core Products -->
+                <div class="ecosystem-cards" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 32px;">
+                    <a href="/dashboard" class="ecosystem-card" style="text-decoration: none; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 12px; padding: 24px; box-shadow: 0 4px 20px rgba(102,126,234,0.3); transition: transform 0.2s;">
+                        <div style="font-size: 2rem; margin-bottom: 12px;"><i class="fas fa-globe"></i></div>
+                        <h3 style="margin: 0 0 8px; font-size: 1.1rem;">1. buildingai.cloud</h3>
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.9rem;">Main website – Building Management AI Dashboard, energy, predictions, and analytics</p>
+                    </a>
+                    <a href="https://ai.buildingai.cloud" target="_blank" rel="noopener" class="ecosystem-card" style="text-decoration: none; background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; border-radius: 12px; padding: 24px; box-shadow: 0 4px 20px rgba(17,153,142,0.3); transition: transform 0.2s;">
+                        <div style="font-size: 2rem; margin-bottom: 12px;"><i class="fas fa-comments"></i></div>
+                        <h3 style="margin: 0 0 8px; font-size: 1.1rem;">2. Open WebUI</h3>
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.9rem;">ai.buildingai.cloud – Chat with AI models, login and full LLM interface</p>
+                        <span style="font-size: 0.75rem; margin-top: 8px; display: inline-block;">↗ Opens in new tab</span>
+                    </a>
+                    <a href="/empathy" class="ecosystem-card" style="text-decoration: none; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; border-radius: 12px; padding: 24px; box-shadow: 0 4px 20px rgba(240,147,251,0.3); transition: transform 0.2s;">
+                        <div style="font-size: 2rem; margin-bottom: 12px;"><i class="fas fa-heart"></i></div>
+                        <h3 style="margin: 0 0 8px; font-size: 1.1rem;">3. Empathy AI</h3>
+                        <p style="margin: 0; opacity: 0.9; font-size: 0.9rem;">Camera &amp; Audio tool – Emotion detection, voice input, empathetic AI companion</p>
+                    </a>
                 </div>
 
                 <!-- Stats Cards -->
@@ -351,6 +405,20 @@
                 <div class="info-card">
                     <i class="fas fa-cog"></i>
                     <p>Settings panel coming soon...</p>
+                </div>
+            </div>
+
+            <!-- Vision AI Pro Page -->
+            <div class="page-content hidden" id="vision-pro-page">
+                <div class="vision-iframe-container">
+                    <iframe src="/static/vision_enhanced.html" frameborder="0" class="vision-iframe"></iframe>
+                </div>
+            </div>
+
+            <!-- Vision AI Basic Page -->
+            <div class="page-content hidden" id="vision-basic-page">
+                <div class="vision-iframe-container">
+                    <iframe src="/static/vision.html" frameborder="0" class="vision-iframe"></iframe>
                 </div>
             </div>
         </main>

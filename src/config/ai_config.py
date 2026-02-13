@@ -81,11 +81,13 @@ class AIConfigManager:
             except Exception as e:
                 print(f"Error loading config: {e}, using defaults")
         
-        # Default: Local Ollama with cloud fallback (Hybrid)
+        # Default: Use OLLAMA_URL env for Buildingai.cloud, else local
+        ollama_host = os.getenv('OLLAMA_URL', os.getenv('OLLAMA_BASE', 'http://localhost:11434'))
+        ollama_model = os.getenv('OLLAMA_MODEL', 'neural-chat')
         return AIProviderConfig(
             provider=AIProvider.HYBRID,
-            ollama_host="http://localhost:11434",
-            ollama_model="neural-chat",
+            ollama_host=ollama_host,
+            ollama_model=ollama_model,
             use_local_first=True,
             fallback_to_cloud=True
         )
