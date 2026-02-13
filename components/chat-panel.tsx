@@ -21,9 +21,18 @@ export function ChatPanel({ messages, onSendMessage, isLoading, emotion, setting
   const recognitionRef = useRef<SpeechRecognition | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Scroll to bottom on new messages
+  // Scroll to bottom on new messages and refocus input
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    // Focus input after AI responds
+    if (messages.length > 0) {
+      const lastMessage = messages[messages.length - 1]
+      if (lastMessage.sender === "ai") {
+        setTimeout(() => {
+          inputRef.current?.focus()
+        }, 100)
+      }
+    }
   }, [messages])
 
   // Setup speech recognition
@@ -88,6 +97,37 @@ export function ChatPanel({ messages, onSendMessage, isLoading, emotion, setting
       speak(last.text)
     }
   }, [messages, speak])
+
+  // Auto-focus input field on mount and after receiving message
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
+
+  // Keep focus on input by refocusing when document click happens on other elements
+  useEffect(() => {
+    const handleDocumentClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      // Don't refocus if clicking on buttons, voice controls, or other interactive elements
+      const isInteractiveElement = target.closest("button") || 
+                                   target.closest("select") ||
+                                   target.closest("textarea") ||
+                                   (target.tagName === "INPUT" && target !== inputRef.current)
+      
+      if (!isInteractiveElement && inputRef.current) {
+        inputRef.current.focus()
+      }
+    }
+
+    // Add slight delay to allow natural interactions
+    const timer = setTimeout(() => {
+      document.addEventListener("click", handleDocumentClick)
+    }, 100)
+
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener("click", handleDocumentClick)
+    }
+  }, [])
 
   const handleSend = () => {
     const text = input.trim()
@@ -236,8 +276,10 @@ export function ChatPanel({ messages, onSendMessage, isLoading, emotion, setting
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
+            onFocus={() => inputRef.current?.select()}
             placeholder="Share your thoughts..."
-            className="flex-1 border border-border bg-card px-3 py-2 text-[12px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-ring"
+            autoFocus
+            className="flex-1 border border-border bg-card px-3 py-2 text-[12px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-ring focus:border-foreground transition-all"
             autoComplete="off"
           />
 

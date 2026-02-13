@@ -16,22 +16,22 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
 
   const providers: { value: AIProvider; label: string; desc: string; icon: typeof Server }[] = [
     {
-      value: "local",
-      label: "LOCAL LLM",
-      desc: "Ollama -- Private, on-device inference",
-      icon: Server,
-    },
-    {
-      value: "cloud",
-      label: "CLOUD AI",
-      desc: "OpenAI / Cloud -- Faster, external",
+      value: "openai",
+      label: "OpenAI",
+      desc: "GPT-4o Mini -- Advanced reasoning",
       icon: Cloud,
     },
     {
-      value: "hybrid",
-      label: "HYBRID",
-      desc: "Local-first, cloud fallback",
-      icon: Zap,
+      value: "anthropic",
+      label: "Anthropic",
+      desc: "Claude 3.5 Sonnet -- Thoughtful communication",
+      icon: Cloud,
+    },
+    {
+      value: "google",
+      label: "Google",
+      desc: "Gemini 2.0 Flash -- Fast and capable",
+      icon: Cloud,
     },
   ]
 
@@ -44,41 +44,41 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-      <div className="mx-4 flex max-h-[90vh] w-full max-w-lg flex-col border border-border bg-card">
+      <div className="mx-4 flex max-h-[90vh] w-full max-w-md flex-col border border-border bg-card rounded-lg">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <div className="flex items-center gap-2">
-            <Settings className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-xs uppercase tracking-[0.2em] text-foreground">
-              Configuration
+            <Settings className="h-4 w-4 text-foreground" />
+            <span className="text-base font-semibold text-foreground">
+              Settings
             </span>
           </div>
           <button
             onClick={onClose}
-            className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground transition-colors hover:text-foreground"
+            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
           >
-            [CLOSE]
+            ✕
           </button>
         </div>
 
         {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto px-5 py-4">
+        <div className="flex-1 overflow-y-auto px-6 py-4">
           {/* Companion Name */}
           <div className="mb-6">
             <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
-              <User className="h-3 w-3 text-muted-foreground" />
-              <span className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
+              <User className="h-4 w-4 text-foreground" />
+              <span className="text-sm font-semibold text-foreground">
                 Identity
               </span>
             </div>
-            <label className="mb-1.5 block text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
+            <label className="mb-2 block text-sm font-medium text-foreground">
               Companion Name
             </label>
             <input
               type="text"
               value={settings.name}
               onChange={(e) => update({ name: e.target.value })}
-              className="w-full border border-border bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              className="w-full rounded border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               placeholder="e.g., Samantha, Echo, Sage"
             />
           </div>
@@ -86,8 +86,8 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
           {/* Personality */}
           <div className="mb-6">
             <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
-              <Sparkles className="h-3 w-3 text-muted-foreground" />
-              <span className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
+              <Sparkles className="h-4 w-4 text-foreground" />
+              <span className="text-sm font-semibold text-foreground">
                 Personality
               </span>
             </div>
@@ -96,16 +96,16 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
                 <button
                   key={p.value}
                   onClick={() => update({ personality: p.value })}
-                  className={`flex flex-col items-start border p-3 text-left transition-colors ${
+                  className={`flex flex-col items-start rounded border p-3 text-left text-sm transition-colors ${
                     settings.personality === p.value
                       ? "border-foreground bg-foreground/5"
                       : "border-border hover:border-muted-foreground/40"
                   }`}
                 >
-                  <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-foreground">
+                  <span className="text-sm font-bold text-foreground">
                     {p.label}
                   </span>
-                  <span className="text-[9px] text-muted-foreground">{p.desc}</span>
+                  <span className="text-xs text-muted-foreground">{p.desc}</span>
                 </button>
               ))}
             </div>
@@ -114,8 +114,8 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
           {/* AI Provider */}
           <div className="mb-6">
             <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
-              <Server className="h-3 w-3 text-muted-foreground" />
-              <span className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
+              <Server className="h-4 w-4 text-foreground" />
+              <span className="text-sm font-semibold text-foreground">
                 AI Provider
               </span>
             </div>
@@ -126,18 +126,18 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
                   <button
                     key={p.value}
                     onClick={() => update({ provider: p.value })}
-                    className={`flex items-center gap-3 border p-3 text-left transition-colors ${
+                    className={`flex items-center gap-3 rounded border p-3 text-left transition-colors ${
                       settings.provider === p.value
                         ? "border-foreground bg-foreground/5"
                         : "border-border hover:border-muted-foreground/40"
                     }`}
                   >
-                    <Icon className="h-4 w-4 text-muted-foreground" />
+                    <Icon className="h-4 w-4 text-foreground" />
                     <div className="flex flex-col">
-                      <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-foreground">
+                      <span className="text-sm font-bold text-foreground">
                         {p.label}
                       </span>
-                      <span className="text-[9px] text-muted-foreground">{p.desc}</span>
+                      <span className="text-xs text-muted-foreground">{p.desc}</span>
                     </div>
                   </button>
                 )
@@ -146,81 +146,21 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
           </div>
 
           {/* Local LLM Settings */}
-          {(settings.provider === "local" || settings.provider === "hybrid") && (
-            <div className="mb-6">
-              <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
-                <Server className="h-3 w-3 text-muted-foreground" />
-                <span className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
-                  Local LLM Config
-                </span>
-              </div>
-              <div className="mb-3">
-                <label className="mb-1.5 block text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
-                  Ollama Endpoint
-                </label>
-                <input
-                  type="text"
-                  value={settings.localEndpoint}
-                  onChange={(e) => update({ localEndpoint: e.target.value })}
-                  className="w-full border border-border bg-background px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                  placeholder="http://localhost:11434"
-                />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
-                  Model
-                </label>
-                <select
-                  value={settings.localModel}
-                  onChange={(e) => update({ localModel: e.target.value })}
-                  className="w-full border border-border bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                >
-                  <option value="mistral" className="bg-card text-foreground">Mistral</option>
-                  <option value="llama2" className="bg-card text-foreground">Llama 2</option>
-                  <option value="neural-chat" className="bg-card text-foreground">Neural Chat</option>
-                  <option value="codellama" className="bg-card text-foreground">Code Llama</option>
-                  <option value="phi" className="bg-card text-foreground">Phi-2</option>
-                </select>
-              </div>
-            </div>
-          )}
+          {/* Settings removed - direct API providers are now used */}
 
           {/* Cloud Settings */}
-          {(settings.provider === "cloud" || settings.provider === "hybrid") && (
-            <div className="mb-6">
-              <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
-                <Cloud className="h-3 w-3 text-muted-foreground" />
-                <span className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
-                  Cloud Config
-                </span>
-              </div>
-              <div>
-                <label className="mb-1.5 block text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
-                  Model
-                </label>
-                <select
-                  value={settings.cloudModel}
-                  onChange={(e) => update({ cloudModel: e.target.value })}
-                  className="w-full border border-border bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                >
-                  <option value="openai/gpt-4o-mini" className="bg-card text-foreground">GPT-4o Mini</option>
-                  <option value="openai/gpt-4o" className="bg-card text-foreground">GPT-4o</option>
-                  <option value="anthropic/claude-sonnet-4-20250514" className="bg-card text-foreground">Claude Sonnet</option>
-                </select>
-              </div>
-            </div>
-          )}
+          {/* Settings removed - direct API providers are now used */}
 
           {/* Temperature */}
           <div className="mb-6">
             <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
-              <Thermometer className="h-3 w-3 text-muted-foreground" />
-              <span className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
+              <Thermometer className="h-4 w-4 text-foreground" />
+              <span className="text-sm font-semibold text-foreground">
                 Creativity
               </span>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-[9px] text-muted-foreground">Focused</span>
+              <span className="text-sm text-muted-foreground">Focused</span>
               <input
                 type="range"
                 min="0"
@@ -230,19 +170,19 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
                 onChange={(e) => update({ temperature: parseFloat(e.target.value) })}
                 className="flex-1 accent-foreground"
               />
-              <span className="text-[9px] text-muted-foreground">Creative</span>
+              <span className="text-sm text-muted-foreground">Creative</span>
             </div>
-            <div className="mt-1 text-center text-[10px] text-muted-foreground">
-              {settings.temperature}
+            <div className="mt-2 text-center text-base font-semibold text-foreground">
+              {settings.temperature.toFixed(1)}
             </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="border-t border-border px-5 py-3">
+        <div className="border-t border-border px-6 py-3">
           <button
             onClick={onClose}
-            className="w-full border border-foreground bg-foreground px-4 py-2 text-[10px] uppercase tracking-[0.2em] text-background transition-colors hover:bg-foreground/90"
+            className="w-full rounded border border-foreground bg-foreground px-4 py-2.5 text-sm font-semibold text-background transition-colors hover:bg-foreground/90"
           >
             Save & Close
           </button>

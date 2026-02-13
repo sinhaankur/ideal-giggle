@@ -2,7 +2,27 @@ export type Emotion = "neutral" | "happy" | "sad" | "angry" | "fear" | "surprise
 
 export type Personality = "warm" | "analytical" | "playful" | "professional"
 
-export type AIProvider = "local" | "cloud" | "hybrid"
+export type AIProvider = "openai" | "anthropic" | "google"
+
+export interface FacialExpression {
+  neutral: number
+  happy: number
+  sad: number
+  angry: number
+  fearful: number
+  disgusted: number
+  surprised: number
+  detection: boolean
+}
+
+export interface LocationData {
+  latitude: number | null
+  longitude: number | null
+  accuracy: number | null
+  city: string | null
+  country: string | null
+  error: string | null
+}
 
 export interface Message {
   id: string
@@ -23,9 +43,6 @@ export interface CompanionSettings {
   name: string
   personality: Personality
   provider: AIProvider
-  localEndpoint: string
-  localModel: string
-  cloudModel: string
   temperature: number
   cameraDeviceId: string
 }
@@ -33,10 +50,7 @@ export interface CompanionSettings {
 export const DEFAULT_SETTINGS: CompanionSettings = {
   name: "Samantha",
   personality: "warm",
-  provider: "cloud",
-  localEndpoint: "http://localhost:11434",
-  localModel: "mistral",
-  cloudModel: "openai/gpt-4o-mini",
+  provider: "openai",
   temperature: 0.7,
   cameraDeviceId: "",
 }
