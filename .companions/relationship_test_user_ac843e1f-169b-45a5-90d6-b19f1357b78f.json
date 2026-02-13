@@ -1,0 +1,22 @@
+{
+  "user_id": "test_user",
+  "companion_id": "ac843e1f-169b-45a5-90d6-b19f1357b78f",
+  "user_name": null,
+  "user_interests": [],
+  "user_dreams": [],
+  "user_fears": [],
+  "intimacy_level": 0.024,
+  "affection_level": 0.0,
+  "familiarity_level": 0.01,
+  "emotional_openness": 0.20500000000000002,
+  "interactions_count": 1,
+  "conversation_history": [
+    {
+      "timestamp": "2026-02-13T10:35:54.128731",
+      "user": "What is the weather like?",
+      "companion": "I'm here with you."
+    }
+  ],
+  "last_interaction": "2026-02-13T10:35:54.128740",
+  "created_at": "2026-02-12T15:38:57.992580"
+}

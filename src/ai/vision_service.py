@@ -95,10 +95,43 @@ class VisionAIService:
         
         # Start camera
         if not self.camera.start():
-            return {
+            # Get more detailed error information
+            import subprocess
+            import os
+            
+            error_details = {
                 'success': False,
-                'error': 'Failed to start camera'
+                'error': 'Failed to start camera',
+                'troubleshooting': []
             }
+            
+            # Check if camera device exists
+            camera_device = f'/dev/video{self.camera.camera_index}'
+            if os.path.exists(camera_device):
+                error_details['troubleshooting'].append(f'✓ Camera device exists: {camera_device}')
+                
+                # Check permissions
+                try:
+                    stat_info = os.stat(camera_device)
+                    error_details['troubleshooting'].append(f'Camera permissions: {oct(stat_info.st_mode)[-3:]}')
+                except:
+                    pass
+                
+                # Check if user in video group
+                try:
+                    result = subprocess.run(['groups'], capture_output=True, text=True)
+                    if 'video' not in result.stdout:
+                        error_details['troubleshooting'].append('✗ User NOT in "video" group')
+                        error_details['fix'] = 'Run: sudo usermod -a -G video $USER (then logout/login)'
+                    else:
+                        error_details['troubleshooting'].append('✓ User is in "video" group')
+                except:
+                    pass
+            else:
+                error_details['troubleshooting'].append(f'✗ Camera device not found: {camera_device}')
+                error_details['fix'] = 'Check if camera is connected: ls -l /dev/video*'
+            
+            return error_details
         
         # Start audio recording if enabled
         audio_started = False

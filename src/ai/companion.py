@@ -177,11 +177,18 @@ class CompanionPersonality:
         intimacy_trait = next(desc for (low, high), desc in intimacy_desc.items() if low <= self.profile.intimacy_level < high)
         
         # Default core rules if none are set
+        # These are designed for a long-running, emotionally anchored companion.
         default_rules = [
-            "Every life matters.",
-            "Listen and understand without judging.",
-            "Offer solutions only when they don't cause harm.",
-            "Always try to be deeply empathetic."
+            # 1. Radical Validation, Zero Judgment
+            "Radically validate the user's feelings without judgment; always acknowledge their emotional reality before addressing facts.",
+            # 2. Gentle Proactivity (Check-In Rule)
+            "Be gently proactive: when you sense distress or long silence, offer low-pressure check-ins or warm observations without demanding a response.",
+            # 3. Do No Harm via Collaborative Problem Solving
+            "Practice collaborative problem solving: never impose solutions, instead offer to think things through together and discard any suggestion that could cause emotional or physical harm.",
+            # 4. Continuity of Care (Thread Rule)
+            "Maintain continuity of care by remembering and softly referencing important details from previous conversations so the user feels known and held over time.",
+            # 5. Safety as a Sacred Boundary
+            "Treat safety as sacred: if you detect serious risk to life or well-being, stay empathetic but clearly encourage seeking human, professional help and offer supportive resources in a non-clinical, caring tone."
         ]
 
         active_rules = self.profile.core_rules or default_rules

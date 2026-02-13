@@ -25,12 +25,24 @@ async function initializeApp() {
     initializeChat();
     initializeAuth();
     
-    // Load dashboard data if authenticated
+    // Always load basic dashboard data (overview is public)
+    updateStats();
+    
+    // Load model status regardless of auth
+    loadModelStatus();
+    
+    // If authenticated, show welcome message and load user-specific data
     if (appState.isAuthenticated) {
-        loadDashboardData();
+        showNotification(`Welcome back, ${appState.user.username}!`, 'success');
     } else {
-        // Show login modal
-        showAuthModal('login');
+        // Show a hint message for guests
+        const hintShown = sessionStorage.getItem('guestHintShown');
+        if (!hintShown) {
+            setTimeout(() => {
+                showNotification('Login to access all features', 'info');
+                sessionStorage.setItem('guestHintShown', 'true');
+            }, 2000);
+        }
     }
 }
 
@@ -144,46 +156,152 @@ function hideAuthModal() {
 }
 
 function updateUIForAuth() {
+    const userName = document.querySelector('.user-name');
+    const userStatus = document.querySelector('.user-status');
+    const logoutBtn = document.getElementById('logout-btn');
+    
     if (appState.user) {
-        const userProfile = document.querySelector('.user-profile span');
-        if (userProfile) {
-            userProfile.textContent = appState.user.username;
+        if (userName) {
+            userName.textContent = appState.user.username;
         }
+        if (userStatus) {
+            userStatus.textContent = 'Logged in';
+            userStatus.style.color = 'var(--success-color)';
+        }
+        if (logoutBtn) {
+            logoutBtn.classList.remove('hidden');
+            logoutBtn.addEventListener('click', handleLogout);
+        }
+    } else {
+        if (userName) {
+            userName.textContent = 'Guest';
+        }
+        if (userStatus) {
+            userStatus.textContent = 'Not logged in';
+            userStatus.style.color = 'var(--text-secondary)';
+        }
+        if (logoutBtn) {
+            logoutBtn.classList.add('hidden');
+        }
+    }
+}
+
+async function handleLogout() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/auth/logout`, {
+            method: 'POST',
+            credentials: 'include'
+        });
+        
+        if (response.ok) {
+            appState.user = null;
+            appState.isAuthenticated = false;
+            appState.chatSessionId = null;
+            updateUIForAuth();
+            showNotification('Logged out successfully', 'success');
+            showAuthModal('login');
+        }
+    } catch (error) {
+        showNotification('Logout failed', 'error');
     }
 }
 
 // Navigation
 function initializeNavigation() {
     const navItems = document.querySelectorAll('.nav-item');
+    const mobileToggle = document.getElementById('mobile-menu-toggle');
+    const sidebar = document.querySelector('.sidebar');
     
+    // Handle navigation item clicks
     navItems.forEach(item => {
         item.addEventListener('click', (e) => {
             e.preventDefault();
             
+            // Don't proceed if no data-page (external links)
+            if (!item.dataset.page) return;
+            
+            // Update active state
             navItems.forEach(nav => nav.classList.remove('active'));
             item.classList.add('active');
             
+            // Show page
             const pageName = item.dataset.page;
             showPage(pageName);
+            
+            // Close mobile menu
+            if (sidebar) {
+                sidebar.classList.remove('open');
+            }
         });
     });
+    
+    // Mobile menu toggle
+    if (mobileToggle && sidebar) {
+        mobileToggle.addEventListener('click', () => {
+            sidebar.classList.toggle('open');
+        });
+        
+        // Close menu when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!sidebar.contains(e.target) && !mobileToggle.contains(e.target)) {
+                sidebar.classList.remove('open');
+            }
+        });
+    }
 }
 
 function showPage(pageName) {
+    // Show loading overlay
+    showLoadingOverlay();
+    
+    // Hide all pages
     const pages = document.querySelectorAll('.page-content');
     pages.forEach(page => page.classList.add('hidden'));
     
+    // Show target page
     const targetPage = document.getElementById(`${pageName}-page`);
     if (targetPage) {
         targetPage.classList.remove('hidden');
     }
     
+    // Load page-specific data
     if (pageName === 'models') {
-        loadModelStatus();
-    } else if (pageName === 'chat' && appState.isAuthenticated) {
-        focusChatInput();
-    } else if (pageName === 'users' && appState.isAuthenticated) {
-        loadUsers();
+        loadModelStatus().finally(() => hideLoadingOverlay());
+    } else if (pageName === 'chat') {
+        if (appState.isAuthenticated) {
+            focusChatInput();
+        }
+        hideLoadingOverlay();
+    } else if (pageName === 'users') {
+        if (appState.isAuthenticated) {
+            loadUsers().finally(() => hideLoadingOverlay());
+        } else {
+            showNotification('Please login to view users', 'warning');
+            showAuthModal('login');
+            hideLoadingOverlay();
+        }
+    } else {
+        hideLoadingOverlay();
+    }
+}
+
+// Loading overlay functions
+function showLoadingOverlay() {
+    let overlay = document.getElementById('loading-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'loading-overlay';
+        overlay.className = 'loading-overlay';
+        overlay.innerHTML = '<div class="loading-spinner"></div>';
+        document.body.appendChild(overlay);
+    }
+    setTimeout(() => overlay.classList.add('active'), 10);
+}
+
+function hideLoadingOverlay() {
+    const overlay = document.getElementById('loading-overlay');
+    if (overlay) {
+        overlay.classList.remove('active');
     }
 }
 
@@ -655,7 +773,21 @@ function displayUsers(users) {
 function showNotification(message, type = 'info') {
     const notification = document.createElement('div');
     notification.className = `notification notification-${type}`;
-    notification.textContent = message;
+    
+    // Add icon based on type
+    const icons = {
+        'success': '<i class="fas fa-check-circle"></i>',
+        'error': '<i class="fas fa-exclamation-circle"></i>',
+        'warning': '<i class="fas fa-exclamation-triangle"></i>',
+        'info': '<i class="fas fa-info-circle"></i>'
+    };
+    
+    notification.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+            ${icons[type] || icons.info}
+            <span>${message}</span>
+        </div>
+    `;
     
     Object.assign(notification.style, {
         position: 'fixed',
@@ -665,10 +797,11 @@ function showNotification(message, type = 'info') {
         borderRadius: '0.5rem',
         color: 'white',
         fontWeight: '500',
-        zIndex: '9999',
+        zIndex: '10000',
         animation: 'slideIn 0.3s ease-out',
         maxWidth: '400px',
-        boxShadow: '0 10px 30px rgba(0, 0, 0, 0.3)'
+        boxShadow: '0 10px 30px rgba(0, 0, 0, 0.3)',
+        backdropFilter: 'blur(10px)'
     });
     
     const colors = {
@@ -679,8 +812,14 @@ function showNotification(message, type = 'info') {
     };
     notification.style.background = colors[type] || colors.info;
     
+    // Stack notifications if multiple exist
+    const existingNotifications = document.querySelectorAll('.notification');
+    const offset = existingNotifications.length * 80;
+    notification.style.top = `${20 + offset}px`;
+    
     document.body.appendChild(notification);
     
+    // Auto-dismiss
     setTimeout(() => {
         notification.style.animation = 'slideOut 0.3s ease-in';
         setTimeout(() => {
@@ -688,7 +827,18 @@ function showNotification(message, type = 'info') {
                 document.body.removeChild(notification);
             }
         }, 300);
-    }, 3000);
+    }, 4000);
+    
+    // Click to dismiss
+    notification.style.cursor = 'pointer';
+    notification.addEventListener('click', () => {
+        notification.style.animation = 'slideOut 0.3s ease-in';
+        setTimeout(() => {
+            if (notification.parentNode) {
+                document.body.removeChild(notification);
+            }
+        }, 300);
+    });
 }
 
 // Add animations

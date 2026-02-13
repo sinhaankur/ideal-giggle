@@ -27,20 +27,49 @@ class CameraManager:
             List of available camera indices with their names
         """
         available = []
+        import os
+        
+        # First check for /dev/video* devices (Linux)
+        video_devices = []
         for i in range(max_test):
-            cap = cv2.VideoCapture(i, cv2.CAP_V4L2)
-            try:
-                if not cap.isOpened():
-                    continue
-                # Avoid blocking read during enumeration
-                backend = cap.getBackendName()
+            device_path = f'/dev/video{i}'
+            if os.path.exists(device_path):
+                video_devices.append((i, device_path))
+        
+        # Test each potential camera
+        for i in range(max_test):
+            # Try multiple backends
+            for backend in [cv2.CAP_V4L2, cv2.CAP_ANY]:
+                try:
+                    cap = cv2.VideoCapture(i, backend)
+                    if cap.isOpened():
+                        # Try to read a frame to verify it works
+                        ret, frame = cap.read()
+                        if ret and frame is not None:
+                            backend_name = cap.getBackendName()
+                            available.append({
+                                'index': i,
+                                'name': f'Camera {i}',
+                                'backend': backend_name,
+                                'device': f'/dev/video{i}' if (i, f'/dev/video{i}') in video_devices else 'Unknown'
+                            })
+                            cap.release()
+                            break  # Found working camera, no need to try other backends
+                    cap.release()
+                except Exception as e:
+                    pass
+        
+        # If no cameras found but /dev/video* exists, add them with warning
+        if not available and video_devices:
+            for idx, device in video_devices:
                 available.append({
-                    'index': i,
-                    'name': f'Camera {i}',
-                    'backend': backend
+                    'index': idx,
+                    'name': f'Camera {idx} (Permission Issue)',
+                    'backend': 'None',
+                    'device': device,
+                    'warning': 'Device exists but cannot be opened - check permissions'
                 })
-            finally:
-                cap.release()
+        
         return available
     
     def __init__(self, camera_index: int = 0):
@@ -66,19 +95,52 @@ class CameraManager:
             True if camera started successfully, False otherwise
         """
         try:
-            self.camera = cv2.VideoCapture(self.camera_index)
-            if not self.camera.isOpened():
-                return False
+            # Try different backends in order of preference
+            backends = [
+                cv2.CAP_V4L2,      # Linux Video4Linux2
+                cv2.CAP_ANY,       # Auto-detect
+                cv2.CAP_GSTREAMER  # GStreamer fallback
+            ]
             
-            # Set camera properties
-            self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-            self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-            self.camera.set(cv2.CAP_PROP_FPS, self.fps)
+            last_error = None
+            for backend in backends:
+                try:
+                    self.camera = cv2.VideoCapture(self.camera_index, backend)
+                    
+                    if self.camera.isOpened():
+                        # Try to read a test frame to verify camera works
+                        ret, test_frame = self.camera.read()
+                        if ret and test_frame is not None:
+                            # Set camera properties
+                            self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                            self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                            self.camera.set(cv2.CAP_PROP_FPS, self.fps)
+                            
+                            self.is_active = True
+                            print(f"✓ Camera {self.camera_index} started with backend: {backend}")
+                            return True
+                        else:
+                            self.camera.release()
+                            last_error = f"Camera opened but cannot read frames (backend {backend})"
+                    else:
+                        self.camera = None
+                        last_error = f"Cannot open camera with backend {backend}"
+                except Exception as e:
+                    last_error = f"Backend {backend} error: {str(e)}"
+                    if self.camera:
+                        self.camera.release()
+                        self.camera = None
             
-            self.is_active = True
-            return True
+            # All backends failed
+            error_msg = last_error or "All backends failed"
+            print(f"✗ Failed to start camera {self.camera_index}: {error_msg}")
+            print(f"  Hint: Check if user is in 'video' group: groups | grep video")
+            print(f"  Hint: Check camera permissions: ls -l /dev/video{self.camera_index}")
+            return False
+            
         except Exception as e:
-            print(f"Error starting camera: {e}")
+            print(f"✗ Error starting camera: {e}")
+            print(f"  Hint: Ensure OpenCV is properly installed: pip install opencv-python")
             return False
     
     def stop(self):

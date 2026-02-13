@@ -1,0 +1,27 @@
+{
+  "user_id": "user_nrc34keut",
+  "companion_id": "dcc1d13a-a9aa-44c3-80ac-2ea6527161ab",
+  "user_name": null,
+  "user_interests": [],
+  "user_dreams": [],
+  "user_fears": [],
+  "intimacy_level": 0.048,
+  "affection_level": 0.0,
+  "familiarity_level": 0.02,
+  "emotional_openness": 0.21000000000000002,
+  "interactions_count": 2,
+  "conversation_history": [
+    {
+      "timestamp": "2026-02-12T15:52:07.880288",
+      "user": "how are you",
+      "companion": "I'm here with you."
+    },
+    {
+      "timestamp": "2026-02-12T15:52:14.120093",
+      "user": "can you connect to camera and see me",
+      "companion": "I'm here with you."
+    }
+  ],
+  "last_interaction": "2026-02-12T15:52:14.120101",
+  "created_at": "2026-02-12T02:24:58.711051"
+}

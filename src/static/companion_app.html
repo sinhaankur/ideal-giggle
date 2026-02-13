@@ -268,6 +268,40 @@
             font-family: 'Monaco', monospace;
         }
 
+        /* Retro-styled custom dropdowns (non-native look) */
+        .retro-select-wrapper {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .retro-select {
+            width: 100%;
+            padding: 6px 26px 6px 8px;
+            border: 2px solid #000;
+            border-radius: 0;
+            background: #fff;
+            font-size: 0.85em;
+            font-family: 'Monaco', monospace;
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+        }
+
+        .retro-select-arrow {
+            position: absolute;
+            right: 4px;
+            top: 50%;
+            transform: translateY(-50%);
+            border: 2px solid #000;
+            background: #000;
+            color: #fff;
+            font-size: 10px;
+            padding: 0 4px;
+            line-height: 1.2;
+            pointer-events: none;
+        }
+
         .trait-slider {
             display: flex;
             gap: 6px;
@@ -315,6 +349,138 @@
             background: #000;
             color: #fff;
         }
+
+        .rules-help {
+            display: inline-block;
+            margin-left: 4px;
+            padding: 0 4px;
+            border: 1px solid #000;
+            font-size: 0.7em;
+            cursor: help;
+            background: #fff;
+        }
+
+        .header-btn.listening {
+            background: #000;
+            color: #00ff66;
+            box-shadow: 0 0 6px rgba(0, 255, 102, 0.8);
+        }
+
+        .header-btn:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
+        .voice-preview {
+            display: inline-flex;
+            margin-left: 6px;
+            gap: 2px;
+            height: 12px;
+            align-items: flex-end;
+        }
+
+        .voice-bar {
+            width: 3px;
+            height: 2px;
+            background: #000;
+            border: 1px solid #000;
+        }
+
+        /* Location status styling */
+        #locationStatus {
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border-radius: 2px;
+            padding: 2px 4px;
+        }
+
+        #locationStatus:hover {
+            background: #f0f0f0;
+            border: 1px solid #000;
+        }
+
+        /* Model selector styling */
+        #modelSelector {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        #aiModelSelect {
+            width: auto !important;
+            font-size: 0.75em !important;
+            padding: 2px 4px !important;
+        }
+
+        .calendar-sync-content {
+            font-size: 0.9em;
+        }
+
+        .calendar-sync-content p {
+            margin-bottom: 10px;
+        }
+
+        .calendar-providers {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin: 10px 0 12px;
+        }
+
+        .calendar-provider-btn {
+            flex: 1 1 calc(50% - 6px);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 8px;
+            border: 2px solid #000;
+            background: #fff;
+            cursor: pointer;
+            font-size: 0.8em;
+            text-align: left;
+        }
+
+        .calendar-provider-btn:hover {
+            background: #000;
+            color: #fff;
+        }
+
+        .calendar-provider-btn.active {
+            background: #000;
+            color: #fff;
+        }
+
+        .calendar-logo {
+            width: 16px;
+            height: 16px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        .calendar-logo-google {
+            background: #4285F4;
+        }
+
+        .calendar-logo-outlook {
+            background: #0078D4;
+        }
+
+        .calendar-logo-apple {
+            background: #000;
+        }
+
+        .calendar-logo-ical {
+            background: #d9534f;
+        }
+
+        .calendar-settings {
+            margin-top: 8px;
+        }
     </style>
 </head>
 <body>
@@ -333,8 +499,34 @@
                                 <button class="header-btn" id="cameraBtn">Camera</button>
                             </div>
                             <div id="aiStatus" class="ai-status">AI: checking…</div>
+                            <div id="modelSelector" style="font-size: 0.75em; margin-top: 4px; font-family: 'Monaco', monospace;">
+                                Model:
+                                <span class="retro-select-wrapper" style="display: inline-block; min-width: 100px; margin-left: 4px; vertical-align: middle;">
+                                    <select id="aiModelSelect" class="retro-select"></select>
+                                    <span class="retro-select-arrow">▼</span>
+                                </span>
+                            </div>
+                            <div id="locationStatus" style="font-size: 0.75em; margin-top: 4px; font-family: 'Monaco', monospace; color: #000;">
+                                📍 --
+                            </div>
                             <div id="emotionStatus" style="font-size: 0.75em; margin-top: 4px; font-family: 'Monaco', monospace; color: #000; background: #fff; padding: 2px 4px; border: 1px solid #000; display: none;">
                                 You look: --
+                            </div>
+                            <div id="voiceStatus" style="font-size: 0.75em; margin-top: 4px; font-family: 'Monaco', monospace; color: #000;">
+                                Mic: idle
+                                <span style="margin-left: 6px;">
+                                    <span class="retro-select-wrapper" style="min-width: 120px;">
+                                        <select id="micSelect" class="retro-select"></select>
+                                        <span class="retro-select-arrow">▼</span>
+                                    </span>
+                                    <span id="voicePreview" class="voice-preview">
+                                        <span class="voice-bar"></span>
+                                        <span class="voice-bar"></span>
+                                        <span class="voice-bar"></span>
+                                        <span class="voice-bar"></span>
+                                        <span class="voice-bar"></span>
+                                    </span>
+                                </span>
                             </div>
                         </div>
                     </header>
@@ -371,9 +563,26 @@
                         <h1 class="modal-title">Camera Monitor</h1>
                         <p id="cameraStatus" style="margin-bottom: 8px; font-size: 0.9em;">Status: idle</p>
 
+                        <p id="cameraDevicesInfo" style="margin-bottom: 6px; font-size: 0.8em; font-family: 'Monaco', monospace; color: #333;">
+                            Detecting cameras on this system...
+                        </p>
+
                         <div style="text-align: center; margin-bottom: 10px;">
-                            <img id="cameraFeed" src="" alt="Camera feed will appear here" 
+                            <video id="localCameraPreview" autoplay muted playsinline
+                                   style="max-width: 100%; border: 2px solid #000; display: none; background: #000;"></video>
+                        </div>
+
+                        <div style="text-align: center; margin-bottom: 10px;">
+                            <img id="cameraFeed" src="" alt="Server-side AI feed will appear here" 
                                  style="max-width: 100%; border: 2px solid #000; display: none;">
+                        </div>
+
+                        <div style="margin-bottom: 8px; font-family: 'Monaco', monospace; font-size: 0.8em;">
+                            <label for="cameraSelect">Camera:</label>
+                            <div class="retro-select-wrapper" style="margin-top: 4px;">
+                                <select id="cameraSelect" class="retro-select"></select>
+                                <span class="retro-select-arrow">▼</span>
+                            </div>
                         </div>
 
                         <!-- Minimal emotion readout below the preview -->
@@ -408,32 +617,41 @@
 
                             <div class="form-group">
                                 <label>Gender Identity</label>
-                                <select id="genderIdentity">
+                                <div class="retro-select-wrapper">
+                                    <select id="genderIdentity" class="retro-select">
                                     <option value="feminine" selected>Feminine</option>
                                     <option value="masculine">Masculine</option>
                                     <option value="nonbinary">Non-binary</option>
                                     <option value="fluid">Fluid</option>
-                                </select>
+                                    </select>
+                                    <span class="retro-select-arrow">▼</span>
+                                </div>
                             </div>
 
                             <div class="form-group">
                                 <label>Primary Archetype</label>
-                                <select id="primaryArchetype">
+                                <div class="retro-select-wrapper">
+                                    <select id="primaryArchetype" class="retro-select">
                                     <option value="warm" selected>Warm</option>
                                     <option value="playful">Playful</option>
                                     <option value="intellectual">Intellectual</option>
                                     <option value="mysterious">Mysterious</option>
-                                </select>
+                                    </select>
+                                    <span class="retro-select-arrow">▼</span>
+                                </div>
                             </div>
 
                             <div class="form-group">
                                 <label>Voice Type</label>
-                                <select id="voiceType">
+                                <div class="retro-select-wrapper">
+                                    <select id="voiceType" class="retro-select">
                                     <option value="warm_alto" selected>Warm Alto</option>
                                     <option value="deep_bass">Deep Bass</option>
                                     <option value="bright_soprano">Bright Soprano</option>
                                     <option value="neutral_synth">Neutral Synth</option>
-                                </select>
+                                    </select>
+                                    <span class="retro-select-arrow">▼</span>
+                                </div>
                             </div>
 
                             <div class="form-group">
@@ -545,16 +763,22 @@
                 
                 <div class="calendar-providers">
                     <button class="calendar-provider-btn" data-provider="google">
-                        <span>🔴</span> Google Calendar
+                        <span class="calendar-logo calendar-logo-google">G</span>
+                        <span>Google Calendar</span>
                     </button>
                     <button class="calendar-provider-btn" data-provider="outlook">
-                        <span>🔵</span> Microsoft Outlook
+                        <span class="calendar-logo calendar-logo-outlook">O</span>
+                        <span>Microsoft Outlook</span>
                     </button>
                     <button class="calendar-provider-btn" data-provider="apple">
-                        <span>⚪</span> Apple Calendar
+                        <span class="calendar-logo calendar-logo-apple">
+                            &#xF8FF;
+                        </span>
+                        <span>Apple Calendar</span>
                     </button>
                     <button class="calendar-provider-btn" data-provider="ical">
-                        <span>📋</span> iCalendar (ICS)
+                        <span class="calendar-logo calendar-logo-ical">ICS</span>
+                        <span>iCalendar (ICS)</span>
                     </button>
                 </div>
 
@@ -606,6 +830,75 @@
         let cameraInterval = null;
         let emotionUpdateCounter = 0;
 
+        // Local browser camera preview stream
+        let localCameraStream = null;
+
+        // Geolocation state
+        let currentLocation = null;
+        let locationPermissionDenied = false;
+
+        // AI Model state
+        let availableModels = [];
+        let selectedModel = 'mistral';
+
+        async function requestGeolocation() {
+            if (!navigator.geolocation) {
+                console.warn('Geolocation API not supported');
+                locationPermissionDenied = true;
+                return null;
+            }
+
+            return new Promise((resolve) => {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        currentLocation = {
+                            latitude: position.coords.latitude,
+                            longitude: position.coords.longitude,
+                            accuracy: position.coords.accuracy,
+                            timestamp: new Date().toISOString()
+                        };
+                        console.log('Location acquired:', currentLocation);
+                        updateLocationStatus();
+                        resolve(currentLocation);
+                    },
+                    (error) => {
+                        console.warn('Geolocation error:', error.message);
+                        if (error.code === 1) {
+                            locationPermissionDenied = true;
+                        }
+                        updateLocationStatus();
+                        resolve(null);
+                    },
+                    {
+                        timeout: 10000,
+                        enableHighAccuracy: false
+                    }
+                );
+            });
+        }
+
+        function updateLocationStatus() {
+            const statusEl = document.getElementById('locationStatus');
+            if (!statusEl) return;
+
+            if (currentLocation) {
+                const lat = currentLocation.latitude.toFixed(3);
+                const lon = currentLocation.longitude.toFixed(3);
+                statusEl.textContent = `📍 ${lat}, ${lon}`;
+                statusEl.title = `Latitude: ${currentLocation.latitude}\nLongitude: ${currentLocation.longitude}\nAccuracy: ${currentLocation.accuracy.toFixed(0)}m`;
+            } else if (locationPermissionDenied) {
+                statusEl.textContent = '📍 Permission denied';
+                statusEl.title = 'Location permission was denied. Click to try again.';
+                statusEl.style.cursor = 'pointer';
+                statusEl.addEventListener('click', requestGeolocation, { once: true });
+            } else {
+                statusEl.textContent = '📍 --';
+                statusEl.title = 'Click to share your location';
+                statusEl.style.cursor = 'pointer';
+                statusEl.addEventListener('click', requestGeolocation, { once: true });
+            }
+        }
+
         async function refreshAIStatus() {
             const el = document.getElementById('aiStatus');
             if (!el) return;
@@ -620,8 +913,95 @@
             }
         }
 
+        async function loadAvailableModels() {
+            const select = document.getElementById('aiModelSelect');
+            if (!select) return;
+
+            try {
+                const resp = await fetch(`${API_BASE}/ai/models`, {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+                const data = await resp.json();
+
+                select.innerHTML = '';
+
+                if (data.success && Array.isArray(data.models) && data.models.length > 0) {
+                    availableModels = data.models.map(m => m.name.split(':')[0]); // Extract base model name
+                    
+                    // Create options from available models
+                    const uniqueModels = [...new Set(availableModels)]; // Remove duplicates
+                    uniqueModels.forEach((modelName, idx) => {
+                        const option = document.createElement('option');
+                        option.value = modelName;
+                        option.textContent = modelName;
+                        if (modelName === 'mistral') {
+                            option.selected = true;
+                            selectedModel = modelName;
+                        }
+                        select.appendChild(option);
+                    });
+
+                    select.disabled = false;
+                } else {
+                    const option = document.createElement('option');
+                    option.value = 'mistral';
+                    option.textContent = 'mistral (default)';
+                    option.selected = true;
+                    select.appendChild(option);
+                    selectedModel = 'mistral';
+                }
+
+                // Add change listener
+                select.addEventListener('change', (e) => {
+                    selectedModel = e.target.value;
+                    if (currentCompanion) {
+                        setCompanionModel(currentCompanion.companion_id, selectedModel);
+                    }
+                });
+            } catch (error) {
+                console.error('Error loading models:', error);
+                const select = document.getElementById('aiModelSelect');
+                if (select) {
+                    select.innerHTML = '';
+                    const option = document.createElement('option');
+                    option.value = 'mistral';
+                    option.textContent = 'mistral (default)';
+                    select.appendChild(option);
+                }
+            }
+        }
+
+        async function setCompanionModel(companionId, modelName) {
+            try {
+                const resp = await fetch(`${API_BASE}/companion/set-model/${companionId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ai_model: modelName }),
+                    credentials: 'include'
+                });
+
+                const data = await resp.json();
+                if (data.success) {
+                    console.log(`✓ Switched companion to ${modelName}`);
+                    selectedModel = modelName;
+                }
+            } catch (error) {
+                console.error('Error setting model:', error);
+            }
+        }
+
         // Initialize
         document.addEventListener('DOMContentLoaded', async () => {
+            // Print browser permission guidance to console
+            console.log('%c🎥 Camera & 📍 Location Setup Guide', 'font-size: 14px; font-weight: bold;');
+            console.log('%cFirefox:', 'font-weight: bold;');
+            console.log('📍 Location: Click the location icon (📍 --) in the header to request permission.');
+            console.log('🎥 Camera: The browser will ask for permission when you click Start in Camera modal.');
+            console.log('🔒 HTTPS: If accessing over a network IP (not localhost), switch to HTTPS.');
+            console.log('%cDebugging:', 'font-weight: bold;');
+            console.log('Available cameras and microphones have been logged below:');
+            console.log('---');
             // Get or create user ID
             let userId = localStorage.getItem('companionUserId');
             if (!userId) {
@@ -633,6 +1013,12 @@
             // Check AI/Ollama status
             refreshAIStatus();
             setInterval(refreshAIStatus, 30000);
+
+            // Load available AI models
+            await loadAvailableModels();
+
+            // Request geolocation on startup
+            await requestGeolocation();
 
             // Load companions list
             await loadCompanionsList();
@@ -653,6 +1039,20 @@
             document.getElementById('calendarBtn').addEventListener('click', openCalendarSync);
             document.getElementById('cancelBtn').addEventListener('click', closeCreateModal);
             document.getElementById('editCancelBtn').addEventListener('click', closeEditModal);
+
+            const calendarCancelBtn = document.getElementById('calendarCancelBtn');
+            if (calendarCancelBtn) {
+                calendarCancelBtn.addEventListener('click', closeCalendarSync);
+            }
+            const calendarConnectBtn = document.getElementById('calendarConnectBtn');
+            if (calendarConnectBtn) {
+                calendarConnectBtn.addEventListener('click', connectCalendar);
+            }
+            document.querySelectorAll('.calendar-provider-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    selectCalendarProvider(btn.dataset.provider, btn);
+                });
+            });
 
             // Camera modal controls
             const cameraStartBtn = document.getElementById('cameraStartBtn');
@@ -699,6 +1099,11 @@
 
             // Load emotion model
             // Emotion model loading (camera widget not currently rendered in this minimal rescue layout)
+
+            // Load available devices for camera & microphone
+            loadAvailableCameras();
+            loadAvailableMics();
+            debugMediaDevices();
         });
 
         // Emotion Detection Functions
@@ -738,14 +1143,27 @@
             const status = document.getElementById('cameraStatus');
             const feed = document.getElementById('cameraFeed');
 
+            // Prefer the user-selected camera index when available
+            let cameraIndex = 0;
+            const cameraSelect = document.getElementById('cameraSelect');
+            if (cameraSelect && cameraSelect.value !== '') {
+                const parsed = parseInt(cameraSelect.value, 10);
+                if (!Number.isNaN(parsed)) {
+                    cameraIndex = parsed;
+                }
+            }
+
             try {
                 if (status) status.textContent = 'Status: starting camera...';
+
+                // Start local browser preview (privacy: stays on this device)
+                startLocalCameraPreview();
 
                 const resp = await fetch(`${API_BASE}/vision/start`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        camera_index: 0,
+                        camera_index: cameraIndex,
                         enable_audio: false
                     }),
                     // Ensure browser cookies/session are sent with camera control
@@ -772,8 +1190,112 @@
             }
         }
 
+        async function loadAvailableCameras() {
+            const select = document.getElementById('cameraSelect');
+            const info = document.getElementById('cameraDevicesInfo');
+            if (!select) return;
+
+            try {
+                const resp = await fetch(`${API_BASE}/vision/cameras`, {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+                const data = await resp.json();
+
+                select.innerHTML = '';
+
+                if (data && Array.isArray(data.cameras) && data.cameras.length > 0) {
+                    if (info) {
+                        const summary = data.cameras
+                            .map(cam => (typeof cam.index !== 'undefined' ? cam.index : '?'))
+                            .join(', ');
+                        info.textContent = `Found ${data.cameras.length} camera(s) at index: ${summary}`;
+                    }
+                    select.disabled = false;
+                    data.cameras.forEach((cam, idx) => {
+                        const option = document.createElement('option');
+                        option.value = (typeof cam.index !== 'undefined') ? cam.index : idx;
+                        option.textContent = cam.name || `Camera ${option.value}`;
+                        select.appendChild(option);
+                    });
+                } else {
+                    if (info) {
+                        info.textContent = 'No cameras detected by the server. We will still try a direct browser preview when you press Start.';
+                    }
+                    const option = document.createElement('option');
+                    option.value = '';
+                    option.textContent = 'No cameras detected';
+                    select.appendChild(option);
+                    select.disabled = true;
+                }
+            } catch (error) {
+                console.error('Error loading cameras:', error);
+                select.innerHTML = '';
+                if (info) {
+                    info.textContent = 'Error loading cameras from backend. See browser console for details.';
+                }
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = 'Error loading cameras';
+                select.appendChild(option);
+                select.disabled = true;
+            }
+        }
+
+        async function loadAvailableMics() {
+            const micSelect = document.getElementById('micSelect');
+            if (!micSelect || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+                return;
+            }
+
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const mics = devices.filter(d => d.kind === 'audioinput');
+
+                micSelect.innerHTML = '';
+
+                if (!mics.length) {
+                    const option = document.createElement('option');
+                    option.value = '';
+                    option.textContent = 'No microphones found';
+                    micSelect.appendChild(option);
+                    micSelect.disabled = true;
+                    return;
+                }
+
+                micSelect.disabled = false;
+                mics.forEach((mic, index) => {
+                    const option = document.createElement('option');
+                    option.value = mic.deviceId;
+                    option.textContent = mic.label || `Microphone ${index + 1}`;
+                    micSelect.appendChild(option);
+                });
+                console.log('Available microphones:', mics);
+            } catch (error) {
+                console.error('Error loading microphones:', error);
+            }
+        }
+
+        // Debug: Log all available media devices on startup
+        async function debugMediaDevices() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+                console.log('enumerateDevices not supported');
+                return;
+            }
+
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                console.log('=== Available Media Devices ===');
+                devices.forEach(device => {
+                    console.log(`${device.kind}: ${device.label || '(unlabeled)'} (id: ${device.deviceId})`);
+                });
+            } catch (error) {
+                console.error('Error enumerating devices:', error);
+            }
+        }
+
         async function stopCameraMonitoring() {
-            if (!cameraMonitoring && !cameraInterval) return;
+            if (!cameraMonitoring && !cameraInterval && !localCameraStream) return;
 
             const status = document.getElementById('cameraStatus');
             const feed = document.getElementById('cameraFeed');
@@ -798,6 +1320,9 @@
                 feed.style.display = 'none';
                 feed.src = '';
             }
+
+            // Stop local preview as well
+            stopLocalCameraPreview();
         }
 
         async function updateCameraFeed() {
@@ -813,6 +1338,7 @@
                 const data = await resp.json();
                 if (data.image) {
                     feed.src = 'data:image/jpeg;base64,' + data.image;
+                    feed.style.display = 'block';
                 }
 
                 // Throttled emotion analysis (every 3rd frame)
@@ -823,6 +1349,54 @@
                 }
             } catch (error) {
                 console.error('Error updating camera feed:', error);
+            }
+        }
+
+        async function startLocalCameraPreview() {
+            const video = document.getElementById('localCameraPreview');
+            if (!video || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+            if (localCameraStream) return;
+
+            try {
+                const constraints = {
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: 'user'
+                    },
+                    audio: false
+                };
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                localCameraStream = stream;
+                video.srcObject = stream;
+                video.style.display = 'block';
+            } catch (error) {
+                console.error('Error starting local camera preview:', error);
+                const info = document.getElementById('cameraDevicesInfo');
+                if (info) {
+                    // Provide more detailed error feedback
+                    let errorMsg = 'Browser could not access a camera.';
+                    if (error.name === 'NotAllowedError') {
+                        errorMsg += ' Permission was denied. Check the address bar and allow camera access.';
+                    } else if (error.name === 'NotFoundError') {
+                        errorMsg += ' No camera device found.';
+                    } else if (error.name === 'NotReadableError') {
+                        errorMsg += ' Camera is in use by another application.';
+                    }
+                    info.textContent = errorMsg;
+                }
+            }
+        }
+
+        function stopLocalCameraPreview() {
+            const video = document.getElementById('localCameraPreview');
+            if (localCameraStream) {
+                localCameraStream.getTracks().forEach(track => track.stop());
+                localCameraStream = null;
+            }
+            if (video) {
+                video.srcObject = null;
+                video.style.display = 'none';
             }
         }
 
@@ -894,9 +1468,11 @@
             }
         }
 
-        // Visualization Functions
+        // Visualization Functions (safe even if the visualizer element is missing)
         function showVisualization() {
             const viz = document.getElementById('aiVisualization');
+            if (!viz) return; // no-op in minimal layout
+
             viz.classList.add('active');
             
             // Reset animation
@@ -911,6 +1487,7 @@
 
         function hideVisualization() {
             const viz = document.getElementById('aiVisualization');
+            if (!viz) return;
             setTimeout(() => {
                 viz.classList.remove('active');
             }, 300);
@@ -920,12 +1497,27 @@
         let voiceRecognition = null;
         let isListening = false;
 
+        // Voice preview (EQ-style) state
+        let voicePreviewAudioContext = null;
+        let voicePreviewAnalyser = null;
+        let voicePreviewSource = null;
+        let voicePreviewStream = null;
+        let voicePreviewAnimationId = null;
+
         function initVoiceRecognition() {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             
             if (!SpeechRecognition) {
                 console.warn('Speech Recognition API not supported in this browser');
-                document.getElementById('voiceBtn').style.display = 'none';
+                const btn = document.getElementById('voiceBtn');
+                const status = document.getElementById('voiceStatus');
+                if (status) {
+                    status.textContent = 'Voice not supported in this browser';
+                }
+                if (btn) {
+                    btn.disabled = true;
+                    btn.title = 'Voice recognition is not available in this browser';
+                }
                 return false;
             }
 
@@ -938,8 +1530,15 @@
                 isListening = true;
                 const btn = document.getElementById('voiceBtn');
                 const status = document.getElementById('voiceStatus');
-                btn.classList.add('listening');
-                status.textContent = 'Listening...';
+                if (btn) {
+                    btn.classList.add('listening');
+                }
+                if (status) {
+                    status.textContent = 'Listening...';
+                }
+
+                // Start local audio preview (EQ bars)
+                startVoicePreview();
             };
 
             voiceRecognition.onresult = (event) => {
@@ -964,12 +1563,197 @@
 
         function toggleVoiceCommand() {
             if (!voiceRecognition && !initVoiceRecognition()) return;
+
+            const status = document.getElementById('voiceStatus');
+            const btn = document.getElementById('voiceBtn');
+
             if (isListening) {
                 voiceRecognition.stop();
                 isListening = false;
+                if (status) {
+                    status.textContent = 'Mic: idle';
+                }
+                if (btn) {
+                    btn.classList.remove('listening');
+                }
+
+                // Stop local audio preview
+                stopVoicePreview();
             } else {
                 voiceRecognition.start();
-                isListening = true;
+                // onstart handler will update isListening and UI
+            }
+        }
+
+        async function startVoicePreview() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+            if (voicePreviewStream) return;
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                voicePreviewStream = stream;
+
+                voicePreviewAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+                voicePreviewAnalyser = voicePreviewAudioContext.createAnalyser();
+                voicePreviewAnalyser.fftSize = 256;
+
+                voicePreviewSource = voicePreviewAudioContext.createMediaStreamSource(stream);
+                voicePreviewSource.connect(voicePreviewAnalyser);
+
+                const preview = document.getElementById('voicePreview');
+                const bars = preview ? preview.querySelectorAll('.voice-bar') : [];
+                const bufferLength = voicePreviewAnalyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+
+                const render = () => {
+                    if (!voicePreviewAnalyser || !preview) return;
+                    voicePreviewAnalyser.getByteFrequencyData(dataArray);
+
+                    const groupSize = Math.floor(bufferLength / Math.max(bars.length, 1));
+                    bars.forEach((bar, i) => {
+                        let sum = 0;
+                        for (let j = i * groupSize; j < (i + 1) * groupSize; j++) {
+                            sum += dataArray[j] || 0;
+                        }
+                        const avg = sum / groupSize || 0;
+                        const height = 2 + (avg / 255) * 10; // 2px to ~12px
+                        bar.style.height = `${height.toFixed(0)}px`;
+                    });
+
+                    voicePreviewAnimationId = requestAnimationFrame(render);
+                };
+
+                voicePreviewAnimationId = requestAnimationFrame(render);
+            } catch (error) {
+                console.error('Error starting voice preview:', error);
+            }
+        }
+
+        function stopVoicePreview() {
+            if (voicePreviewAnimationId) {
+                cancelAnimationFrame(voicePreviewAnimationId);
+                voicePreviewAnimationId = null;
+            }
+
+            if (voicePreviewStream) {
+                voicePreviewStream.getTracks().forEach(track => track.stop());
+                voicePreviewStream = null;
+            }
+
+            if (voicePreviewAudioContext) {
+                voicePreviewAudioContext.close();
+                voicePreviewAudioContext = null;
+                voicePreviewAnalyser = null;
+                voicePreviewSource = null;
+            }
+
+            const preview = document.getElementById('voicePreview');
+            if (preview) {
+                preview.querySelectorAll('.voice-bar').forEach(bar => {
+                    bar.style.height = '2px';
+                });
+            }
+        }
+
+        // Calendar Sync Functions (global scope so event handlers can use them)
+        let selectedCalendarProvider = null;
+
+        function openCalendarSync() {
+            const calendarModal = document.getElementById('calendarModal');
+            if (calendarModal) {
+                calendarModal.classList.add('open');
+            }
+            resetCalendarForm();
+        }
+
+        function closeCalendarSync() {
+            const calendarModal = document.getElementById('calendarModal');
+            if (calendarModal) {
+                calendarModal.classList.remove('open');
+            }
+        }
+
+        function resetCalendarForm() {
+            selectedCalendarProvider = null;
+            const status = document.getElementById('calendarStatus');
+            if (status) status.textContent = '';
+            document.querySelectorAll('.calendar-provider-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+        }
+
+        function selectCalendarProvider(provider, element) {
+            selectedCalendarProvider = provider;
+            document.querySelectorAll('.calendar-provider-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            if (element) {
+                element.classList.add('active');
+            }
+        }
+
+        async function connectCalendar() {
+            if (!selectedCalendarProvider) {
+                alert('Please select a calendar provider');
+                return;
+            }
+
+            const status = document.getElementById('calendarStatus');
+            if (status) status.textContent = '🔄 Connecting...';
+
+            try {
+                // Simulated calendar connection. In production this would use OAuth2
+                // or vendor APIs; here we just store user preferences locally.
+                const connectedCalendars = {
+                    google: 'Google Calendar',
+                    outlook: 'Microsoft Outlook',
+                    apple: 'Apple Calendar',
+                    ical: 'iCalendar (ICS)'
+                };
+
+                const providerUrls = {
+                    google: 'https://calendar.google.com',
+                    outlook: 'https://outlook.live.com/calendar/0/',
+                    apple: 'https://www.icloud.com/calendar/',
+                    ical: null
+                };
+
+                // Simulate API delay
+                await new Promise(resolve => setTimeout(resolve, 1500));
+
+                const shareFreeBusy = document.getElementById('shareFreeBusy').checked;
+                const autoReminders = document.getElementById('autoReminders').checked;
+
+                if (currentCompanion) {
+                    const calendarPrefs = {
+                        provider: selectedCalendarProvider,
+                        connectedTo: connectedCalendars[selectedCalendarProvider],
+                        shareFreeBusy,
+                        autoReminders,
+                        connectedAt: new Date().toISOString()
+                    };
+
+                    console.log('Calendar preferences:', calendarPrefs);
+
+                    if (status) {
+                        status.innerHTML = `✓ Connected to <strong>${calendarPrefs.connectedTo}</strong>!<br><small>Your companion can now reference your schedule in a privacy-respecting way.</small>`;
+                    }
+
+                    const url = providerUrls[selectedCalendarProvider];
+                    if (url) {
+                        // Open the chosen calendar service in a new tab so the user
+                        // can complete any sign-in or configuration there.
+                        window.open(url, '_blank', 'noopener');
+                    }
+
+                    setTimeout(() => {
+                        closeCalendarSync();
+                        if (status) status.textContent = '';
+                    }, 2000);
+                }
+            } catch (error) {
+                console.error('Calendar connection error:', error);
+                if (status) status.textContent = '❌ Connection failed. Please try again.';
             }
         }
 
@@ -1015,87 +1799,6 @@
 
                 const data = await response.json();
                 if (data.success) {
-        // Calendar Sync Functions
-        let selectedCalendarProvider = null;
-
-        function openCalendarSync() {
-            const calendarModal = document.getElementById('calendarModal');
-            calendarModal.classList.add('open');
-            resetCalendarForm();
-        }
-
-        function closeCalendarSync() {
-            const calendarModal = document.getElementById('calendarModal');
-            calendarModal.classList.remove('open');
-        }
-
-        function resetCalendarForm() {
-            selectedCalendarProvider = null;
-            document.getElementById('calendarStatus').textContent = '';
-            document.querySelectorAll('.calendar-provider-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-        }
-
-        function selectCalendarProvider(provider) {
-            selectedCalendarProvider = provider;
-            document.querySelectorAll('.calendar-provider-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            event.target.closest('.calendar-provider-btn').classList.add('active');
-        }
-
-        async function connectCalendar() {
-            if (!selectedCalendarProvider) {
-                alert('Please select a calendar provider');
-                return;
-            }
-
-            const status = document.getElementById('calendarStatus');
-            status.textContent = '🔄 Connecting...';
-
-            try {
-                // Simulated calendar connection
-                // In production, this would use OAuth2 or calendar APIs
-                const connectedCalendars = {
-                    google: 'Google Calendar',
-                    outlook: 'Microsoft Outlook',
-                    apple: 'Apple Calendar',
-                    ical: 'iCalendar (ICS)'
-                };
-
-                // Simulate API delay
-                await new Promise(resolve => setTimeout(resolve, 1500));
-
-                const shareFreeBusy = document.getElementById('shareFreeBusy').checked;
-                const autoReminders = document.getElementById('autoReminders').checked;
-
-                // Store calendar preferences
-                if (currentCompanion) {
-                    const calendarPrefs = {
-                        provider: selectedCalendarProvider,
-                        connectedTo: connectedCalendars[selectedCalendarProvider],
-                        shareFreeBusy: shareFreeBusy,
-                        autoReminders: autoReminders,
-                        connectedAt: new Date().toISOString()
-                    };
-
-                    // Simulate saving to backend
-                    console.log('Calendar preferences:', calendarPrefs);
-                    
-                    status.innerHTML = `✓ Connected to <strong>${calendarPrefs.connectedTo}</strong>!<br><small>Your companion can now access your calendar.</small>`;
-                    
-                    setTimeout(() => {
-                        closeCalendarSync();
-                        status.textContent = '';
-                    }, 2000);
-                }
-            } catch (error) {
-                console.error('Calendar connection error:', error);
-                status.textContent = '❌ Connection failed. Please try again.';
-            }
-        }
-
                     console.log('✅ Default companion Anita created');
                     await loadCompanion(data.companion_id);
                     addMessage(`Hi! I'm ${data.name}. I'm so excited to meet you. What's your name?`, 'companion');
@@ -1152,11 +1855,23 @@
             const rules = (comp.core_rules && comp.core_rules.length)
                 ? comp.core_rules
                 : [
-                    'Every life matters',
-                    "Listen and understand but don\'t judge",
-                    "Solutions can be good but only if it doesn\'t hurt.",
-                    'Try to be empathetic'
+                    'Radically validate the user\'s feelings without judgment; acknowledge emotion before facts.',
+                    'Be gently proactive with low-pressure check-ins when you sense distress or long silence.',
+                    'Collaboratively solve problems; never impose solutions and discard anything that could cause harm.',
+                    'Maintain continuity of care by remembering and softly referencing important details over time.',
+                    'Treat safety as sacred: if serious risk appears, gently encourage seeking human professional help with care.'
                 ];
+
+            let locationHtml = '';
+            if (currentLocation) {
+                locationHtml = `
+                    <div class="info-section">
+                        <h3>Your Location</h3>
+                        <div class="info-item">📍 ${currentLocation.latitude.toFixed(4)}, ${currentLocation.longitude.toFixed(4)}</div>
+                        <div class="info-item" style="font-size: 0.8em; color: #666;">Accuracy: ±${currentLocation.accuracy.toFixed(0)}m</div>
+                    </div>
+                `;
+            }
 
             content.innerHTML = `
                 <div class="info-section">
@@ -1198,8 +1913,16 @@
                     <div class="info-item">Interactions: ${comp.interactions_count}</div>
                 </div>
 
+                ${locationHtml}
+
                 <div class="info-section">
-                    <h3>Core Rules</h3>
+                    <h3>
+                        Core Rules
+                        <span
+                            class="rules-help"
+                            title="These rules keep the companion as a safe emotional anchor: radically validating feelings, checking in gently, solving problems together without harm, remembering important details over time, and treating safety as a sacred boundary."
+                        >?</span>
+                    </h3>
                     ${rules.map(r => `<div class=\"info-item\">• ${r}</div>`).join('')}
                 </div>
             `;
@@ -1218,7 +1941,10 @@
         }
 
         function openEditModal() {
-            if (!currentCompanion) return;
+            if (!currentCompanion) {
+                alert('Please create or load a companion first from the Info panel.');
+                return;
+            }
             
             // Populate edit form with current companion data
             document.getElementById('editCompanionName').textContent = currentCompanion.name;
@@ -1240,10 +1966,11 @@
                 const rules = currentCompanion.core_rules && currentCompanion.core_rules.length
                     ? currentCompanion.core_rules
                     : [
-                        'Every life matters',
-                        "Listen and understand but don\'t judge",
-                        "Solutions can be good but only if it doesn\'t hurt.",
-                        'Try to be empathetic'
+                        "Radically validate the user's feelings without judgment; acknowledge emotion before facts.",
+                        'Be gently proactive with low-pressure check-ins when you sense distress or long silence.',
+                        'Collaboratively solve problems; never impose solutions and discard anything that could cause harm.',
+                        'Maintain continuity of care by remembering and softly referencing important details over time.',
+                        'Treat safety as sacred: if serious risk appears, gently encourage seeking human professional help with care.'
                     ];
                 rulesArea.value = rules.join('\n');
             }
@@ -1389,6 +2116,14 @@
                     chatData.user_emotion = detectedEmotion;
                     chatData.emotion_intensity = Math.max(...Object.values(emotionScores || {}));
                 }
+
+                // Add location context if available
+                if (currentLocation) {
+                    chatData.user_location = currentLocation;
+                }
+
+                // Add selected AI model
+                chatData.ai_model = selectedModel;
 
                 const response = await fetch(`${API_BASE}/companion/chat`, {
                     method: 'POST',
