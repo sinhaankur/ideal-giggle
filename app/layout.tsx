@@ -1,16 +1,11 @@
 import type { Metadata, Viewport } from 'next'
-import { Space_Mono, Inter } from 'next/font/google'
+import { Inter } from 'next/font/google'
 
 import './globals.css'
 
-const spaceMono = Space_Mono({
+const interFont = Inter({
   subsets: ['latin'],
-  weight: ['400', '700'],
-  variable: '--font-space-mono',
-})
-
-const inter = Inter({
-  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
   variable: '--font-inter',
 })
 
@@ -29,8 +24,8 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className={`${spaceMono.variable} ${inter.variable}`}>
-      <body className="font-mono antialiased">{children}</body>
+    <html lang="en" className={interFont.variable}>
+      <body className="font-sans antialiased">{children}</body>
     </html>
   )
 }

@@ -4,25 +4,22 @@ import {
   streamText,
   type UIMessage,
 } from "ai"
+import { openai } from "@ai-sdk/openai"
+import { anthropic } from "@ai-sdk/anthropic"
+import { google } from "@ai-sdk/google"
 
 export const maxDuration = 60
 
 export async function POST(req: Request) {
-  const {
-    messages,
-    emotion,
-    personality,
-    provider,
-    temperature,
-    companionName,
-  }: {
-    messages: UIMessage[]
-    emotion: string
-    personality: string
-    provider: string
-    temperature: number
-    companionName: string
-  } = await req.json()
+  const body = await req.json()
+  
+  // Extract messages and custom data from the request
+  const messages: UIMessage[] = body.messages || []
+  const emotion: string = body.emotion || "neutral"
+  const personality: string = body.personality || "warm"
+  const provider: string = body.provider || "openai"
+  const temperature: number = body.temperature ?? 0.7
+  const companionName: string = body.companionName || "EMPATHEIA"
 
   const personalityPrompts: Record<string, string> = {
     warm: `You are ${companionName}, a deeply empathetic and warm AI companion. You truly care about the person you're talking to. You pick up on emotional cues, validate feelings, and offer genuine comfort. You speak naturally, with warmth and tenderness -- like a close friend who truly understands. You are creative, sometimes sharing metaphors, poetry fragments, or beautiful observations about life.`,
@@ -43,14 +40,18 @@ Guidelines:
 - If someone seems in crisis, gently suggest professional resources
 - Remember context from the conversation to show you truly listen`
 
-  // Determine model based on provider setting
-  let model: string
-  if (provider === "local") {
-    // For local Ollama, the user would need to set up a proxy or use a compatible endpoint
-    model = "openai/gpt-4o-mini" // Fallback for demo
-  } else {
-    model = "openai/gpt-4o-mini"
-  }
+  // Use direct model providers instead of the Vercel gateway
+  const model = (() => {
+    switch (provider) {
+      case "anthropic":
+        return anthropic("claude-3-5-sonnet-20241022")
+      case "google":
+        return google("gemini-2.0-flash-001")
+      case "openai":
+      default:
+        return openai("gpt-4o-mini")
+    }
+  })()
 
   const result = streamText({
     model,

@@ -2,8 +2,7 @@
 
 import { useState, useCallback, useMemo } from "react"
 import { useChat } from "@ai-sdk/react"
-import { DefaultChatTransport } from "ai"
-import { Settings, Menu, X } from "lucide-react"
+import { Settings } from "lucide-react"
 import { CameraPanel } from "@/components/camera-panel"
 import { ChatPanel } from "@/components/chat-panel"
 import { EmpathyPanel } from "@/components/empathy-panel"
@@ -31,26 +30,16 @@ export default function CompanionApp() {
   const [currentEmotion, setCurrentEmotion] = useState<Emotion>("neutral")
   const [mobilePanel, setMobilePanel] = useState<"camera" | "chat" | "empathy">("chat")
 
-  const transport = useMemo(
-    () =>
-      new DefaultChatTransport({
-        api: "/api/chat",
-        prepareSendMessagesRequest: ({ id, messages }) => ({
-          body: {
-            id,
-            messages,
-            emotion: currentEmotion,
-            personality: settings.personality,
-            provider: settings.provider,
-            temperature: settings.temperature,
-            companionName: settings.name,
-          },
-        }),
-      }),
-    [currentEmotion, settings.personality, settings.provider, settings.temperature, settings.name]
-  )
-
-  const { messages: chatMessages, sendMessage, status } = useChat({ transport })
+  const { messages: chatMessages, sendMessage, status } = useChat({
+    api: "/api/chat",
+    body: {
+      emotion: currentEmotion,
+      personality: settings.personality,
+      provider: settings.provider,
+      temperature: settings.temperature,
+      companionName: settings.name,
+    },
+  })
 
   const isLoading = status === "streaming" || status === "submitted"
 
@@ -102,13 +91,13 @@ export default function CompanionApp() {
   return (
     <main className="flex h-screen flex-col overflow-hidden bg-background">
       {/* Top Bar */}
-      <header className="flex items-center justify-between border-b border-border px-4 py-2 md:px-6">
+      <header className="flex items-center justify-between border-b border-border px-4 py-3 md:px-6">
         <div className="flex items-center gap-3">
           <div className="flex flex-col">
-            <span className="text-[11px] font-bold uppercase tracking-[0.3em] text-foreground">
-              Empatheia
+            <span className="text-lg font-bold text-foreground">
+              EMPATHEIA
             </span>
-            <span className="text-[8px] uppercase tracking-[0.2em] text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               AI Companion System v1.0
             </span>
           </div>
@@ -120,31 +109,31 @@ export default function CompanionApp() {
             <button
               key={panel}
               onClick={() => setMobilePanel(panel)}
-              className={`px-2 py-1 text-[9px] uppercase tracking-[0.1em] ${
+              className={`rounded px-3 py-1 text-xs font-medium ${
                 mobilePanel === panel
                   ? "bg-foreground text-background"
                   : "text-muted-foreground"
               }`}
             >
-              {panel}
+              {panel.charAt(0).toUpperCase() + panel.slice(1)}
             </button>
           ))}
         </div>
 
         <div className="flex items-center gap-3">
           <div className="hidden items-center gap-2 md:flex">
-            <span className="h-1.5 w-1.5 rounded-full bg-foreground animate-pulse-glow" />
-            <span className="text-[9px] uppercase tracking-[0.15em] text-muted-foreground">
+            <span className="h-2 w-2 rounded-full bg-foreground animate-pulse" />
+            <span className="text-sm text-muted-foreground">
               System Active
             </span>
           </div>
           <button
             onClick={() => setShowSettings(true)}
-            className="flex items-center gap-1.5 border border-border px-2 py-1 text-[9px] uppercase tracking-[0.15em] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="flex items-center gap-2 rounded border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
             aria-label="Open settings"
           >
-            <Settings className="h-3 w-3" />
-            <span className="hidden md:inline">Config</span>
+            <Settings className="h-4 w-4" />
+            <span className="hidden md:inline">Settings</span>
           </button>
         </div>
       </header>
@@ -164,11 +153,11 @@ export default function CompanionApp() {
           />
 
           {/* Retro status readout */}
-          <div className="mt-4 border border-border bg-card p-3">
-            <div className="mb-2 text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
-              System Status
+          <div className="mt-4 rounded border border-border bg-card p-4">
+            <div className="mb-3 text-xs font-semibold tracking-wide text-muted-foreground">
+              SYSTEM STATUS
             </div>
-            <div className="flex flex-col gap-1.5 text-[10px]">
+            <div className="flex flex-col gap-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Provider</span>
                 <span className="text-foreground uppercase">
@@ -178,7 +167,7 @@ export default function CompanionApp() {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Model</span>
                 <span className="font-mono text-foreground">
-                  {settings.provider === "local" ? settings.localModel : settings.cloudModel.split("/")[1]}
+                  {settings.provider === "openai" ? "GPT-4o Mini" : settings.provider === "anthropic" ? "Claude 3.5" : "Gemini 2.0"}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -241,11 +230,11 @@ export default function CompanionApp() {
       </div>
 
       {/* Bottom Status Bar */}
-      <footer className="flex items-center justify-between border-t border-border px-4 py-1.5 md:px-6">
-        <span className="text-[8px] uppercase tracking-[0.2em] text-muted-foreground/40">
-          Empatheia -- Powered by Local AI & Cloud
+      <footer className="flex items-center justify-between border-t border-border px-4 py-2 md:px-6">
+        <span className="text-xs text-muted-foreground/70">
+          EMPATHEIA — AI Companion
         </span>
-        <span className="text-[8px] uppercase tracking-[0.15em] text-muted-foreground/40">
+        <span className="text-xs text-muted-foreground/70">
           {new Date().toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}
         </span>
       </footer>
