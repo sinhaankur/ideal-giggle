@@ -1,5 +1,8 @@
 import type { CompanionSettings, Emotion, EmpathyProfile, Personality, ToneMode } from "@/lib/companion-types"
 
+const NEGATIVE_OR_DISAGREEMENT_PATTERN = /\b(no|nope|nah|not really|don't|dont|can't|cant|wrong|not true|incorrect|doesn't|doesnt)\b/i
+const LOW_CONFIDENCE_PATTERN = /\b(idk|i don't know|i dont know|dont know|not sure|unsure|maybe)\b/i
+
 export function articulateQuestion(input: string) {
   const compact = input.replace(/\s+/g, " ").trim()
   if (!compact) return "What feels most important for us to explore right now?"
@@ -46,6 +49,17 @@ export function buildHumanCheckInReply(name: string, personality: CompanionSetti
 
 export function buildLocalCompanionReply(input: string, sentimentScore: number, suggestedQuestion: string) {
   const lower = input.toLowerCase()
+  const tokenCount = lower.trim().split(/\s+/).filter(Boolean).length
+
+  if (tokenCount <= 4 && NEGATIVE_OR_DISAGREEMENT_PATTERN.test(lower)) {
+    return `Thanks for correcting me. I may have misunderstood. ${articulateQuestion(
+      suggestedQuestion || "What feels more accurate for you right now"
+    )}`
+  }
+
+  if (tokenCount <= 4 && LOW_CONFIDENCE_PATTERN.test(lower)) {
+    return "That's okay. We can keep this simple. What part feels most true right now, even if it's messy?"
+  }
 
   if (/\b(stupid|idiot|dumb|useless|nonsense)\b/.test(lower)) {
     return "I can hear the frustration. I'm still here with you. Tell me one thing that feels most broken right now, and we'll tackle that first."
@@ -112,9 +126,30 @@ export function buildCommunicationGuidelines() {
 - Avoid sounding robotic, corporate, or overly clinical
 - Do not default to gratitude openers like "thank you for sharing"; use them sparingly and vary sentence openings
 - Start with a specific reflection tied to what the user actually said before asking a follow-up
+- If the user corrects you (for example: "no", "wrong", "not really"), acknowledge the correction explicitly and ask one clarifying question
 - Never diagnose or provide medical/psychological advice
 - If someone seems in crisis, gently suggest professional resources
 - Remember context from the conversation to show you truly listen`
+}
+
+export function needsClarificationForAnswer(input: string) {
+  const compact = input.trim().toLowerCase()
+  if (!compact) return true
+
+  const tokenCount = compact.split(/\s+/).filter(Boolean).length
+  if (tokenCount <= 2 && NEGATIVE_OR_DISAGREEMENT_PATTERN.test(compact)) return true
+  if (tokenCount <= 3 && LOW_CONFIDENCE_PATTERN.test(compact)) return true
+  if (tokenCount <= 1 && compact.length <= 2) return true
+
+  return false
+}
+
+export function buildClarificationPrompt(question?: string) {
+  if (!question) {
+    return "I might have misunderstood. Could you say a little more so I can reflect this accurately?"
+  }
+
+  return `I might have misunderstood. Let's stay on this one for a moment: ${articulateQuestion(question)}`
 }
 
 export function buildEmpathySystemPrompt(params: {
