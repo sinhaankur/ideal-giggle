@@ -4,7 +4,7 @@ import {
   streamText,
   type UIMessage,
 } from "ai"
-import { openai } from "@ai-sdk/openai"
+import { createOpenAI, openai } from "@ai-sdk/openai"
 import { anthropic } from "@ai-sdk/anthropic"
 import { google } from "@ai-sdk/google"
 import { createOllama } from "ollama-ai-provider"
@@ -20,11 +20,16 @@ export async function POST(req: Request) {
   const personality: string = body.personality || "warm"
   const provider: string = body.provider || "openai"
   const temperature: number = body.temperature ?? 0.7
+  const topP: number = body.topP ?? 0.95
+  const maxOutputTokens: number = body.maxOutputTokens ?? 300
+  const contextMessages: number = body.contextMessages ?? 12
   const companionName: string = body.companionName || "EMPATHEIA"
   const empathyProfile = body.empathyProfile || null
   const empathyCode: string = body.empathyCode || ""
   const ollamaBaseUrl: string = body.ollamaBaseUrl || "http://127.0.0.1:11434"
   const ollamaModel: string = body.ollamaModel || "llama3.2"
+  const openRouterApiKey: string = body.openRouterApiKey || process.env.OPENROUTER_API_KEY || ""
+  const openRouterModel: string = body.openRouterModel || "meta-llama/llama-3.3-70b-instruct:free"
 
   const normalizedOllamaBaseUrl =
     ollamaBaseUrl.endsWith("/api") || ollamaBaseUrl.endsWith("/api/")
@@ -33,6 +38,11 @@ export async function POST(req: Request) {
 
   const ollama = createOllama({
     baseURL: normalizedOllamaBaseUrl,
+  })
+
+  const openRouter = createOpenAI({
+    apiKey: openRouterApiKey,
+    baseURL: "https://openrouter.ai/api/v1",
   })
 
   const personalityPrompts: Record<string, string> = {
@@ -74,6 +84,11 @@ Guidelines:
         return google("gemini-2.0-flash-001")
       case "ollama":
         return ollama(ollamaModel)
+      case "openrouter":
+        if (!openRouterApiKey) {
+          throw new Error("OpenRouter API key is missing. Add it in Settings or set OPENROUTER_API_KEY.")
+        }
+        return openRouter.chat(openRouterModel)
       case "openai":
       default:
         return openai("gpt-4o-mini")
@@ -83,9 +98,10 @@ Guidelines:
   const result = streamText({
     model,
     system: systemPrompt,
-    messages: await convertToModelMessages(messages),
+    messages: await convertToModelMessages(messages.slice(-contextMessages)),
     temperature,
-    maxOutputTokens: 300,
+    topP,
+    maxOutputTokens,
     abortSignal: req.signal,
   })
 
