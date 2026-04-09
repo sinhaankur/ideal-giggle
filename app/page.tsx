@@ -1471,8 +1471,6 @@ export default function CompanionApp() {
             empathyCode={empathyCode}
             onGenerateEmpathyCode={generateCurrentEmpathyCode}
             messageCount={messages.length}
-            answeredIntroCount={answeredIntroCount}
-            currentStep={currentStep}
             depthTierLabel={DEPTH_TIER_LABELS[depthState.tier]}
             emotionalVelocity={emotionalVelocity}
             densityWords={depthState.wordDensity}

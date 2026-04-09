@@ -12,8 +12,6 @@ interface EmpathyPanelProps {
   empathyCode: string
   onGenerateEmpathyCode: () => void
   messageCount: number
-  answeredIntroCount: number
-  currentStep: number
   depthTierLabel: string
   emotionalVelocity: number
   densityWords: number
@@ -57,8 +55,6 @@ export function EmpathyPanel({
   empathyCode,
   onGenerateEmpathyCode,
   messageCount,
-  answeredIntroCount,
-  currentStep,
   depthTierLabel,
   emotionalVelocity,
   densityWords,
@@ -75,7 +71,6 @@ export function EmpathyPanel({
   }
 
   const canGenerateCode = messageCount >= 6
-  const questionTrigger = depthTierLabel
   const depthVisualTone =
     fallbackPhase >= 3
       ? "border-slate-600 bg-slate-950 text-slate-100"
@@ -186,10 +181,8 @@ export function EmpathyPanel({
       </div>
 
       <div className={`border p-3 transition-all duration-500 ${depthVisualTone}`}>
-        <div className="mb-2 text-[9px] uppercase tracking-[0.2em] text-muted-foreground">Onboarding</div>
-        <div className="mb-2 text-[9px] text-muted-foreground/90">Trigger Mode: {questionTrigger}</div>
-        <div className="mb-2 text-[9px] text-muted-foreground/90">Current Step: {currentStep + 1}</div>
-        <div className="mb-2 text-[9px] text-muted-foreground/90">Intro completion: {answeredIntroCount}/2</div>
+        <div className="mb-2 text-[9px] uppercase tracking-[0.2em] text-muted-foreground">Session Depth</div>
+        <div className="mb-2 text-[9px] text-muted-foreground/90">Trigger Mode: {depthTierLabel}</div>
         <div className="mb-2 grid grid-cols-2 gap-2">
           <div className="rounded border border-border bg-background px-2 py-1 text-[9px] text-muted-foreground">
             Emotional Velocity: <span className="text-foreground">{(emotionalVelocity * 100).toFixed(0)}%</span>
@@ -202,11 +195,7 @@ export function EmpathyPanel({
           <div className="h-full bg-foreground transition-all duration-500" style={{ width: `${Math.max(8, Math.min(100, densitySentiment * 100))}%` }} />
         </div>
 
-        <div className="rounded border border-border bg-background px-2 py-1.5 text-[9px] text-muted-foreground">
-          Introduction questions are now asked directly in chat.
-        </div>
-
-        {answeredIntroCount >= 3 && suggestedQuestion && (
+        {suggestedQuestion && (
           <div className="mt-2 rounded border border-border bg-background px-2 py-1.5 text-[9px] text-muted-foreground">
             Next recursive prompt: {suggestedQuestion}
           </div>
