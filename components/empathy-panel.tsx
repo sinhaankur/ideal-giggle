@@ -47,6 +47,18 @@ const quadrants = [
   },
 ]
 
+const NOTE_ROTATIONS = ["-rotate-2", "rotate-1", "-rotate-1", "rotate-2", "-rotate-1"]
+
+function trimNotes(items: string[]) {
+  return items
+    .filter((item) => item.trim().length > 0)
+    .slice(-8)
+}
+
+function stickRotation(index: number) {
+  return NOTE_ROTATIONS[index % NOTE_ROTATIONS.length]
+}
+
 export function EmpathyPanel({
   data,
   profile,
@@ -71,16 +83,10 @@ export function EmpathyPanel({
   }
 
   const canGenerateCode = messageCount >= 6
-  const depthVisualTone =
-    fallbackPhase >= 3
-      ? "border-slate-600 bg-slate-950 text-slate-100"
-      : depthTierLabel.startsWith("IV")
-        ? "border-foreground bg-foreground/5"
-        : depthTierLabel.startsWith("III")
-          ? "border-foreground/60 bg-card"
-          : depthTierLabel.startsWith("II")
-            ? "border-border/80 bg-card backdrop-blur-[1px]"
-            : "border-border bg-card"
+  const saysNotes = trimNotes(data.says)
+  const doesNotes = trimNotes(data.does)
+  const thinksNotes = trimNotes(data.thinks)
+  const feelsNotes = trimNotes(data.feels)
 
   const copyEmpathyCode = async () => {
     if (!empathyCode) return
@@ -146,14 +152,107 @@ export function EmpathyPanel({
     <div className="flex h-full flex-col gap-4">
       <div className="flex items-center gap-2 border-b border-border pb-2">
         <Brain className="h-3 w-3 text-muted-foreground" />
-        <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Empathy Map</span>
+        <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Empathy Map Canvas</span>
+      </div>
+
+      <div className="border border-border bg-card p-3">
+        <div className="mb-2 flex items-center justify-between">
+          <div className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground">Canvas Meta</div>
+          <div className="text-[9px] text-muted-foreground">Depth: {depthTierLabel}</div>
+        </div>
+        <div className="mb-2 text-[10px] text-muted-foreground">
+          Persona: <span className="text-foreground">{profile.preferredName}</span>
+        </div>
+        <div className="mb-2 grid grid-cols-2 gap-2 text-[9px] text-muted-foreground">
+          <div className="rounded border border-border bg-background px-2 py-1">
+            Velocity: <span className="text-foreground">{(emotionalVelocity * 100).toFixed(0)}%</span>
+          </div>
+          <div className="rounded border border-border bg-background px-2 py-1">
+            Density: <span className="text-foreground">{densityWords}</span>
+          </div>
+        </div>
+        <div className="mb-2 h-1.5 w-full overflow-hidden rounded bg-border/60">
+          <div className="h-full bg-foreground transition-all duration-500" style={{ width: `${Math.max(8, Math.min(100, densitySentiment * 100))}%` }} />
+        </div>
+        {suggestedQuestion && <div className="text-[9px] text-muted-foreground">Prompt: {suggestedQuestion}</div>}
+        {fallbackPhase >= 3 && <div className="mt-1 text-[9px] text-amber-300">Shadow-work mode active</div>}
+      </div>
+
+      <div className="relative flex-1 border border-border bg-card p-3">
+        <div className="pointer-events-none absolute inset-x-3 top-1/2 h-px bg-border" />
+        <div className="pointer-events-none absolute inset-y-3 left-1/2 w-px bg-border" />
+
+        <div className="grid h-full grid-cols-2 gap-3">
+          <div className="flex min-h-0 flex-col gap-2">
+            <div className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-[0.16em] text-foreground">
+              <MessageSquare className="h-2.5 w-2.5" />
+              Says
+            </div>
+            <div className="grid flex-1 auto-rows-min grid-cols-2 gap-2 overflow-y-auto pr-1">
+              {saysNotes.length === 0 && <div className="col-span-2 text-[9px] italic text-muted-foreground/40">Observed speech snippets...</div>}
+              {saysNotes.map((item, index) => (
+                <div key={`s-${index}`} className={`min-h-14 border border-amber-200/60 bg-amber-100/80 p-2 text-[10px] leading-snug text-zinc-900 shadow ${stickRotation(index)}`}>
+                  {item}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex min-h-0 flex-col gap-2">
+            <div className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-[0.16em] text-foreground">
+              <Brain className="h-2.5 w-2.5" />
+              Thinks
+            </div>
+            <div className="grid flex-1 auto-rows-min grid-cols-2 gap-2 overflow-y-auto pr-1">
+              {thinksNotes.length === 0 && <div className="col-span-2 text-[9px] italic text-muted-foreground/40">Inferred beliefs and assumptions...</div>}
+              {thinksNotes.map((item, index) => (
+                <div key={`t-${index}`} className={`min-h-14 border border-amber-200/60 bg-amber-100/80 p-2 text-[10px] leading-snug text-zinc-900 shadow ${stickRotation(index + 1)}`}>
+                  {item}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex min-h-0 flex-col gap-2">
+            <div className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-[0.16em] text-foreground">
+              <HandMetal className="h-2.5 w-2.5" />
+              Does
+            </div>
+            <div className="grid flex-1 auto-rows-min grid-cols-2 gap-2 overflow-y-auto pr-1">
+              {doesNotes.length === 0 && <div className="col-span-2 text-[9px] italic text-muted-foreground/40">Observed behavior and actions...</div>}
+              {doesNotes.map((item, index) => (
+                <div key={`d-${index}`} className={`min-h-14 border border-amber-200/60 bg-amber-100/80 p-2 text-[10px] leading-snug text-zinc-900 shadow ${stickRotation(index + 2)}`}>
+                  {item}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex min-h-0 flex-col gap-2">
+            <div className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-[0.16em] text-foreground">
+              <Heart className="h-2.5 w-2.5" />
+              Feels
+            </div>
+            <div className="grid flex-1 auto-rows-min grid-cols-2 gap-2 overflow-y-auto pr-1">
+              {feelsNotes.length === 0 && <div className="col-span-2 text-[9px] italic text-muted-foreground/40">Inferred emotional state...</div>}
+              {feelsNotes.map((item, index) => (
+                <div key={`f-${index}`} className={`min-h-14 border border-amber-200/60 bg-amber-100/80 p-2 text-[10px] leading-snug text-zinc-900 shadow ${stickRotation(index + 3)}`}>
+                  {item}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="pointer-events-none absolute left-3 bottom-2 text-[8px] uppercase tracking-[0.14em] text-muted-foreground/80">Observed</div>
+        <div className="pointer-events-none absolute right-3 bottom-2 text-[8px] uppercase tracking-[0.14em] text-muted-foreground/80">Inferred</div>
+        <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-border bg-background px-3 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-foreground">
+          {profile.preferredName}
+        </div>
       </div>
 
       <div className="border border-border bg-card p-3">
         <div className="mb-2 text-[9px] uppercase tracking-[0.2em] text-muted-foreground">Profile JSON</div>
-        <div className="mb-2 text-[10px] text-muted-foreground">
-          Profile: <span className="text-foreground">{profile.preferredName}</span>
-        </div>
         <div className="flex gap-2">
           <input
             ref={fileInputRef}
@@ -180,113 +279,52 @@ export function EmpathyPanel({
         <div className="mt-2 text-[9px] text-muted-foreground/90">{jsonStatus}</div>
       </div>
 
-      <div className={`border p-3 transition-all duration-500 ${depthVisualTone}`}>
-        <div className="mb-2 text-[9px] uppercase tracking-[0.2em] text-muted-foreground">Session Depth</div>
-        <div className="mb-2 text-[9px] text-muted-foreground/90">Trigger Mode: {depthTierLabel}</div>
-        <div className="mb-2 grid grid-cols-2 gap-2">
-          <div className="rounded border border-border bg-background px-2 py-1 text-[9px] text-muted-foreground">
-            Emotional Velocity: <span className="text-foreground">{(emotionalVelocity * 100).toFixed(0)}%</span>
-          </div>
-          <div className="rounded border border-border bg-background px-2 py-1 text-[9px] text-muted-foreground">
-            Density: <span className="text-foreground">{densityWords} words</span>
-          </div>
+      <div className="border border-border bg-card p-3">
+        <div className="mb-1 text-[9px] uppercase tracking-[0.2em] text-muted-foreground">Empathy Code</div>
+        <div className="mb-2 rounded border border-border bg-background px-2 py-1 text-[10px] text-foreground">{empathyCode || "Not generated yet"}</div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={onGenerateEmpathyCode}
+            disabled={!canGenerateCode}
+            className="rounded border border-border bg-background px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground transition-colors hover:bg-accent disabled:opacity-40"
+          >
+            Generate
+          </button>
+          <button
+            onClick={copyEmpathyCode}
+            disabled={!empathyCode}
+            className="inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground transition-colors hover:bg-accent disabled:opacity-40"
+          >
+            <Copy className="h-3 w-3" />
+            Copy
+          </button>
+          <a
+            href={redditLink}
+            target="_blank"
+            rel="noreferrer"
+            className={`inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground transition-colors hover:bg-accent ${!empathyCode ? "pointer-events-none opacity-40" : ""}`}
+          >
+            <Link2 className="h-3 w-3" />
+            Reddit
+          </a>
+          <a
+            href={xLink}
+            target="_blank"
+            rel="noreferrer"
+            className={`inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground transition-colors hover:bg-accent ${!empathyCode ? "pointer-events-none opacity-40" : ""}`}
+          >
+            <Link2 className="h-3 w-3" />
+            X
+          </a>
         </div>
-        <div className="mb-3 h-1.5 w-full overflow-hidden rounded bg-border/60">
-          <div className="h-full bg-foreground transition-all duration-500" style={{ width: `${Math.max(8, Math.min(100, densitySentiment * 100))}%` }} />
-        </div>
-
-        {suggestedQuestion && (
-          <div className="mt-2 rounded border border-border bg-background px-2 py-1.5 text-[9px] text-muted-foreground">
-            Next recursive prompt: {suggestedQuestion}
-          </div>
-        )}
-
-        {fallbackPhase >= 3 && (
-          <div className="mt-2 rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-[9px] text-slate-200">
-            Shadow-Work Layer is active. Questions are now archetypal and intentionally uncomfortable.
-          </div>
-        )}
-
-        <div className="mt-3 border-t border-border pt-2">
-          <div className="mb-1 text-[9px] uppercase tracking-[0.2em] text-muted-foreground">Empathy Code</div>
-          <div className="mb-2 rounded border border-border bg-background px-2 py-1 text-[10px] text-foreground">{empathyCode || "Not generated yet"}</div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={onGenerateEmpathyCode}
-              disabled={!canGenerateCode}
-              className="rounded border border-border bg-background px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground transition-colors hover:bg-accent disabled:opacity-40"
-            >
-              Generate
-            </button>
-            <button
-              onClick={copyEmpathyCode}
-              disabled={!empathyCode}
-              className="inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground transition-colors hover:bg-accent disabled:opacity-40"
-            >
-              <Copy className="h-3 w-3" />
-              Copy
-            </button>
-            <a
-              href={redditLink}
-              target="_blank"
-              rel="noreferrer"
-              className={`inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground transition-colors hover:bg-accent ${!empathyCode ? "pointer-events-none opacity-40" : ""}`}
-            >
-              <Link2 className="h-3 w-3" />
-              Reddit
-            </a>
-            <a
-              href={xLink}
-              target="_blank"
-              rel="noreferrer"
-              className={`inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground transition-colors hover:bg-accent ${!empathyCode ? "pointer-events-none opacity-40" : ""}`}
-            >
-              <Link2 className="h-3 w-3" />
-              X
-            </a>
-          </div>
-          <div className="mt-2 text-[9px] text-muted-foreground/90">{copyStatus || (canGenerateCode ? "Ready to generate code." : "Exchange at least 6 messages to unlock code generation.")}</div>
-        </div>
-      </div>
-
-      <div className="grid flex-1 grid-cols-2 gap-3">
-        {quadrants.map(({ key, label, icon: Icon, emptyText }) => (
-          <div key={key} className="flex flex-col border border-border bg-card p-3">
-            <div className="mb-2 flex items-center gap-1.5 border-b border-border pb-1.5">
-              <Icon className="h-2.5 w-2.5 text-muted-foreground" />
-              <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-foreground">{label}</span>
-              {data[key].length > 0 && <span className="ml-auto text-[8px] text-muted-foreground">{data[key].length}</span>}
-            </div>
-
-            <div className="flex-1 overflow-y-auto">
-              {data[key].length === 0 ? (
-                <p className="text-center text-[9px] italic leading-relaxed text-muted-foreground/40">{emptyText}</p>
-              ) : (
-                <div className="flex flex-col gap-1.5">
-                  {data[key].map((item, i) => (
-                    <div key={i} className="border-l-2 border-muted-foreground/20 bg-background px-2 py-1 text-[10px] leading-relaxed text-muted-foreground">
-                      {item}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
+        <div className="mt-2 text-[9px] text-muted-foreground/90">{copyStatus || (canGenerateCode ? "Ready to generate code." : "Exchange at least 6 messages to unlock code generation.")}</div>
       </div>
 
       <div className="border border-border bg-card p-3">
-        <div className="mb-2 text-[9px] uppercase tracking-[0.2em] text-muted-foreground">Analysis Summary</div>
+        <div className="mb-2 text-[9px] uppercase tracking-[0.2em] text-muted-foreground">Quadrant Totals</div>
         <div className="grid grid-cols-4 gap-2">
           {quadrants.map(({ key, label }) => (
-            <div
-              key={key}
-              className="rounded border border-border bg-background p-2 text-center transition-all duration-500"
-              style={{
-                opacity: data[key].length > 0 ? 1 : 0.3,
-                transform: `scale(${1 + data[key].length * 0.08})`,
-              }}
-            >
+            <div key={key} className="rounded border border-border bg-background p-2 text-center">
               <div className="text-sm font-bold text-foreground">{data[key].length}</div>
               <div className="text-[8px] uppercase tracking-[0.1em] text-muted-foreground">{label}</div>
             </div>
