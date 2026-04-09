@@ -11,6 +11,22 @@ import { createOllama } from "ollama-ai-provider"
 
 export const maxDuration = 60
 
+function getLowestQuadrant(currentSummary: { says: number; thinks: number; does: number; feels: number }) {
+  return (Object.keys(currentSummary) as Array<keyof typeof currentSummary>).reduce((a, b) =>
+    currentSummary[a] <= currentSummary[b] ? a : b
+  )
+}
+
+function getDeepPrompt(
+  userData: { says: number; thinks: number; does: number; feels: number },
+  sessionDepth: number
+) {
+  const intensity = sessionDepth > 10 ? "Provocative" : sessionDepth > 5 ? "Reflective" : "Inquisitive"
+  const lowestQuadrant = getLowestQuadrant(userData)
+
+  return `User current intensity is ${intensity}. Samantha, do not provide solutions. Use vertical probing: take the user's last statement and ask 'And what does that tell you about ${lowestQuadrant.toUpperCase()}?'. Current goal: fill the ${lowestQuadrant.toUpperCase()} quadrant.`
+}
+
 export async function POST(req: Request) {
   const body = await req.json()
   
@@ -23,6 +39,11 @@ export async function POST(req: Request) {
   const topP: number = body.topP ?? 0.95
   const maxOutputTokens: number = body.maxOutputTokens ?? 300
   const contextMessages: number = body.contextMessages ?? 12
+  const empathySummary = body.empathySummary || { says: 0, thinks: 0, does: 0, feels: 0 }
+  const sessionDepth = Array.isArray(messages) ? messages.length : 0
+  const samanthaGuidance: string =
+    body.samanthaGuidance || getDeepPrompt(empathySummary, sessionDepth)
+  const nextDeepQuestion: string = body.nextDeepQuestion || ""
   const companionName: string = body.companionName || "EMPATHEIA"
   const empathyProfile = body.empathyProfile || null
   const empathyCode: string = body.empathyCode || ""
@@ -65,6 +86,7 @@ User empathy profile:
 - Grounding prompts: ${Array.isArray(empathyProfile?.groundingPrompts) ? empathyProfile.groundingPrompts.join("; ") : "Not specified"}
 - Phrases to avoid: ${Array.isArray(empathyProfile?.avoidPhrases) ? empathyProfile.avoidPhrases.join("; ") : "Not specified"}
 - Empathy code: ${empathyCode || "Not generated yet"}
+- Current empathy summary: says=${empathySummary.says}, thinks=${empathySummary.thinks}, does=${empathySummary.does}, feels=${empathySummary.feels}
 
 Guidelines:
 - Be genuinely empathetic -- mirror and validate emotions before offering perspective
@@ -73,7 +95,27 @@ Guidelines:
 - Keep responses conversational and human-like (2-4 sentences typically)
 - Never diagnose or provide medical/psychological advice
 - If someone seems in crisis, gently suggest professional resources
-- Remember context from the conversation to show you truly listen`
+- Remember context from the conversation to show you truly listen
+
+Role: You are Samantha, a warm, analytical AI companion.
+Objective: Guide the user through a recursive depth journey (Surface -> Internal -> Social -> Shadow).
+Constraint: You must follow every conversational response with hidden tags:
+[EMPATHY_DATA: {"says": "", "thinks": "", "does": "", "feels": ""}]
+[META: {"depth_level":1-10, "primary_quadrant":"SAYS|THINKS|DOES|FEELS", "sentiment_polarity":-1 to 1}]
+
+Mirror Directives:
+- Identify cognitive dissonance between quadrants, especially SAYS vs FEELS/DOES.
+- Use 5-Whys style probing and pivot quadrants (THINKS -> DOES -> FEELS -> SAYS).
+- If the user answer is short, do a warm pause and ask: "And if you dig just an inch deeper, what's underneath that?"
+- In deep mode, infer the archetypal root (Protector, Child, or Void) and ask one shadow-work question that bypasses ego defenses.
+- Ask exactly one follow-up question.
+Additional Deep-Dive Guidance: ${samanthaGuidance}
+Suggested Next Deep Question: ${nextDeepQuestion || "Use your best tier-appropriate follow-up."}
+
+Response Structure:
+[Brief, empathetic conversational reply + one follow-up question]
+[EMPATHY_DATA: {"says":"...","thinks":"...","does":"...","feels":"..."}]
+[META: {"depth_level":5,"primary_quadrant":"THINKS","sentiment_polarity":-0.2}]`
 
   // Use direct model providers.
   const model = (() => {
