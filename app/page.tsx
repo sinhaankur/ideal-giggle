@@ -625,7 +625,9 @@ export default function CompanionApp() {
   const isRemoteLoading = status === "streaming" || status === "submitted"
   const isLoading = settings.provider === "webllm" ? isWebLlmLoading : isRemoteLoading
   const hasLocalFallbackActive =
-    Boolean(llmConnectionError) || (settings.provider === "webllm" && webLlmStatus === "error")
+    settings.provider === "webllm"
+      ? Boolean(llmConnectionError) || webLlmStatus === "error"
+      : Boolean(llmConnectionError)
   const systemHealth = hasLocalFallbackActive
     ? "fallback"
     : isLoading || (settings.provider === "webllm" && (webLlmStatus === "downloading" || webLlmStatus === "thinking"))
@@ -643,6 +645,37 @@ export default function CompanionApp() {
       setLlmConnectionError(remoteError.message)
     }
   }, [remoteError])
+
+  useEffect(() => {
+    if (settings.provider === "webllm") return
+
+    // Clear stale local-runtime diagnostics so cloud providers are not marked fallback
+    // by previous WebGPU/WebLLM failures.
+    webLlmEngineRef.current = null
+    webLlmInitPromiseRef.current = null
+    setWebLlmStatus("idle")
+    setWebLlmProgress("")
+    setWebLlmError("")
+    setWebLlmXpStage("idle")
+    setShadowPrefetchProgress("")
+    shadowPrefetchStartedRef.current = false
+    shadowPrefetchPromiseRef.current = null
+
+    // Clear previous connection error only when it came from local runtime.
+    setLlmConnectionError((prev) => {
+      if (!prev) return ""
+      const lower = prev.toLowerCase()
+      if (
+        lower.includes("webgpu") ||
+        lower.includes("adapter") ||
+        lower.includes("device creation") ||
+        lower.includes("webllm")
+      ) {
+        return ""
+      }
+      return prev
+    })
+  }, [settings.provider])
 
   const createWorkerEngine = useCallback(
     async (
