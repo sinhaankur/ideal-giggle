@@ -185,3 +185,8 @@ The app already supports this environment variable and falls back to `/api/chat`
 - Local dev/full app: `pnpm dev`
 - Server deployment/full app: run on a Node host (for example Azure App Service or your own server)
 - GitHub Pages/static UI: workflow in `.github/workflows/deploy-pages.yml`
+
+## License
+
+This project is distributed under a custom proprietary license.
+See the [LICENSE](LICENSE) file for full terms.
