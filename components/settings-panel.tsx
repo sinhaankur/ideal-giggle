@@ -35,24 +35,6 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
 
   const providers: { value: AIProvider; label: string; desc: string; icon: typeof Server }[] = [
     {
-      value: "openai",
-      label: "OpenAI",
-      desc: "GPT-4o Mini -- Advanced reasoning",
-      icon: Cloud,
-    },
-    {
-      value: "anthropic",
-      label: "Anthropic",
-      desc: "Claude 3.5 Sonnet -- Thoughtful communication",
-      icon: Cloud,
-    },
-    {
-      value: "google",
-      label: "Google",
-      desc: "Gemini 2.0 Flash -- Fast and capable",
-      icon: Cloud,
-    },
-    {
       value: "webllm",
       label: "WebLLM",
       desc: "Runs in your browser and downloads model locally",
@@ -380,60 +362,62 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
           )}
 
           {/* MCP Fallback Settings */}
-          <div className="mb-6 rounded border border-border bg-background p-3">
-            <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
-              <Server className="h-4 w-4 text-foreground" />
-              <span className="text-sm font-semibold text-foreground">
-                MCP Fallback (Optional)
-              </span>
-            </div>
+          {settings.provider === "webllm" && (
+            <div className="mb-6 rounded border border-border bg-background p-3">
+              <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
+                <Server className="h-4 w-4 text-foreground" />
+                <span className="text-sm font-semibold text-foreground">
+                  MCP Fallback (Optional)
+                </span>
+              </div>
 
-            <label className="mb-2 flex items-center gap-2 text-sm text-foreground">
+              <label className="mb-2 flex items-center gap-2 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  checked={settings.mcpAutoFallback}
+                  onChange={(e) => update({ mcpAutoFallback: e.target.checked })}
+                />
+                <span>Use MCP server when WebLLM is unavailable</span>
+              </label>
+
+              <label className="mb-2 block text-sm font-medium text-foreground">
+                MCP Base URL
+              </label>
               <input
-                type="checkbox"
-                checked={settings.mcpAutoFallback}
-                onChange={(e) => update({ mcpAutoFallback: e.target.checked })}
+                type="text"
+                value={settings.mcpBaseUrl}
+                onChange={(e) => update({ mcpBaseUrl: e.target.value })}
+                className="mb-3 w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder="http://127.0.0.1:8787"
               />
-              <span>Use MCP server when WebLLM is unavailable</span>
-            </label>
 
-            <label className="mb-2 block text-sm font-medium text-foreground">
-              MCP Base URL
-            </label>
-            <input
-              type="text"
-              value={settings.mcpBaseUrl}
-              onChange={(e) => update({ mcpBaseUrl: e.target.value })}
-              className="mb-3 w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="http://127.0.0.1:8787"
-            />
+              <label className="mb-2 block text-sm font-medium text-foreground">
+                MCP Model
+              </label>
+              <input
+                type="text"
+                value={settings.mcpModel}
+                onChange={(e) => update({ mcpModel: e.target.value })}
+                className="mb-3 w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder="gpt-4o-mini"
+              />
 
-            <label className="mb-2 block text-sm font-medium text-foreground">
-              MCP Model
-            </label>
-            <input
-              type="text"
-              value={settings.mcpModel}
-              onChange={(e) => update({ mcpModel: e.target.value })}
-              className="mb-3 w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="gpt-4o-mini"
-            />
+              <label className="mb-2 block text-sm font-medium text-foreground">
+                MCP API Key (optional)
+              </label>
+              <input
+                type="password"
+                value={settings.mcpApiKey}
+                onChange={(e) => update({ mcpApiKey: e.target.value })}
+                className="w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder="Leave blank for local MCP without auth"
+              />
 
-            <label className="mb-2 block text-sm font-medium text-foreground">
-              MCP API Key (optional)
-            </label>
-            <input
-              type="password"
-              value={settings.mcpApiKey}
-              onChange={(e) => update({ mcpApiKey: e.target.value })}
-              className="w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="Leave blank for local MCP without auth"
-            />
-
-            <p className="mt-2 text-xs text-muted-foreground">
-              This assumes your local MCP service exposes an OpenAI-compatible chat endpoint.
-            </p>
-          </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                This assumes your local MCP service exposes an OpenAI-compatible chat endpoint.
+              </p>
+            </div>
+          )}
 
           {/* Ollama Settings */}
           {settings.provider === "ollama" && (
