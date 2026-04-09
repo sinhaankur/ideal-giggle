@@ -23,11 +23,13 @@ import {
 } from "@/lib/companion-types"
 import {
   articulateQuestion as articulateQuestionFromEngine,
+  buildClarificationPrompt,
   buildEmpathySystemPrompt,
   buildHumanCheckInReply as buildHumanCheckInReplyFromEngine,
   buildLocalCompanionReply as buildLocalCompanionReplyFromEngine,
   ensureNonRepeatingFallback as ensureNonRepeatingFallbackFromEngine,
   getToneModeInstruction as getToneModeInstructionFromEngine,
+  needsClarificationForAnswer,
 } from "@/lib/conversation/communication-engine"
 
 const CameraPanel = dynamic(() => import("@/components/camera-panel").then((mod) => mod.CameraPanel), {
@@ -1206,6 +1208,20 @@ export default function CompanionApp() {
             emotion: sentimentEmotion,
           },
         ])
+
+        if (needsClarificationForAnswer(text)) {
+          setOnboardingChatMessages((prev) => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              text: buildClarificationPrompt(currentIntroQuestion?.question),
+              sender: "ai",
+              timestamp: new Date(),
+              emotion: "thinking",
+            },
+          ])
+          return
+        }
 
         handleIntroAnswerChange(introIndex, text)
 
