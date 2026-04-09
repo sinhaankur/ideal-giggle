@@ -41,6 +41,7 @@ jobs:
 
       - name: Build static export
         env:
+          NEXT_TELEMETRY_DISABLED: "1"
           STATIC_EXPORT: "true"
           NEXT_PUBLIC_STATIC_EXPORT: "true"
           NEXT_PUBLIC_DEFAULT_PROVIDER: "webllm"
