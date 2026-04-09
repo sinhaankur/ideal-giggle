@@ -15,10 +15,10 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
   }
 
   const webLlmModelPresets = [
-    "Llama-3.2-1B-Instruct-q4f32_1-MLC",
+    "Llama-3.2-1B-Instruct-q4f16_1-MLC",
     "Llama-3.2-3B-Instruct-q4f16_1-MLC",
-    "Qwen2.5-1.5B-Instruct-q4f16_1-MLC",
-    "Phi-3.5-mini-instruct-q4f16_1-MLC",
+    "gemma-2-2b-it-q4f16_1-MLC",
+    "Mistral-7B-Instruct-v0.3-q4f16_1-MLC",
   ]
 
   const openRouterModelPresets = [
@@ -216,6 +216,53 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
               <p className="mt-2 text-xs text-muted-foreground">
                 First run downloads model files in-browser, then chats fully local.
               </p>
+              <div className="mt-3 rounded border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
+                <div className="mb-1 font-semibold text-foreground">Official WebLLM Repositories</div>
+                <div>
+                  <a
+                    href="https://huggingface.co/mlc-ai/Llama-3.2-3B-Instruct-q4f16_1-MLC"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline underline-offset-2 hover:text-foreground"
+                  >
+                    Llama 3.2 3B (Instruct)
+                  </a>{" "}
+                  - deeper conversational shadow-work flows.
+                </div>
+                <div>
+                  <a
+                    href="https://huggingface.co/mlc-ai/Llama-3.2-1B-Instruct-q4f16_1-MLC"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline underline-offset-2 hover:text-foreground"
+                  >
+                    Llama 3.2 1B (Instruct)
+                  </a>{" "}
+                  - lower-end hardware and quick onboarding.
+                </div>
+                <div>
+                  <a
+                    href="https://huggingface.co/mlc-ai/gemma-2-2b-it-q4f16_1-MLC"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline underline-offset-2 hover:text-foreground"
+                  >
+                    Gemma 2 2B
+                  </a>{" "}
+                  - warmer and creative persona tone.
+                </div>
+                <div>
+                  <a
+                    href="https://huggingface.co/mlc-ai/Mistral-7B-Instruct-v0.3-q4f16_1-MLC"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline underline-offset-2 hover:text-foreground"
+                  >
+                    Mistral 7B v0.3
+                  </a>{" "}
+                  - complex analysis and richer code synthesis.
+                </div>
+              </div>
             </div>
           )}
 
