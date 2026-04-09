@@ -23,11 +23,13 @@ import {
 } from "@/lib/companion-types"
 import {
   articulateQuestion as articulateQuestionFromEngine,
+  buildClarificationPrompt,
   buildEmpathySystemPrompt,
   buildHumanCheckInReply as buildHumanCheckInReplyFromEngine,
   buildLocalCompanionReply as buildLocalCompanionReplyFromEngine,
   ensureNonRepeatingFallback as ensureNonRepeatingFallbackFromEngine,
   getToneModeInstruction as getToneModeInstructionFromEngine,
+  needsClarificationForAnswer,
 } from "@/lib/conversation/communication-engine"
 
 const CameraPanel = dynamic(() => import("@/components/camera-panel").then((mod) => mod.CameraPanel), {
@@ -623,7 +625,9 @@ export default function CompanionApp() {
   const isRemoteLoading = status === "streaming" || status === "submitted"
   const isLoading = settings.provider === "webllm" ? isWebLlmLoading : isRemoteLoading
   const hasLocalFallbackActive =
-    Boolean(llmConnectionError) || (settings.provider === "webllm" && webLlmStatus === "error")
+    settings.provider === "webllm"
+      ? Boolean(llmConnectionError) || webLlmStatus === "error"
+      : Boolean(llmConnectionError)
   const systemHealth = hasLocalFallbackActive
     ? "fallback"
     : isLoading || (settings.provider === "webllm" && (webLlmStatus === "downloading" || webLlmStatus === "thinking"))
@@ -641,6 +645,37 @@ export default function CompanionApp() {
       setLlmConnectionError(remoteError.message)
     }
   }, [remoteError])
+
+  useEffect(() => {
+    if (settings.provider === "webllm") return
+
+    // Clear stale local-runtime diagnostics so cloud providers are not marked fallback
+    // by previous WebGPU/WebLLM failures.
+    webLlmEngineRef.current = null
+    webLlmInitPromiseRef.current = null
+    setWebLlmStatus("idle")
+    setWebLlmProgress("")
+    setWebLlmError("")
+    setWebLlmXpStage("idle")
+    setShadowPrefetchProgress("")
+    shadowPrefetchStartedRef.current = false
+    shadowPrefetchPromiseRef.current = null
+
+    // Clear previous connection error only when it came from local runtime.
+    setLlmConnectionError((prev) => {
+      if (!prev) return ""
+      const lower = prev.toLowerCase()
+      if (
+        lower.includes("webgpu") ||
+        lower.includes("adapter") ||
+        lower.includes("device creation") ||
+        lower.includes("webllm")
+      ) {
+        return ""
+      }
+      return prev
+    })
+  }, [settings.provider])
 
   const createWorkerEngine = useCallback(
     async (
@@ -1206,6 +1241,20 @@ export default function CompanionApp() {
             emotion: sentimentEmotion,
           },
         ])
+
+        if (needsClarificationForAnswer(text)) {
+          setOnboardingChatMessages((prev) => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              text: buildClarificationPrompt(currentIntroQuestion?.question),
+              sender: "ai",
+              timestamp: new Date(),
+              emotion: "thinking",
+            },
+          ])
+          return
+        }
 
         handleIntroAnswerChange(introIndex, text)
 

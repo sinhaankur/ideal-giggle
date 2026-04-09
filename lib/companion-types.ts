@@ -257,8 +257,8 @@ export const DEFAULT_SETTINGS: CompanionSettings = {
 export function detectEmotion(text: string): Emotion {
   const lower = text.toLowerCase()
   if (/happy|great|awesome|love|excited|joy|wonderful|amazing/.test(lower)) return "happy"
-  if (/sad|depressed|lonely|terrible|miss|crying|hurt/.test(lower)) return "sad"
-  if (/angry|furious|mad|rage|hate|annoying/.test(lower)) return "angry"
+  if (/sad|depressed|lonely|terrible|miss|crying|hurt|wrong|not true|incorrect/.test(lower)) return "sad"
+  if (/angry|furious|mad|rage|hate|annoying|doesn't work|doesnt work|not working|frustrat/.test(lower)) return "angry"
   if (/scared|afraid|anxious|worried|nervous|panic/.test(lower)) return "fear"
   if (/wow|surprised|unexpected|shocking|really\?/.test(lower)) return "surprise"
   if (/think|believe|wonder|suppose|maybe|perhaps/.test(lower)) return "thinking"
@@ -282,6 +282,15 @@ const positiveLexicon = [
 ]
 
 const negativeLexicon = [
+  "no",
+  "nope",
+  "nah",
+  "wrong",
+  "incorrect",
+  "not",
+  "don't",
+  "cant",
+  "can't",
   "bad",
   "worse",
   "stuck",
