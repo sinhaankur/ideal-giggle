@@ -1,10 +1,20 @@
 "use client"
 
-import { MessageSquare, Brain, HandMetal, Heart } from "lucide-react"
-import type { EmpathyData } from "@/lib/companion-types"
+import { useRef, useState } from "react"
+import { MessageSquare, Brain, HandMetal, Heart, Upload, Download, Copy, Link2 } from "lucide-react"
+import type { EmpathyData, EmpathyProfile } from "@/lib/companion-types"
 
 interface EmpathyPanelProps {
   data: EmpathyData
+  profile: EmpathyProfile
+  onProfileImport: (profile: EmpathyProfile) => void
+  onProfileExport: () => void
+  introQuestions: string[]
+  introAnswers: string[]
+  onIntroAnswerChange: (index: number, answer: string) => void
+  empathyCode: string
+  onGenerateEmpathyCode: () => void
+  messageCount: number
 }
 
 const quadrants = [
@@ -34,7 +44,89 @@ const quadrants = [
   },
 ]
 
-export function EmpathyPanel({ data }: EmpathyPanelProps) {
+export function EmpathyPanel({
+  data,
+  profile,
+  onProfileImport,
+  onProfileExport,
+  introQuestions,
+  introAnswers,
+  onIntroAnswerChange,
+  empathyCode,
+  onGenerateEmpathyCode,
+  messageCount,
+}: EmpathyPanelProps) {
+  const [jsonStatus, setJsonStatus] = useState<string>("No profile JSON imported yet.")
+  const [copyStatus, setCopyStatus] = useState<string>("")
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const triggerUpload = () => {
+    fileInputRef.current?.click()
+  }
+
+  const introCompleted = introAnswers.every((ans) => ans.trim().length > 1)
+  const canGenerateCode = introCompleted && messageCount >= 6
+
+  const copyEmpathyCode = async () => {
+    if (!empathyCode) return
+    try {
+      await navigator.clipboard.writeText(empathyCode)
+      setCopyStatus("Copied")
+      setTimeout(() => setCopyStatus(""), 1200)
+    } catch {
+      setCopyStatus("Copy failed")
+    }
+  }
+
+  const shareQuery = encodeURIComponent(`Empathy Code ${empathyCode}`)
+  const redditLink = `https://www.reddit.com/search/?q=${shareQuery}`
+  const xLink = `https://x.com/search?q=${shareQuery}&src=typed_query`
+
+  const handleJsonUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    try {
+      const text = await file.text()
+      const parsed = JSON.parse(text)
+
+      if (!parsed || typeof parsed !== "object") {
+        setJsonStatus("Invalid JSON format. Expected an object.")
+        return
+      }
+
+      const source = parsed.profile && typeof parsed.profile === "object" ? parsed.profile : parsed
+
+      const normalized: EmpathyProfile = {
+        version: String(source.version ?? "1.0"),
+        preferredName: String(source.preferredName ?? "Friend"),
+        communicationStyle: String(source.communicationStyle ?? "Warm, validating, and practical."),
+        supportGoals: Array.isArray(source.supportGoals)
+          ? source.supportGoals.map((item: unknown) => String(item))
+          : [],
+        negativeThoughtPatterns: Array.isArray(source.negativeThoughtPatterns)
+          ? source.negativeThoughtPatterns.map((item: unknown) => String(item))
+          : [],
+        reframePreferences: Array.isArray(source.reframePreferences)
+          ? source.reframePreferences.map((item: unknown) => String(item))
+          : [],
+        groundingPrompts: Array.isArray(source.groundingPrompts)
+          ? source.groundingPrompts.map((item: unknown) => String(item))
+          : [],
+        avoidPhrases: Array.isArray(source.avoidPhrases)
+          ? source.avoidPhrases.map((item: unknown) => String(item))
+          : [],
+      }
+
+      onProfileImport(normalized)
+      setJsonStatus(`Loaded profile for ${normalized.preferredName}.`)
+    } catch {
+      setJsonStatus("Unable to parse JSON. Please upload a valid .json file.")
+    } finally {
+      event.target.value = ""
+    }
+  }
+
   return (
     <div className="flex h-full flex-col gap-4">
       {/* Section Header */}
@@ -43,6 +135,101 @@ export function EmpathyPanel({ data }: EmpathyPanelProps) {
         <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
           Empathy Map
         </span>
+      </div>
+
+      {/* Profile JSON Controls */}
+      <div className="border border-border bg-card p-3">
+        <div className="mb-2 text-[9px] uppercase tracking-[0.2em] text-muted-foreground">Profile JSON</div>
+        <div className="mb-2 text-[10px] text-muted-foreground">
+          Profile: <span className="text-foreground">{profile.preferredName}</span>
+        </div>
+        <div className="flex gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json,.json"
+            onChange={handleJsonUpload}
+            className="hidden"
+          />
+          <button
+            onClick={triggerUpload}
+            className="inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground transition-colors hover:bg-accent"
+          >
+            <Upload className="h-3 w-3" />
+            Upload
+          </button>
+          <button
+            onClick={onProfileExport}
+            className="inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground transition-colors hover:bg-accent"
+          >
+            <Download className="h-3 w-3" />
+            Download
+          </button>
+        </div>
+        <div className="mt-2 text-[9px] text-muted-foreground/90">{jsonStatus}</div>
+      </div>
+
+      {/* Intro Q&A and Empathy Code */}
+      <div className="border border-border bg-card p-3">
+        <div className="mb-2 text-[9px] uppercase tracking-[0.2em] text-muted-foreground">Introduction Questions</div>
+        <div className="space-y-2">
+          {introQuestions.map((question, index) => (
+            <div key={question}>
+              <label className="mb-1 block text-[10px] text-foreground">{question}</label>
+              <input
+                value={introAnswers[index] || ""}
+                onChange={(e) => onIntroAnswerChange(index, e.target.value)}
+                className="w-full rounded border border-border bg-background px-2 py-1 text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                placeholder="Type your answer..."
+              />
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-3 border-t border-border pt-2">
+          <div className="mb-1 text-[9px] uppercase tracking-[0.2em] text-muted-foreground">Empathy Code</div>
+          <div className="mb-2 rounded border border-border bg-background px-2 py-1 text-[10px] text-foreground">
+            {empathyCode || "Not generated yet"}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={onGenerateEmpathyCode}
+              disabled={!canGenerateCode}
+              className="rounded border border-border bg-background px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground transition-colors hover:bg-accent disabled:opacity-40"
+            >
+              Generate
+            </button>
+            <button
+              onClick={copyEmpathyCode}
+              disabled={!empathyCode}
+              className="inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground transition-colors hover:bg-accent disabled:opacity-40"
+            >
+              <Copy className="h-3 w-3" />
+              Copy
+            </button>
+            <a
+              href={redditLink}
+              target="_blank"
+              rel="noreferrer"
+              className={`inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground transition-colors hover:bg-accent ${!empathyCode ? "pointer-events-none opacity-40" : ""}`}
+            >
+              <Link2 className="h-3 w-3" />
+              Reddit
+            </a>
+            <a
+              href={xLink}
+              target="_blank"
+              rel="noreferrer"
+              className={`inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground transition-colors hover:bg-accent ${!empathyCode ? "pointer-events-none opacity-40" : ""}`}
+            >
+              <Link2 className="h-3 w-3" />
+              X
+            </a>
+          </div>
+          <div className="mt-2 text-[9px] text-muted-foreground/90">
+            {copyStatus || (canGenerateCode ? "Ready to generate code." : "Answer intro questions and exchange at least 6 messages to unlock code generation.")}
+          </div>
+        </div>
       </div>
 
       {/* Quadrant Grid */}

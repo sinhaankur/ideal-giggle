@@ -14,6 +14,21 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
     onSettingsChange({ ...settings, ...partial })
   }
 
+  const webLlmModelPresets = [
+    "Llama-3.2-1B-Instruct-q4f32_1-MLC",
+    "Llama-3.2-3B-Instruct-q4f16_1-MLC",
+    "Qwen2.5-1.5B-Instruct-q4f16_1-MLC",
+    "Phi-3.5-mini-instruct-q4f16_1-MLC",
+  ]
+
+  const openRouterModelPresets = [
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "deepseek/deepseek-r1-distill-llama-70b:free",
+    "qwen/qwen-2.5-72b-instruct:free",
+    "mistralai/mistral-7b-instruct:free",
+    "google/gemma-2-9b-it:free",
+  ]
+
   const providers: { value: AIProvider; label: string; desc: string; icon: typeof Server }[] = [
     {
       value: "openai",
@@ -44,6 +59,12 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
       label: "Ollama",
       desc: "Uses your local Ollama runtime",
       icon: Cpu,
+    },
+    {
+      value: "openrouter",
+      label: "OpenRouter (OSS API)",
+      desc: "Hosted open-source models via API",
+      icon: Cloud,
     },
   ]
 
@@ -169,12 +190,28 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
               <label className="mb-2 block text-sm font-medium text-foreground">
                 WebLLM Model
               </label>
+              <select
+                value={webLlmModelPresets.includes(settings.webllmModel) ? settings.webllmModel : "custom"}
+                onChange={(e) => {
+                  if (e.target.value !== "custom") {
+                    update({ webllmModel: e.target.value })
+                  }
+                }}
+                className="mb-2 w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                {webLlmModelPresets.map((model) => (
+                  <option key={model} value={model}>
+                    {model}
+                  </option>
+                ))}
+                <option value="custom">Custom model id</option>
+              </select>
               <input
                 type="text"
                 value={settings.webllmModel}
                 onChange={(e) => update({ webllmModel: e.target.value })}
                 className="w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="Llama-3.2-3B-Instruct-q4f16_1-MLC"
+                placeholder="Enter or paste model id"
               />
               <p className="mt-2 text-xs text-muted-foreground">
                 First run downloads model files in-browser, then chats fully local.
@@ -226,6 +263,61 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
             </div>
           )}
 
+          {/* OpenRouter Settings */}
+          {settings.provider === "openrouter" && (
+            <div className="mb-6 rounded border border-border bg-background p-3">
+              <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
+                <Cloud className="h-4 w-4 text-foreground" />
+                <span className="text-sm font-semibold text-foreground">
+                  OpenRouter (Open-Source Models)
+                </span>
+              </div>
+
+              <label className="mb-2 block text-sm font-medium text-foreground">
+                OpenRouter API Key
+              </label>
+              <input
+                type="password"
+                value={settings.openRouterApiKey}
+                onChange={(e) => update({ openRouterApiKey: e.target.value })}
+                className="mb-3 w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder="sk-or-v1-..."
+              />
+
+              <label className="mb-2 block text-sm font-medium text-foreground">
+                OpenRouter Model
+              </label>
+              <select
+                value={openRouterModelPresets.includes(settings.openRouterModel) ? settings.openRouterModel : "custom"}
+                onChange={(e) => {
+                  if (e.target.value !== "custom") {
+                    update({ openRouterModel: e.target.value })
+                  }
+                }}
+                className="mb-2 w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                {openRouterModelPresets.map((model) => (
+                  <option key={model} value={model}>
+                    {model}
+                  </option>
+                ))}
+                <option value="custom">Custom model id</option>
+              </select>
+
+              <input
+                type="text"
+                value={settings.openRouterModel}
+                onChange={(e) => update({ openRouterModel: e.target.value })}
+                className="w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder="meta-llama/llama-3.3-70b-instruct:free"
+              />
+
+              <p className="mt-2 text-xs text-muted-foreground">
+                Uses OpenRouter hosted APIs for open-source models. You can also set OPENROUTER_API_KEY on your server.
+              </p>
+            </div>
+          )}
+
           {/* Temperature */}
           <div className="mb-6">
             <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
@@ -250,6 +342,67 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
             <div className="mt-2 text-center text-base font-semibold text-foreground">
               {settings.temperature.toFixed(1)}
             </div>
+          </div>
+
+          {/* Advanced Generation Settings */}
+          <div className="mb-6 rounded border border-border bg-background p-3">
+            <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
+              <Sparkles className="h-4 w-4 text-foreground" />
+              <span className="text-sm font-semibold text-foreground">
+                Advanced Generation
+              </span>
+            </div>
+
+            <label className="mb-2 block text-sm font-medium text-foreground">
+              Top P
+            </label>
+            <div className="mb-3 flex items-center gap-3">
+              <span className="text-sm text-muted-foreground">Focused</span>
+              <input
+                type="range"
+                min="0.1"
+                max="1"
+                step="0.05"
+                value={settings.topP}
+                onChange={(e) => update({ topP: parseFloat(e.target.value) })}
+                className="flex-1 accent-foreground"
+              />
+              <span className="text-sm text-muted-foreground">Broad</span>
+            </div>
+            <div className="mb-4 text-center text-base font-semibold text-foreground">
+              {settings.topP.toFixed(2)}
+            </div>
+
+            <label className="mb-2 block text-sm font-medium text-foreground">
+              Max Output Tokens
+            </label>
+            <input
+              type="number"
+              min="64"
+              max="2048"
+              step="32"
+              value={settings.maxOutputTokens}
+              onChange={(e) => update({ maxOutputTokens: Math.max(64, Math.min(2048, Number(e.target.value) || 300)) })}
+              className="mb-3 w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="300"
+            />
+
+            <label className="mb-2 block text-sm font-medium text-foreground">
+              Context Messages
+            </label>
+            <input
+              type="number"
+              min="4"
+              max="40"
+              step="1"
+              value={settings.contextMessages}
+              onChange={(e) => update({ contextMessages: Math.max(4, Math.min(40, Number(e.target.value) || 12)) })}
+              className="w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="12"
+            />
+            <p className="mt-2 text-xs text-muted-foreground">
+              Controls how many recent messages are sent as conversation memory per request.
+            </p>
           </div>
         </div>
 

@@ -6,7 +6,7 @@ An empathetic AI companion built with Next.js, React, and AI SDK.
 
 - Camera-based facial expression detection (face-api.js)
 - Mood-aware tone adaptation in responses
-- Multiple providers: OpenAI, Anthropic, Google, WebLLM (browser local), Ollama (local runtime)
+- Multiple providers: OpenAI, Anthropic, Google, OpenRouter (open-source hosted models), WebLLM (browser local), Ollama (local runtime)
 
 ## Run Locally
 
@@ -22,6 +22,7 @@ pnpm install
 OPENAI_API_KEY=your_openai_key
 ANTHROPIC_API_KEY=your_anthropic_key
 GOOGLE_GENERATIVE_AI_API_KEY=your_google_key
+OPENROUTER_API_KEY=your_openrouter_key
 ```
 
 You can provide one or more keys depending on which provider you want to use.
@@ -54,6 +55,11 @@ http://localhost:3000
 
 Open settings in the app and choose provider:
 
+- OpenRouter (hosted open-source models):
+	- Set provider to OpenRouter
+	- Add your OpenRouter API key in settings, or set `OPENROUTER_API_KEY` in `.env.local`
+	- Pick a preset open-source model or paste a custom OpenRouter model id
+
 - WebLLM:
 	- Set provider to WebLLM
 	- Optionally set WebLLM model id
@@ -73,6 +79,52 @@ The left panel now includes a Setup Checklist section.
 - Shows selected provider status
 - For WebLLM: checks WebGPU availability
 - For Ollama: click Verify Ollama to test endpoint and model availability
+
+## WebLLM WebGPU Setup
+
+WebLLM runs in-browser and needs WebGPU to use your local GPU for fast inference.
+
+1. Enable WebGPU and acceleration:
+	- Chrome/Edge: open `chrome://settings/system` and enable graphics acceleration.
+	- Chrome/Edge flags: enable `chrome://flags/#enable-unsafe-webgpu`.
+	- Linux/Windows: also enable `chrome://flags/#enable-vulkan`.
+	- Firefox: use a recent version and set `dom.webgpu.enabled=true` in `about:config`.
+
+2. Verify hardware support:
+	- Check `webgpureport.org` to confirm browser GPU detection.
+	- Update GPU drivers (NVIDIA/AMD/Intel) if WebGPU is unavailable.
+
+3. Understand first-run behavior:
+	- Model shards are downloaded and cached in browser storage.
+	- WebAssembly runs model runtime logic.
+	- WebGPU performs matrix math on GPU for usable speed.
+
+4. Fix slow/crashy sessions:
+	- Use smaller models (1B/2B) for lower VRAM use.
+	- Close heavy tabs/applications to free GPU memory.
+	- Keep laptop plugged in and avoid thermal throttling.
+
+If browser WebGPU remains unstable, switch provider to OpenRouter API or Ollama for more consistent runtime behavior.
+
+## Recommended No-Install Websites
+
+These websites run models directly in-browser and cache weights in IndexedDB:
+
+- WebLLM Chat: https://chat.webllm.ai
+- Hugging Face Chat: https://huggingface.co/chat
+- WebLLM Agents Playground: https://huggingface.co/spaces/webllm/web-llm-agent
+
+## Seamless Browser Requirements
+
+| Requirement | How to Verify / Fix |
+| --- | --- |
+| WebGPU Support | Check `webgpureport.org`. If unsupported, enable browser acceleration and WebGPU flags. |
+| Storage Space | Keep roughly 2GB to 5GB free for model downloads (3B class models are larger). |
+| Persistence | Avoid Incognito/Private mode because cached model weights are removed when session ends. |
+
+## Gemini Nano Note
+
+Some Chrome Dev/Canary environments may expose built-in local LLM capabilities (Gemini Nano) via experimental browser APIs. This can reduce download time, but availability depends on browser channel, OS, and device support.
 
 ## Camera Mood Analysis
 
