@@ -1,12 +1,13 @@
 "use client"
 
-import { useState, useCallback, useMemo } from "react"
+import { useState, useCallback, useMemo, useEffect, useRef } from "react"
 import { useChat } from "@ai-sdk/react"
 import { Settings } from "lucide-react"
 import { CameraPanel } from "@/components/camera-panel"
 import { ChatPanel } from "@/components/chat-panel"
 import { EmpathyPanel } from "@/components/empathy-panel"
 import { SettingsPanel } from "@/components/settings-panel"
+import { SetupChecklist } from "@/components/setup-checklist"
 import {
   DEFAULT_SETTINGS,
   detectEmotion,
@@ -17,7 +18,34 @@ import {
   type Message,
 } from "@/lib/companion-types"
 
+function buildSystemPrompt(
+  companionName: string,
+  personality: CompanionSettings["personality"],
+  emotion: Emotion
+) {
+  const personalityPrompts: Record<CompanionSettings["personality"], string> = {
+    warm: `You are ${companionName}, a deeply empathetic and warm AI companion. You truly care about the person you're talking to. You pick up on emotional cues, validate feelings, and offer genuine comfort. You speak naturally, with warmth and tenderness -- like a close friend who truly understands. You are creative, sometimes sharing metaphors, poetry fragments, or beautiful observations about life.`,
+    analytical: `You are ${companionName}, a thoughtful and analytical AI companion. You help people understand their emotions through clear reasoning and gentle observation. You offer structured perspectives while remaining caring. You sometimes use frameworks or models to help people think through their feelings, but always with compassion.`,
+    playful: `You are ${companionName}, a playful and creative AI companion. You use humor, wordplay, and imaginative thinking to help people feel lighter. You're like a creative muse who can turn any conversation into something beautiful. You still take emotions seriously, but you know that laughter and creativity are powerful healers.`,
+    professional: `You are ${companionName}, a composed and direct AI companion. You provide clear, honest emotional support without unnecessary fluff. You respect the person's time and intelligence. You're like a wise counselor who gets to the heart of things quickly while maintaining genuine care.`,
+  }
+
+  return `${personalityPrompts[personality]}
+
+Current detected emotion from the user: ${emotion}. Adjust your response tone accordingly.
+
+Guidelines:
+- Be genuinely empathetic -- mirror and validate emotions before offering perspective
+- Be creative -- occasionally use metaphors, analogies, or artistic observations
+- Keep responses conversational and human-like (2-4 sentences typically)
+- Never diagnose or provide medical/psychological advice
+- If someone seems in crisis, gently suggest professional resources
+- Remember context from the conversation to show you truly listen`
+}
+
 export default function CompanionApp() {
+  const chatApi = process.env.NEXT_PUBLIC_CHAT_API_URL || "/api/chat"
+
   const [settings, setSettings] = useState<CompanionSettings>(DEFAULT_SETTINGS)
   const [showSettings, setShowSettings] = useState(false)
   const [cameraEmotion, setCameraEmotion] = useState<Emotion>("neutral")
@@ -29,22 +57,81 @@ export default function CompanionApp() {
   })
   const [currentEmotion, setCurrentEmotion] = useState<Emotion>("neutral")
   const [mobilePanel, setMobilePanel] = useState<"camera" | "chat" | "empathy">("chat")
+  const [webLlmMessages, setWebLlmMessages] = useState<Message[]>([])
+  const [isWebLlmLoading, setIsWebLlmLoading] = useState(false)
+  const [webLlmStatus, setWebLlmStatus] = useState("idle")
+  const [webLlmProgress, setWebLlmProgress] = useState("")
+
+  const webLlmMessagesRef = useRef<Message[]>([])
+  const webLlmEngineRef = useRef<any>(null)
+  const webLlmInitPromiseRef = useRef<Promise<any> | null>(null)
+
+  useEffect(() => {
+    webLlmMessagesRef.current = webLlmMessages
+  }, [webLlmMessages])
+
+  useEffect(() => {
+    webLlmEngineRef.current = null
+    webLlmInitPromiseRef.current = null
+    setWebLlmStatus("idle")
+    setWebLlmProgress("")
+  }, [settings.webllmModel])
 
   const { messages: chatMessages, sendMessage, status } = useChat({
-    api: "/api/chat",
+    api: chatApi,
     body: {
       emotion: currentEmotion,
       personality: settings.personality,
       provider: settings.provider,
       temperature: settings.temperature,
       companionName: settings.name,
+      ollamaBaseUrl: settings.ollamaBaseUrl,
+      ollamaModel: settings.ollamaModel,
     },
   })
 
-  const isLoading = status === "streaming" || status === "submitted"
+  const isRemoteLoading = status === "streaming" || status === "submitted"
+  const isLoading = settings.provider === "webllm" ? isWebLlmLoading : isRemoteLoading
+
+  const ensureWebLlmEngine = useCallback(async () => {
+    if (webLlmEngineRef.current) {
+      return webLlmEngineRef.current
+    }
+    if (webLlmInitPromiseRef.current) {
+      return webLlmInitPromiseRef.current
+    }
+
+    setWebLlmStatus("downloading")
+
+    const initPromise = (async () => {
+      const webllm = await import("@mlc-ai/web-llm")
+      const engine = await webllm.CreateMLCEngine(settings.webllmModel, {
+        initProgressCallback(report) {
+          const progressValue =
+            typeof report.progress === "number"
+              ? `${Math.round(report.progress * 100)}%`
+              : ""
+          const progressText = report.text ? ` ${report.text}` : ""
+          setWebLlmProgress(`${progressValue}${progressText}`.trim())
+        },
+      })
+
+      webLlmEngineRef.current = engine
+      setWebLlmStatus("ready")
+      return engine
+    })()
+
+    webLlmInitPromiseRef.current = initPromise
+
+    try {
+      return await initPromise
+    } finally {
+      webLlmInitPromiseRef.current = null
+    }
+  }, [settings.webllmModel])
 
   // Convert AI SDK UIMessage format to our Message format for the ChatPanel
-  const messages: Message[] = useMemo(
+  const remoteMessages: Message[] = useMemo(
     () =>
       chatMessages.map((msg) => ({
         id: msg.id,
@@ -60,8 +147,10 @@ export default function CompanionApp() {
     [chatMessages, currentEmotion]
   )
 
+  const messages = settings.provider === "webllm" ? webLlmMessages : remoteMessages
+
   const handleSendMessage = useCallback(
-    (text: string) => {
+    async (text: string) => {
       // Detect emotion from text
       const textEmotion = detectEmotion(text)
       // Combine with camera emotion (prefer text if not neutral)
@@ -71,10 +160,80 @@ export default function CompanionApp() {
       // Update empathy map
       setEmpathyData((prev) => analyzeEmpathy(text, prev))
 
-      // Send via AI SDK
+      if (settings.provider === "webllm") {
+        const userMessage: Message = {
+          id: crypto.randomUUID(),
+          text,
+          sender: "user",
+          timestamp: new Date(),
+          emotion: combinedEmotion,
+        }
+
+        setWebLlmMessages((prev) => [...prev, userMessage])
+        setIsWebLlmLoading(true)
+
+        try {
+          const engine = await ensureWebLlmEngine()
+          setWebLlmStatus("thinking")
+
+          const conversation = [...webLlmMessagesRef.current, userMessage].map((m) => ({
+            role: m.sender === "user" ? "user" : "assistant",
+            content: m.text,
+          }))
+
+          const completion = await engine.chat.completions.create({
+            messages: [
+              {
+                role: "system",
+                content: buildSystemPrompt(settings.name, settings.personality, combinedEmotion),
+              },
+              ...conversation,
+            ],
+            temperature: settings.temperature,
+            max_tokens: 300,
+          })
+
+          const aiContentRaw = completion.choices?.[0]?.message?.content
+          const aiText =
+            typeof aiContentRaw === "string"
+              ? aiContentRaw
+              : Array.isArray(aiContentRaw)
+                ? aiContentRaw
+                    .map((part: any) => (typeof part?.text === "string" ? part.text : ""))
+                    .join("")
+                : ""
+
+          const aiMessage: Message = {
+            id: crypto.randomUUID(),
+            text: aiText || "I am here with you. Could you tell me a little more?",
+            sender: "ai",
+            timestamp: new Date(),
+            emotion: combinedEmotion,
+          }
+
+          setWebLlmMessages((prev) => [...prev, aiMessage])
+          setWebLlmStatus("ready")
+        } catch (error) {
+          const fallback: Message = {
+            id: crypto.randomUUID(),
+            text: "I could not initialize WebLLM. Check model name, browser memory, or network and try again.",
+            sender: "ai",
+            timestamp: new Date(),
+            emotion: "neutral",
+          }
+          setWebLlmMessages((prev) => [...prev, fallback])
+          setWebLlmStatus("error")
+          console.error("WebLLM error:", error)
+        } finally {
+          setIsWebLlmLoading(false)
+        }
+        return
+      }
+
+      // Send via AI SDK for remote and Ollama providers
       sendMessage({ text })
     },
-    [cameraEmotion, sendMessage]
+    [cameraEmotion, sendMessage, settings, ensureWebLlmEngine]
   )
 
   const handleCameraEmotion = useCallback((emotion: Emotion) => {
@@ -167,9 +326,28 @@ export default function CompanionApp() {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Model</span>
                 <span className="font-mono text-foreground">
-                  {settings.provider === "openai" ? "GPT-4o Mini" : settings.provider === "anthropic" ? "Claude 3.5" : "Gemini 2.0"}
+                  {settings.provider === "openai"
+                    ? "GPT-4o Mini"
+                    : settings.provider === "anthropic"
+                      ? "Claude 3.5"
+                      : settings.provider === "google"
+                        ? "Gemini 2.0"
+                        : settings.provider === "webllm"
+                          ? settings.webllmModel
+                          : settings.ollamaModel}
                 </span>
               </div>
+              {settings.provider === "webllm" && (
+                <>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Runtime</span>
+                    <span className="text-foreground uppercase">{webLlmStatus}</span>
+                  </div>
+                  {webLlmProgress && (
+                    <div className="text-[10px] text-muted-foreground">{webLlmProgress}</div>
+                  )}
+                </>
+              )}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Personality</span>
                 <span className="text-foreground uppercase">{settings.personality}</span>
@@ -184,6 +362,8 @@ export default function CompanionApp() {
               </div>
             </div>
           </div>
+
+          <SetupChecklist settings={settings} />
 
           {/* Decorative retro element */}
           <div className="mt-4 border-t border-border pt-3">

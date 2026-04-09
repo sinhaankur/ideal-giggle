@@ -1,6 +1,6 @@
 "use client"
 
-import { Settings, Server, Cloud, Zap, Thermometer, User, Sparkles } from "lucide-react"
+import { Settings, Server, Cloud, Thermometer, User, Sparkles, Cpu, Download } from "lucide-react"
 import type { CompanionSettings, AIProvider, Personality } from "@/lib/companion-types"
 
 interface SettingsPanelProps {
@@ -32,6 +32,18 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
       label: "Google",
       desc: "Gemini 2.0 Flash -- Fast and capable",
       icon: Cloud,
+    },
+    {
+      value: "webllm",
+      label: "WebLLM",
+      desc: "Runs in your browser and downloads model locally",
+      icon: Cpu,
+    },
+    {
+      value: "ollama",
+      label: "Ollama",
+      desc: "Uses your local Ollama runtime",
+      icon: Cpu,
     },
   ]
 
@@ -145,11 +157,74 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
             </div>
           </div>
 
-          {/* Local LLM Settings */}
-          {/* Settings removed - direct API providers are now used */}
+          {/* WebLLM Settings */}
+          {settings.provider === "webllm" && (
+            <div className="mb-6 rounded border border-border bg-background p-3">
+              <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
+                <Cpu className="h-4 w-4 text-foreground" />
+                <span className="text-sm font-semibold text-foreground">
+                  WebLLM (Browser Local)
+                </span>
+              </div>
+              <label className="mb-2 block text-sm font-medium text-foreground">
+                WebLLM Model
+              </label>
+              <input
+                type="text"
+                value={settings.webllmModel}
+                onChange={(e) => update({ webllmModel: e.target.value })}
+                className="w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder="Llama-3.2-3B-Instruct-q4f16_1-MLC"
+              />
+              <p className="mt-2 text-xs text-muted-foreground">
+                First run downloads model files in-browser, then chats fully local.
+              </p>
+            </div>
+          )}
 
-          {/* Cloud Settings */}
-          {/* Settings removed - direct API providers are now used */}
+          {/* Ollama Settings */}
+          {settings.provider === "ollama" && (
+            <div className="mb-6 rounded border border-border bg-background p-3">
+              <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
+                <Cpu className="h-4 w-4 text-foreground" />
+                <span className="text-sm font-semibold text-foreground">
+                  Ollama (Local Runtime)
+                </span>
+              </div>
+              <label className="mb-2 block text-sm font-medium text-foreground">
+                Ollama Base URL
+              </label>
+              <input
+                type="text"
+                value={settings.ollamaBaseUrl}
+                onChange={(e) => update({ ollamaBaseUrl: e.target.value })}
+                className="mb-3 w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder="http://127.0.0.1:11434"
+              />
+              <label className="mb-2 block text-sm font-medium text-foreground">
+                Ollama Model
+              </label>
+              <input
+                type="text"
+                value={settings.ollamaModel}
+                onChange={(e) => update({ ollamaModel: e.target.value })}
+                className="w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder="llama3.2"
+              />
+              <div className="mt-3 rounded border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
+                Browser apps cannot install Ollama automatically. Install it once on your OS, run model pull locally, then this app can connect.
+              </div>
+              <a
+                href="https://ollama.com/download"
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 inline-flex items-center gap-2 rounded border border-foreground px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-foreground hover:text-background"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Open Ollama Download
+              </a>
+            </div>
+          )}
 
           {/* Temperature */}
           <div className="mb-6">
