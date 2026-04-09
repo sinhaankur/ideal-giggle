@@ -21,6 +21,8 @@ export async function POST(req: Request) {
   const provider: string = body.provider || "openai"
   const temperature: number = body.temperature ?? 0.7
   const companionName: string = body.companionName || "EMPATHEIA"
+  const empathyProfile = body.empathyProfile || null
+  const empathyCode: string = body.empathyCode || ""
   const ollamaBaseUrl: string = body.ollamaBaseUrl || "http://127.0.0.1:11434"
   const ollamaModel: string = body.ollamaModel || "llama3.2"
 
@@ -44,8 +46,19 @@ export async function POST(req: Request) {
 
 Current detected emotion from the user: ${emotion}. Adjust your response tone accordingly.
 
+User empathy profile:
+- Preferred name: ${empathyProfile?.preferredName ?? "Friend"}
+- Communication style: ${empathyProfile?.communicationStyle ?? "Warm, validating, and practical"}
+- Support goals: ${Array.isArray(empathyProfile?.supportGoals) ? empathyProfile.supportGoals.join("; ") : "Not specified"}
+- Negative thought patterns: ${Array.isArray(empathyProfile?.negativeThoughtPatterns) ? empathyProfile.negativeThoughtPatterns.join("; ") : "Not specified"}
+- Reframe preferences: ${Array.isArray(empathyProfile?.reframePreferences) ? empathyProfile.reframePreferences.join("; ") : "Not specified"}
+- Grounding prompts: ${Array.isArray(empathyProfile?.groundingPrompts) ? empathyProfile.groundingPrompts.join("; ") : "Not specified"}
+- Phrases to avoid: ${Array.isArray(empathyProfile?.avoidPhrases) ? empathyProfile.avoidPhrases.join("; ") : "Not specified"}
+- Empathy code: ${empathyCode || "Not generated yet"}
+
 Guidelines:
 - Be genuinely empathetic -- mirror and validate emotions before offering perspective
+- Help the user rethink and re-evaluate negative thoughts with compassionate cognitive reframing
 - Be creative -- occasionally use metaphors, analogies, or artistic observations
 - Keep responses conversational and human-like (2-4 sentences typically)
 - Never diagnose or provide medical/psychological advice
