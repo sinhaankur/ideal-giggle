@@ -480,6 +480,8 @@ export default function CompanionApp() {
   const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null)
   const [elapsedMs, setElapsedMs] = useState(0)
   const [mobilePanel, setMobilePanel] = useState<"camera" | "chat" | "empathy">("chat")
+  const [rightPanelWidth, setRightPanelWidth] = useState(320)
+  const [isResizingRightPanel, setIsResizingRightPanel] = useState(false)
   const [hasAgreed, setHasAgreed] = useState(false)
   const [showQuickStartModal, setShowQuickStartModal] = useState(false)
   const [agreementChecked, setAgreementChecked] = useState(false)
@@ -645,6 +647,32 @@ export default function CompanionApp() {
       setLlmConnectionError(remoteError.message)
     }
   }, [remoteError])
+
+  useEffect(() => {
+    if (!isResizingRightPanel) return
+
+    const handleMouseMove = (event: MouseEvent) => {
+      const nextWidth = window.innerWidth - event.clientX
+      const clamped = Math.max(280, Math.min(560, nextWidth))
+      setRightPanelWidth(clamped)
+    }
+
+    const handleMouseUp = () => {
+      setIsResizingRightPanel(false)
+    }
+
+    document.body.style.cursor = "col-resize"
+    document.body.style.userSelect = "none"
+    window.addEventListener("mousemove", handleMouseMove)
+    window.addEventListener("mouseup", handleMouseUp)
+
+    return () => {
+      document.body.style.cursor = ""
+      document.body.style.userSelect = ""
+      window.removeEventListener("mousemove", handleMouseMove)
+      window.removeEventListener("mouseup", handleMouseUp)
+    }
+  }, [isResizingRightPanel])
 
   useEffect(() => {
     if (settings.provider === "webllm") return
@@ -1991,11 +2019,21 @@ export default function CompanionApp() {
           />
         </section>
 
+        {/* Right Resize Handle */}
+        <div
+          onMouseDown={() => setIsResizingRightPanel(true)}
+          className="hidden w-1 cursor-col-resize bg-border/70 transition-colors hover:bg-foreground/30 md:block"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize empathy panel"
+        />
+
         {/* Right Panel - Empathy Map */}
         <aside
-          className={`w-full flex-shrink-0 overflow-y-auto border-l border-border p-4 md:w-72 lg:w-80 ${
+          className={`w-full flex-shrink-0 overflow-y-auto border-l border-border p-4 ${
             mobilePanel === "empathy" ? "block" : "hidden md:block"
           }`}
+          style={{ width: mobilePanel === "empathy" ? "100%" : `${rightPanelWidth}px` }}
         >
           <EmpathyPanel
             data={empathyData}
