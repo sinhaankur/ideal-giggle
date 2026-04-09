@@ -4,6 +4,12 @@ export type Personality = "warm" | "analytical" | "playful" | "professional"
 
 export type AIProvider = "openai" | "anthropic" | "google" | "webllm" | "ollama" | "openrouter"
 
+export const PROVIDER_DEFAULT_MODELS = {
+  openai: "gpt-4o-mini",
+  anthropic: "claude-3-5-sonnet-20241022",
+  google: "gemini-2.0-flash-001",
+} as const
+
 const envDefaultProvider = process.env.NEXT_PUBLIC_DEFAULT_PROVIDER
 const defaultProvider: AIProvider =
   envDefaultProvider === "openai" ||
