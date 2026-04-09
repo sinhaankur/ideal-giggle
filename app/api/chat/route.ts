@@ -8,6 +8,7 @@ import { createOpenAI, openai } from "@ai-sdk/openai"
 import { anthropic } from "@ai-sdk/anthropic"
 import { google } from "@ai-sdk/google"
 import { createOllama } from "ollama-ai-provider"
+import { PROVIDER_DEFAULT_MODELS } from "@/lib/companion-types"
 
 export const maxDuration = 60
 
@@ -121,9 +122,9 @@ Response Structure:
   const model = (() => {
     switch (provider) {
       case "anthropic":
-        return anthropic("claude-3-5-sonnet-20241022")
+        return anthropic(PROVIDER_DEFAULT_MODELS.anthropic)
       case "google":
-        return google("gemini-2.0-flash-001")
+        return google(PROVIDER_DEFAULT_MODELS.google)
       case "ollama":
         return ollama(ollamaModel)
       case "openrouter":
@@ -133,7 +134,7 @@ Response Structure:
         return openRouter.chat(openRouterModel)
       case "openai":
       default:
-        return openai("gpt-4o-mini")
+        return openai(PROVIDER_DEFAULT_MODELS.openai)
     }
   })()
 

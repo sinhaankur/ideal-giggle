@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { CheckCircle2, CircleAlert, Loader2, RefreshCw } from "lucide-react"
 import type { CompanionSettings } from "@/lib/companion-types"
 
@@ -8,6 +8,12 @@ type CheckState = "ok" | "warning" | "pending"
 
 interface SetupChecklistProps {
   settings: CompanionSettings
+  runtime: {
+    isLoading: boolean
+    llmConnectionError: string
+    webLlmStatus: string
+    webLlmError: string
+  }
 }
 
 interface OllamaStatus {
@@ -46,7 +52,7 @@ function StatusLine({ label, state, detail }: { label: string; state: CheckState
   )
 }
 
-export function SetupChecklist({ settings }: SetupChecklistProps) {
+export function SetupChecklist({ settings, runtime }: SetupChecklistProps) {
   const [checkingOllama, setCheckingOllama] = useState(false)
   const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus | null>(null)
   const [storageAvailableGb, setStorageAvailableGb] = useState<number | null>(null)
@@ -68,7 +74,7 @@ export function SetupChecklist({ settings }: SetupChecklistProps) {
     }
   }, [])
 
-  const checkOllama = async () => {
+  const checkOllama = useCallback(async () => {
     setCheckingOllama(true)
     try {
       const base = settings.ollamaBaseUrl.replace(/\/$/, "")
@@ -124,7 +130,7 @@ export function SetupChecklist({ settings }: SetupChecklistProps) {
     } finally {
       setCheckingOllama(false)
     }
-  }
+  }, [settings.ollamaBaseUrl, settings.ollamaModel, isStaticExport])
 
   const runWebGpuDiagnostic = async () => {
     setCheckingWebGpu(true)
@@ -232,6 +238,16 @@ export function SetupChecklist({ settings }: SetupChecklistProps) {
     run()
   }, [])
 
+  useEffect(() => {
+    if (settings.provider !== "ollama") return
+
+    const timeout = window.setTimeout(() => {
+      checkOllama()
+    }, 350)
+
+    return () => window.clearTimeout(timeout)
+  }, [settings.provider, settings.ollamaBaseUrl, settings.ollamaModel, checkOllama])
+
   return (
     <div className="mt-4 rounded border border-border bg-card p-4">
       <div className="mb-3 text-xs font-semibold tracking-wide text-muted-foreground">SETUP CHECKLIST</div>
@@ -248,19 +264,49 @@ export function SetupChecklist({ settings }: SetupChecklistProps) {
 
       <StatusLine
         label="Provider"
-        state="ok"
-        detail={`Current provider: ${settings.provider.toUpperCase()}`}
+        state={
+          runtime.llmConnectionError
+            ? "warning"
+            : runtime.isLoading
+              ? "pending"
+              : settings.provider === "openrouter" && !settings.openRouterApiKey.trim()
+                ? "warning"
+                : "ok"
+        }
+        detail={
+          runtime.llmConnectionError
+            ? `Provider error: ${runtime.llmConnectionError}`
+            : runtime.isLoading
+              ? `Current provider: ${settings.provider.toUpperCase()} (processing request...)`
+              : settings.provider === "openrouter" && !settings.openRouterApiKey.trim()
+                ? "OpenRouter selected but API key is empty in Settings."
+                : `Current provider: ${settings.provider.toUpperCase()} ready.`
+        }
       />
 
       {settings.provider === "webllm" && (
         <>
           <StatusLine
             label="WebLLM Runtime"
-            state={browserChecks.webGpu ? "ok" : "warning"}
+            state={
+              runtime.webLlmStatus === "ready"
+                ? "ok"
+                : runtime.webLlmStatus === "thinking" || runtime.webLlmStatus === "downloading"
+                  ? "pending"
+                  : "warning"
+            }
             detail={
-              browserChecks.webGpu
-                ? `WebGPU detected. Model ${settings.webllmModel} can run in browser.`
-                : "WebGPU not detected. Enable GPU acceleration and browser WebGPU settings, or switch to API/Ollama."
+              runtime.webLlmError
+                ? `Runtime error: ${runtime.webLlmError}`
+                : runtime.webLlmStatus === "ready"
+                  ? `Runtime ready. Model ${settings.webllmModel} can run in browser.`
+                  : runtime.webLlmStatus === "thinking"
+                    ? "Runtime is actively generating response."
+                    : runtime.webLlmStatus === "downloading"
+                      ? "Runtime is downloading model artifacts."
+                      : browserChecks.webGpu
+                        ? "WebGPU detected, but runtime not initialized yet."
+                        : "WebGPU not detected. Enable GPU acceleration and browser WebGPU settings, or switch to API/Ollama."
             }
           />
 
