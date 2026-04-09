@@ -1,27 +1,14 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useRef, useState } from "react"
 import { MessageSquare, Brain, HandMetal, Heart, Upload, Download, Copy, Link2 } from "lucide-react"
 import type { EmpathyData, EmpathyProfile } from "@/lib/companion-types"
-
-type EmpathyQuestionView = {
-  id: string
-  question: string
-  category: string
-  followUp: string
-  uiSection: string
-  anchor?: string
-  sourceIndex?: number
-}
 
 interface EmpathyPanelProps {
   data: EmpathyData
   profile: EmpathyProfile
   onProfileImport: (profile: EmpathyProfile) => void
   onProfileExport: () => void
-  questionBank: EmpathyQuestionView[]
-  introAnswers: string[]
-  onIntroAnswerChange: (index: number, answer: string) => void
   empathyCode: string
   onGenerateEmpathyCode: () => void
   messageCount: number
@@ -67,9 +54,6 @@ export function EmpathyPanel({
   profile,
   onProfileImport,
   onProfileExport,
-  questionBank,
-  introAnswers,
-  onIntroAnswerChange,
   empathyCode,
   onGenerateEmpathyCode,
   messageCount,
@@ -84,7 +68,6 @@ export function EmpathyPanel({
 }: EmpathyPanelProps) {
   const [jsonStatus, setJsonStatus] = useState<string>("No profile JSON imported yet.")
   const [copyStatus, setCopyStatus] = useState<string>("")
-  const [idlePromptIndex, setIdlePromptIndex] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const triggerUpload = () => {
@@ -97,12 +80,12 @@ export function EmpathyPanel({
     fallbackPhase >= 3
       ? "border-slate-600 bg-slate-950 text-slate-100"
       : depthTierLabel.startsWith("IV")
-      ? "border-foreground bg-foreground/5"
-      : depthTierLabel.startsWith("III")
-        ? "border-foreground/60 bg-card"
-        : depthTierLabel.startsWith("II")
-          ? "border-border/80 bg-card backdrop-blur-[1px]"
-          : "border-border bg-card"
+        ? "border-foreground bg-foreground/5"
+        : depthTierLabel.startsWith("III")
+          ? "border-foreground/60 bg-card"
+          : depthTierLabel.startsWith("II")
+            ? "border-border/80 bg-card backdrop-blur-[1px]"
+            : "border-border bg-card"
 
   const copyEmpathyCode = async () => {
     if (!empathyCode) return
@@ -118,18 +101,6 @@ export function EmpathyPanel({
   const shareText = `Just mapped my mental model on Empatheia. My Empathy Code is ${empathyCode || "EMP-2026"}. Explore your own at sinhaankur.com`
   const redditLink = `https://www.reddit.com/submit?title=${encodeURIComponent("My Empathy Code")}&text=${encodeURIComponent(shareText)}`
   const xLink = `https://x.com/intent/tweet?text=${encodeURIComponent(shareText)}`
-
-  useEffect(() => {
-    if (answeredIntroCount >= 3 || questionBank.length === 0) {
-      return
-    }
-
-    const interval = setInterval(() => {
-      setIdlePromptIndex((prev) => (prev + 1) % questionBank.length)
-    }, 18000)
-
-    return () => clearInterval(interval)
-  }, [answeredIntroCount, questionBank])
 
   const handleJsonUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -178,15 +149,11 @@ export function EmpathyPanel({
 
   return (
     <div className="flex h-full flex-col gap-4">
-      {/* Section Header */}
       <div className="flex items-center gap-2 border-b border-border pb-2">
         <Brain className="h-3 w-3 text-muted-foreground" />
-        <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-          Empathy Map
-        </span>
+        <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Empathy Map</span>
       </div>
 
-      {/* Profile JSON Controls */}
       <div className="border border-border bg-card p-3">
         <div className="mb-2 text-[9px] uppercase tracking-[0.2em] text-muted-foreground">Profile JSON</div>
         <div className="mb-2 text-[10px] text-muted-foreground">
@@ -218,13 +185,11 @@ export function EmpathyPanel({
         <div className="mt-2 text-[9px] text-muted-foreground/90">{jsonStatus}</div>
       </div>
 
-      {/* Intro Q&A and Empathy Code */}
       <div className={`border p-3 transition-all duration-500 ${depthVisualTone}`}>
-        <div className="mb-2 text-[9px] uppercase tracking-[0.2em] text-muted-foreground">Introduction Questions</div>
+        <div className="mb-2 text-[9px] uppercase tracking-[0.2em] text-muted-foreground">Onboarding</div>
         <div className="mb-2 text-[9px] text-muted-foreground/90">Trigger Mode: {questionTrigger}</div>
-        <div className="mb-2 text-[9px] text-muted-foreground/90">
-          Current Step: {Math.min(currentStep + 1, questionBank.length)} / {questionBank.length}
-        </div>
+        <div className="mb-2 text-[9px] text-muted-foreground/90">Current Step: {currentStep + 1}</div>
+        <div className="mb-2 text-[9px] text-muted-foreground/90">Intro completion: {answeredIntroCount}/2</div>
         <div className="mb-2 grid grid-cols-2 gap-2">
           <div className="rounded border border-border bg-background px-2 py-1 text-[9px] text-muted-foreground">
             Emotional Velocity: <span className="text-foreground">{(emotionalVelocity * 100).toFixed(0)}%</span>
@@ -234,45 +199,12 @@ export function EmpathyPanel({
           </div>
         </div>
         <div className="mb-3 h-1.5 w-full overflow-hidden rounded bg-border/60">
-          <div
-            className="h-full bg-foreground transition-all duration-500"
-            style={{ width: `${Math.max(8, Math.min(100, densitySentiment * 100))}%` }}
-          />
-        </div>
-        <div className="space-y-2">
-          {questionBank.map((item, index) => (
-            <div key={item.id}>
-              <label className="mb-1 block text-[10px] text-foreground">{item.question}</label>
-              <div className="mb-1 text-[9px] text-muted-foreground/80">
-                Feeds: {item.category} • Section: {item.uiSection}{item.anchor ? ` • Anchor: ${item.anchor}` : ""}
-              </div>
-              <input
-                value={introAnswers[item.sourceIndex ?? index] || ""}
-                onChange={(e) => onIntroAnswerChange(item.sourceIndex ?? index, e.target.value)}
-                className="w-full rounded border border-border bg-background px-2 py-1 text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                placeholder="Type your answer..."
-              />
-            </div>
-          ))}
+          <div className="h-full bg-foreground transition-all duration-500" style={{ width: `${Math.max(8, Math.min(100, densitySentiment * 100))}%` }} />
         </div>
 
-        {introAnswers[0]?.trim() && !introAnswers[1]?.trim() && (
-          <div className="mt-2 rounded border border-border bg-background px-2 py-1.5 text-[9px] text-muted-foreground">
-            We've talked about what triggers you, but I'm curious -- what is one physical thing you do to feel grounded in those moments?
-          </div>
-        )}
-
-        {answeredIntroCount >= 2 && answeredIntroCount < 3 && (
-          <div className="mt-2 rounded border border-border bg-background px-2 py-1.5 text-[9px] text-muted-foreground">
-            Stage 3 unlock: one more intro answer will enable Empathy Code generation.
-          </div>
-        )}
-
-        {answeredIntroCount < 3 && questionBank.length > 0 && (
-          <div className="mt-2 rounded border border-border bg-background px-2 py-1.5 text-[9px] text-muted-foreground">
-            Guided prompt: {questionBank[idlePromptIndex]?.followUp}
-          </div>
-        )}
+        <div className="rounded border border-border bg-background px-2 py-1.5 text-[9px] text-muted-foreground">
+          Introduction questions are now asked directly in chat.
+        </div>
 
         {answeredIntroCount >= 3 && suggestedQuestion && (
           <div className="mt-2 rounded border border-border bg-background px-2 py-1.5 text-[9px] text-muted-foreground">
@@ -288,9 +220,7 @@ export function EmpathyPanel({
 
         <div className="mt-3 border-t border-border pt-2">
           <div className="mb-1 text-[9px] uppercase tracking-[0.2em] text-muted-foreground">Empathy Code</div>
-          <div className="mb-2 rounded border border-border bg-background px-2 py-1 text-[10px] text-foreground">
-            {empathyCode || "Not generated yet"}
-          </div>
+          <div className="mb-2 rounded border border-border bg-background px-2 py-1 text-[10px] text-foreground">{empathyCode || "Not generated yet"}</div>
           <div className="flex flex-wrap gap-2">
             <button
               onClick={onGenerateEmpathyCode}
@@ -326,43 +256,26 @@ export function EmpathyPanel({
               X
             </a>
           </div>
-          <div className="mt-2 text-[9px] text-muted-foreground/90">
-            {copyStatus || (canGenerateCode ? "Ready to generate code." : "Exchange at least 6 messages to unlock code generation.")}
-          </div>
+          <div className="mt-2 text-[9px] text-muted-foreground/90">{copyStatus || (canGenerateCode ? "Ready to generate code." : "Exchange at least 6 messages to unlock code generation.")}</div>
         </div>
       </div>
 
-      {/* Quadrant Grid */}
       <div className="grid flex-1 grid-cols-2 gap-3">
         {quadrants.map(({ key, label, icon: Icon, emptyText }) => (
-          <div
-            key={key}
-            className="flex flex-col border border-border bg-card p-3"
-          >
+          <div key={key} className="flex flex-col border border-border bg-card p-3">
             <div className="mb-2 flex items-center gap-1.5 border-b border-border pb-1.5">
               <Icon className="h-2.5 w-2.5 text-muted-foreground" />
-              <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-foreground">
-                {label}
-              </span>
-              {data[key].length > 0 && (
-                <span className="ml-auto text-[8px] text-muted-foreground">
-                  {data[key].length}
-                </span>
-              )}
+              <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-foreground">{label}</span>
+              {data[key].length > 0 && <span className="ml-auto text-[8px] text-muted-foreground">{data[key].length}</span>}
             </div>
 
             <div className="flex-1 overflow-y-auto">
               {data[key].length === 0 ? (
-                <p className="text-center text-[9px] italic leading-relaxed text-muted-foreground/40">
-                  {emptyText}
-                </p>
+                <p className="text-center text-[9px] italic leading-relaxed text-muted-foreground/40">{emptyText}</p>
               ) : (
                 <div className="flex flex-col gap-1.5">
                   {data[key].map((item, i) => (
-                    <div
-                      key={i}
-                      className="border-l-2 border-muted-foreground/20 bg-background px-2 py-1 text-[10px] leading-relaxed text-muted-foreground"
-                    >
+                    <div key={i} className="border-l-2 border-muted-foreground/20 bg-background px-2 py-1 text-[10px] leading-relaxed text-muted-foreground">
                       {item}
                     </div>
                   ))}
@@ -373,11 +286,8 @@ export function EmpathyPanel({
         ))}
       </div>
 
-      {/* Summary Stats */}
       <div className="border border-border bg-card p-3">
-        <div className="mb-2 text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
-          Analysis Summary
-        </div>
+        <div className="mb-2 text-[9px] uppercase tracking-[0.2em] text-muted-foreground">Analysis Summary</div>
         <div className="grid grid-cols-4 gap-2">
           {quadrants.map(({ key, label }) => (
             <div
@@ -389,9 +299,7 @@ export function EmpathyPanel({
               }}
             >
               <div className="text-sm font-bold text-foreground">{data[key].length}</div>
-              <div className="text-[8px] uppercase tracking-[0.1em] text-muted-foreground">
-                {label}
-              </div>
+              <div className="text-[8px] uppercase tracking-[0.1em] text-muted-foreground">{label}</div>
             </div>
           ))}
         </div>

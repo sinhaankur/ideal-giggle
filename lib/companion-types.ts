@@ -19,7 +19,7 @@ const defaultProvider: AIProvider =
   envDefaultProvider === "ollama" ||
   envDefaultProvider === "openrouter"
     ? envDefaultProvider
-    : "openai"
+    : "webllm"
 
 export interface FacialExpression {
   neutral: number
