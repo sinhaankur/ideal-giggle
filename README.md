@@ -1,6 +1,6 @@
 # EMPATHEIA
 
-An empathetic AI companion built with Next.js, React, and Vercel AI SDK.
+An empathetic AI companion built with Next.js, React, and AI SDK.
 
 ## Core Features
 
@@ -113,5 +113,5 @@ The app already supports this environment variable and falls back to `/api/chat`
 ## Deploy Targets
 
 - Local dev/full app: `pnpm dev`
-- Server deployment/full app: run on a Node host (for example Vercel, Azure App Service, or your own server)
+- Server deployment/full app: run on a Node host (for example Azure App Service or your own server)
 - GitHub Pages/static UI: workflow in `.github/workflows/deploy-pages.yml`
