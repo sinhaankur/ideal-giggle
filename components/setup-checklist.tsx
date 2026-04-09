@@ -273,7 +273,9 @@ export function SetupChecklist({ settings }: SetupChecklistProps) {
               <div>2. Chrome/Edge flags: enable #enable-unsafe-webgpu and (Linux/Windows) #enable-vulkan, then relaunch.</div>
               <div>3. Firefox: use latest version and set dom.webgpu.enabled=true in about:config.</div>
               <div>4. Update GPU drivers (NVIDIA/AMD/Intel) and verify support using webgpureport.org.</div>
-              <div>5. If tabs crash, use a smaller model (1B/2B), close heavy tabs, and keep system cooled/powered.</div>
+              <div>5. Use secure context: WebGPU is most reliable on https:// or localhost (not plain local network http://192.168.x.x).</div>
+              <div>6. If tabs crash, use a smaller model (1B/2B), close heavy tabs, and keep system cooled/powered. Llama 3B class models often need around 4GB VRAM.</div>
+              <div>7. Re-check #enable-unsafe-webgpu after browser updates because flags can reset to default.</div>
               <div className="mt-2">For higher stability, switch provider to OpenRouter API or Ollama local runtime.</div>
             </div>
           )}
