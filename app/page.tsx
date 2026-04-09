@@ -230,6 +230,13 @@ const EMPATHY_QUEST_BANK: EmpathyQuestion[] = [
   })),
 ]
 
+const WEBLLM_MODEL_REPO_MAP: Record<string, string> = {
+  "Llama-3.2-3B-Instruct-q4f16_1-MLC": "https://huggingface.co/mlc-ai/Llama-3.2-3B-Instruct-q4f16_1-MLC/resolve/main/",
+  "Llama-3.2-1B-Instruct-q4f16_1-MLC": "https://huggingface.co/mlc-ai/Llama-3.2-1B-Instruct-q4f16_1-MLC/resolve/main/",
+  "gemma-2-2b-it-q4f16_1-MLC": "https://huggingface.co/mlc-ai/gemma-2-2b-it-q4f16_1-MLC/resolve/main/",
+  "Mistral-7B-Instruct-v0.3-q4f16_1-MLC": "https://huggingface.co/mlc-ai/Mistral-7B-Instruct-v0.3-q4f16_1-MLC/resolve/main/",
+}
+
 function getDeepestPossibleQuestion(fullSessionData: EmpathyData) {
   const categories: Array<keyof EmpathyData> = ["says", "thinks", "does", "feels"]
   const weakestLink = categories.reduce((a, b) =>
@@ -422,6 +429,8 @@ export default function CompanionApp() {
   const [webLlmStatus, setWebLlmStatus] = useState("idle")
   const [webLlmProgress, setWebLlmProgress] = useState("")
   const [webLlmError, setWebLlmError] = useState("")
+  const [webLlmXpStage, setWebLlmXpStage] = useState<"idle" | "echo-sync" | "shadow-prefetch" | "shadow-unlocked">("idle")
+  const [shadowPrefetchProgress, setShadowPrefetchProgress] = useState("")
   const [llmConnectionError, setLlmConnectionError] = useState("")
 
   const webLlmMessagesRef = useRef<Message[]>([])
@@ -434,6 +443,8 @@ export default function CompanionApp() {
   const processedRemoteUpdateIdsRef = useRef<Set<string>>(new Set())
   const webLlmEngineRef = useRef<any>(null)
   const webLlmInitPromiseRef = useRef<Promise<any> | null>(null)
+  const shadowPrefetchStartedRef = useRef(false)
+  const shadowPrefetchPromiseRef = useRef<Promise<void> | null>(null)
   const introCountedRef = useRef<Set<number>>(new Set())
   const fallbackPhase2InjectedRef = useRef(false)
 
@@ -467,6 +478,10 @@ export default function CompanionApp() {
     setWebLlmStatus("idle")
     setWebLlmProgress("")
     setWebLlmError("")
+    setWebLlmXpStage(settings.webllmModel === "Llama-3.2-3B-Instruct-q4f16_1-MLC" ? "shadow-unlocked" : "idle")
+    setShadowPrefetchProgress("")
+    shadowPrefetchStartedRef.current = false
+    shadowPrefetchPromiseRef.current = null
     setLlmConnectionError("")
   }, [settings.webllmModel])
 
@@ -533,6 +548,76 @@ export default function CompanionApp() {
     }
   }, [remoteError])
 
+  const createWorkerEngine = useCallback(
+    async (
+      selectedModel: string,
+      onProgress: (report: { progress?: number; text?: string }) => void
+    ) => {
+      const webllm = await import("@mlc-ai/web-llm")
+      const worker = new Worker(new URL("./webllm-worker.ts", import.meta.url), { type: "module" })
+      const selectedRepoUrl = WEBLLM_MODEL_REPO_MAP[selectedModel]
+
+      const engineConfig = {
+        initProgressCallback(report: { progress?: number; text?: string }) {
+          onProgress(report)
+        },
+        ...(selectedRepoUrl
+          ? {
+              model_list: [
+                {
+                  model_url: selectedRepoUrl,
+                  local_id: selectedModel,
+                },
+              ],
+            }
+          : {}),
+      }
+
+      const engine = await webllm.CreateWebWorkerMLCEngine(worker, selectedModel, engineConfig)
+      return { engine, worker }
+    },
+    []
+  )
+
+  const startShadowPrefetch = useCallback(async () => {
+    if (shadowPrefetchStartedRef.current || settings.provider !== "webllm") return
+    if (settings.webllmModel !== "Llama-3.2-1B-Instruct-q4f16_1-MLC") return
+
+    shadowPrefetchStartedRef.current = true
+    setWebLlmXpStage("shadow-prefetch")
+    setShadowPrefetchProgress("Syncing with Neural Network - Level 3 (The Shadow) 0%")
+
+    const prefetchPromise = (async () => {
+      let shadowWorker: Worker | null = null
+      try {
+        const { engine, worker } = await createWorkerEngine(
+          "Llama-3.2-3B-Instruct-q4f16_1-MLC",
+          (report) => {
+            const progressValue = typeof report.progress === "number" ? Math.round(report.progress * 100) : 0
+            const progressText = report.text ? ` ${report.text}` : ""
+            setShadowPrefetchProgress(
+              `Syncing with Neural Network - Level 3 (The Shadow) ${progressValue}%${progressText}`.trim()
+            )
+          }
+        )
+
+        shadowWorker = worker
+        setShadowPrefetchProgress("Syncing with Neural Network - Level 3 (The Shadow) complete")
+        setWebLlmXpStage("shadow-unlocked")
+        if (typeof (engine as { unload?: () => Promise<void> }).unload === "function") {
+          await (engine as { unload: () => Promise<void> }).unload()
+        }
+      } catch {
+        setShadowPrefetchProgress("Level 3 prefetch skipped - continuing with Echo model")
+      } finally {
+        shadowWorker?.terminate()
+      }
+    })()
+
+    shadowPrefetchPromiseRef.current = prefetchPromise
+    await prefetchPromise
+  }, [settings.provider, settings.webllmModel, createWorkerEngine])
+
   const ensureWebLlmEngine = useCallback(async () => {
     if (webLlmEngineRef.current) {
       return webLlmEngineRef.current
@@ -548,17 +633,21 @@ export default function CompanionApp() {
       if (typeof navigator === "undefined" || !("gpu" in navigator)) {
         throw new Error("WebLLM needs WebGPU in this browser. Connect an API provider from Settings, or use a WebGPU-enabled browser.")
       }
+      const selectedModel = settings.webllmModel
+      if (selectedModel === "Llama-3.2-1B-Instruct-q4f16_1-MLC") {
+        setWebLlmXpStage("echo-sync")
+      }
 
-      const webllm = await import("@mlc-ai/web-llm")
-      const engine = await webllm.CreateMLCEngine(settings.webllmModel, {
-        initProgressCallback(report) {
-          const progressValue =
-            typeof report.progress === "number"
-              ? `${Math.round(report.progress * 100)}%`
-              : ""
-          const progressText = report.text ? ` ${report.text}` : ""
-          setWebLlmProgress(`${progressValue}${progressText}`.trim())
-        },
+      const { engine } = await createWorkerEngine(selectedModel, (report) => {
+        const progressValue =
+          typeof report.progress === "number"
+            ? `${Math.round(report.progress * 100)}%`
+            : ""
+        const progressText = report.text ? ` ${report.text}` : ""
+        const prefix = selectedModel === "Llama-3.2-1B-Instruct-q4f16_1-MLC"
+          ? "Syncing with Neural Network - Level 1 (The Echo)"
+          : "Syncing with Neural Network"
+        setWebLlmProgress(`${prefix} ${progressValue}${progressText}`.trim())
       })
 
       webLlmEngineRef.current = engine
@@ -579,7 +668,7 @@ export default function CompanionApp() {
     } finally {
       webLlmInitPromiseRef.current = null
     }
-  }, [settings.webllmModel])
+  }, [settings.webllmModel, createWorkerEngine])
 
   const handleInitializeWebLlm = useCallback(async () => {
     setIsInitializingWebLlm(true)
@@ -734,6 +823,13 @@ export default function CompanionApp() {
       .map((question, sourceIndex) => ({ ...question, sourceIndex }))
       .filter((question) => question.uiSection === DEPTH_TIER_LABELS.tier_4_shadow)
   }, [isColdFallbackMode, fallbackPhase])
+
+  useEffect(() => {
+    if (settings.provider !== "webllm") return
+    if (answeredIntroCount < 2) return
+    if (depthState.tier !== "tier_1_surface" && depthState.tier !== "tier_2_internal") return
+    startShadowPrefetch()
+  }, [settings.provider, answeredIntroCount, depthState.tier, startShadowPrefetch])
 
   const generateCurrentEmpathyCode = useCallback(() => {
     const resonance = generateEmpathyCode({
@@ -1190,6 +1286,8 @@ export default function CompanionApp() {
               llmConnectionError,
               webLlmStatus,
               webLlmError,
+              webLlmXpStage,
+              shadowPrefetchProgress,
             }}
           />
 
