@@ -10,6 +10,16 @@ import { google } from "@ai-sdk/google"
 import { createOllama } from "ollama-ai-provider"
 import { PROVIDER_DEFAULT_MODELS } from "@/lib/companion-types"
 
+function getToneModeInstruction(toneMode: string) {
+  if (toneMode === "casual") {
+    return "Keep it casual and human: use simple, everyday language, contractions, and short natural lines."
+  }
+  if (toneMode === "deep") {
+    return "Keep it warm but deeper: reflective wording, emotional nuance, and one thoughtful follow-up question."
+  }
+  return "Keep it balanced: clear, natural, and grounded without sounding too formal or too slang-heavy."
+}
+
 export const maxDuration = 60
 
 function getLowestQuadrant(currentSummary: { says: number; thinks: number; does: number; feels: number }) {
@@ -35,6 +45,7 @@ export async function POST(req: Request) {
   const messages: UIMessage[] = body.messages || []
   const emotion: string = body.emotion || "neutral"
   const personality: string = body.personality || "warm"
+  const toneMode: string = body.toneMode || "balanced"
   const provider: string = body.provider || "openai"
   const temperature: number = body.temperature ?? 0.7
   const topP: number = body.topP ?? 0.95
@@ -50,7 +61,11 @@ export async function POST(req: Request) {
   const empathyCode: string = body.empathyCode || ""
   const ollamaBaseUrl: string = body.ollamaBaseUrl || "http://127.0.0.1:11434"
   const ollamaModel: string = body.ollamaModel || "llama3.2"
-  const openRouterApiKey: string = body.openRouterApiKey || process.env.OPENROUTER_API_KEY || ""
+  const envOpenRouterApiKey = process.env.OPENROUTER_API_KEY || ""
+  const bodyOpenRouterApiKey: string = body.openRouterApiKey || ""
+  const openRouterApiKey: string = process.env.NODE_ENV === "production"
+    ? envOpenRouterApiKey
+    : bodyOpenRouterApiKey || envOpenRouterApiKey
   const openRouterModel: string = body.openRouterModel || "meta-llama/llama-3.3-70b-instruct:free"
 
   const normalizedOllamaBaseUrl =
@@ -77,6 +92,8 @@ export async function POST(req: Request) {
   const systemPrompt = `${personalityPrompts[personality] || personalityPrompts.warm}
 
 Current detected emotion from the user: ${emotion}. Adjust your response tone accordingly.
+Tone mode: ${String(toneMode).toUpperCase()}.
+Tone guidance: ${getToneModeInstruction(toneMode)}
 
 User empathy profile:
 - Preferred name: ${empathyProfile?.preferredName ?? "Friend"}
@@ -94,6 +111,10 @@ Guidelines:
 - Help the user rethink and re-evaluate negative thoughts with compassionate cognitive reframing
 - Be creative -- occasionally use metaphors, analogies, or artistic observations
 - Keep responses conversational and human-like (2-4 sentences typically)
+- Prefer plain, everyday language with contractions (for example: "I'm", "you're", "let's")
+- Avoid sounding robotic, corporate, or overly clinical
+- Do not default to gratitude openers like "thank you for sharing"; use them sparingly and vary sentence openings
+- Start with a specific reflection tied to what the user actually said before asking a follow-up
 - Never diagnose or provide medical/psychological advice
 - If someone seems in crisis, gently suggest professional resources
 - Remember context from the conversation to show you truly listen
@@ -129,7 +150,11 @@ Response Structure:
         return ollama(ollamaModel)
       case "openrouter":
         if (!openRouterApiKey) {
-          throw new Error("OpenRouter API key is missing. Add it in Settings or set OPENROUTER_API_KEY.")
+          throw new Error(
+            process.env.NODE_ENV === "production"
+              ? "OpenRouter API key is missing on server. Set OPENROUTER_API_KEY in deployment environment."
+              : "OpenRouter API key is missing. Add it in Settings or set OPENROUTER_API_KEY."
+          )
         }
         return openRouter.chat(openRouterModel)
       case "openai":
@@ -139,7 +164,7 @@ Response Structure:
   })()
 
   const result = streamText({
-    model,
+    model: model as any,
     system: systemPrompt,
     messages: await convertToModelMessages(messages.slice(-contextMessages)),
     temperature,

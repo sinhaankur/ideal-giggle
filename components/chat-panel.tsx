@@ -1,7 +1,7 @@
 "use client"
 
 import { useRef, useState, useEffect, useCallback } from "react"
-import { Send, Mic, MicOff, Volume2 } from "lucide-react"
+import { Send, Mic, MicOff, Volume2, VolumeX, BellOff } from "lucide-react"
 import { AIOrb } from "@/components/ai-orb"
 import type { Message, Emotion, CompanionSettings } from "@/lib/companion-types"
 
@@ -17,9 +17,21 @@ export function ChatPanel({ messages, onSendMessage, isLoading, emotion, setting
   const [input, setInput] = useState("")
   const [isListening, setIsListening] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
+  const [isVoiceEnabled, setIsVoiceEnabled] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const recognitionRef = useRef<SpeechRecognition | null>(null)
+  const recognitionRef = useRef<any>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
+  const activeSpeechTextRef = useRef("")
+  const lastSpeechRequestRef = useRef<{ text: string; at: number }>({ text: "", at: 0 })
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const saved = window.localStorage.getItem("empatheia_voice_enabled")
+    if (saved === "false") {
+      setIsVoiceEnabled(false)
+    }
+  }, [])
 
   // Scroll to bottom on new messages and refocus input
   useEffect(() => {
@@ -37,16 +49,23 @@ export function ChatPanel({ messages, onSendMessage, isLoading, emotion, setting
 
   // Setup speech recognition
   useEffect(() => {
-    if (typeof window !== "undefined" && ("SpeechRecognition" in window || "webkitSpeechRecognition" in window)) {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (typeof window !== "undefined") {
+      const win = window as Window & {
+        SpeechRecognition?: new () => any
+        webkitSpeechRecognition?: new () => any
+      }
+
+      const SpeechRecognition = win.SpeechRecognition || win.webkitSpeechRecognition
+      if (!SpeechRecognition) return
+
       const recognition = new SpeechRecognition()
       recognition.continuous = false
       recognition.interimResults = true
       recognition.lang = "en-US"
 
-      recognition.onresult = (event: SpeechRecognitionEvent) => {
+      recognition.onresult = (event: any) => {
         const transcript = Array.from(event.results)
-          .map((result) => result[0].transcript)
+          .map((result: any) => result[0].transcript)
           .join("")
         setInput(transcript)
         if (event.results[0].isFinal) {
@@ -77,26 +96,105 @@ export function ChatPanel({ messages, onSendMessage, isLoading, emotion, setting
     }
   }, [isListening])
 
-  // Text-to-speech for AI responses
-  const speak = useCallback((text: string) => {
-    if ("speechSynthesis" in window) {
-      window.speechSynthesis.cancel()
-      const utterance = new SpeechSynthesisUtterance(text)
-      utterance.rate = 0.9
-      utterance.pitch = 1.1
-      utterance.onstart = () => setIsSpeaking(true)
-      utterance.onend = () => setIsSpeaking(false)
-      window.speechSynthesis.speak(utterance)
-    }
+  const stopSpeaking = useCallback(() => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return
+    window.speechSynthesis.cancel()
+    activeUtteranceRef.current = null
+    activeSpeechTextRef.current = ""
+    setIsSpeaking(false)
   }, [])
 
-  // Auto-speak latest AI message
-  useEffect(() => {
-    const last = messages[messages.length - 1]
-    if (last?.sender === "ai") {
-      speak(last.text)
+  // Text-to-speech for AI responses with loop and double-trigger protection.
+  const speak = useCallback((text: string) => {
+    if (!isVoiceEnabled || typeof window === "undefined" || !("speechSynthesis" in window)) return
+
+    const normalizedText = text.trim()
+    if (!normalizedText) return
+
+    const now = Date.now()
+    const lastRequest = lastSpeechRequestRef.current
+    if (lastRequest.text === normalizedText && now - lastRequest.at < 400) {
+      return
     }
-  }, [messages, speak])
+    lastSpeechRequestRef.current = { text: normalizedText, at: now }
+
+    // Clicking the same message while it is speaking stops playback instead of requeueing.
+    if (isSpeaking && activeSpeechTextRef.current === normalizedText) {
+      stopSpeaking()
+      return
+    }
+
+    stopSpeaking()
+
+    const utterance = new SpeechSynthesisUtterance(normalizedText)
+    activeUtteranceRef.current = utterance
+    activeSpeechTextRef.current = normalizedText
+    utterance.rate = 0.9
+    utterance.pitch = 1.1
+    utterance.onstart = () => {
+      if (activeUtteranceRef.current === utterance) {
+        setIsSpeaking(true)
+      }
+    }
+    utterance.onend = () => {
+      if (activeUtteranceRef.current === utterance) {
+        activeUtteranceRef.current = null
+        activeSpeechTextRef.current = ""
+        setIsSpeaking(false)
+      }
+    }
+    utterance.onerror = () => {
+      if (activeUtteranceRef.current === utterance) {
+        activeUtteranceRef.current = null
+        activeSpeechTextRef.current = ""
+        setIsSpeaking(false)
+      }
+    }
+
+    window.speechSynthesis.speak(utterance)
+  }, [isSpeaking, isVoiceEnabled, stopSpeaking])
+
+  const toggleVoice = useCallback(() => {
+    setIsVoiceEnabled((prev) => {
+      const next = !prev
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("empatheia_voice_enabled", String(next))
+        if (!next) stopSpeaking()
+      }
+      return next
+    })
+  }, [stopSpeaking])
+
+  const emergencyMute = useCallback(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop()
+    }
+    setIsListening(false)
+    stopSpeaking()
+    setIsVoiceEnabled(false)
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("empatheia_voice_enabled", "false")
+    }
+  }, [stopSpeaking])
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        emergencyMute()
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown)
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown)
+    }
+  }, [emergencyMute])
+
+  useEffect(() => {
+    return () => {
+      stopSpeaking()
+    }
+  }, [stopSpeaking])
 
   // Auto-focus input field on mount and after receiving message
   useEffect(() => {
@@ -164,6 +262,27 @@ export function ChatPanel({ messages, onSendMessage, isLoading, emotion, setting
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={emergencyMute}
+            className="flex h-6 items-center gap-1 border border-destructive/50 bg-destructive/10 px-2 text-[9px] uppercase tracking-[0.12em] text-destructive transition-colors hover:bg-destructive/20"
+            aria-label="Silence all audio"
+            title="Emergency mute: stop voice output and disable audio"
+          >
+            <BellOff className="h-3 w-3" />
+            mute
+          </button>
+          <button
+            onClick={toggleVoice}
+            className={`flex h-6 w-6 items-center justify-center border transition-colors ${
+              isVoiceEnabled
+                ? "border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground"
+                : "border-foreground/40 bg-foreground/10 text-foreground hover:bg-foreground/20"
+            }`}
+            aria-label={isVoiceEnabled ? "Mute voice output" : "Enable voice output"}
+            title={isVoiceEnabled ? "Voice: On" : "Voice: Off"}
+          >
+            {isVoiceEnabled ? <Volume2 className="h-3 w-3" /> : <VolumeX className="h-3 w-3" />}
+          </button>
           <span className={`h-1.5 w-1.5 rounded-full ${isLoading ? "animate-pulse bg-muted-foreground" : "bg-foreground"}`} />
           <span className="text-[9px] uppercase tracking-[0.15em] text-muted-foreground">
             {isLoading ? "THINKING" : "ONLINE"}
@@ -211,6 +330,16 @@ export function ChatPanel({ messages, onSendMessage, isLoading, emotion, setting
                   <span className="text-[8px] uppercase tracking-[0.2em] text-muted-foreground">
                     {settings.name}
                   </span>
+                  {msg.mode === "fallback" && (
+                    <span className="rounded border border-amber-500/50 bg-amber-500/10 px-1.5 py-0.5 text-[8px] uppercase tracking-[0.12em] text-amber-300">
+                      local fallback
+                    </span>
+                  )}
+                  {msg.mode === "mcp-fallback" && (
+                    <span className="rounded border border-cyan-500/50 bg-cyan-500/10 px-1.5 py-0.5 text-[8px] uppercase tracking-[0.12em] text-cyan-300">
+                      mcp fallback
+                    </span>
+                  )}
                   {msg.emotion && (
                     <span className="text-[8px] uppercase tracking-[0.15em] text-muted-foreground/60">
                       [{msg.emotion}]
@@ -226,10 +355,26 @@ export function ChatPanel({ messages, onSendMessage, isLoading, emotion, setting
                 {msg.sender === "ai" && (
                   <button
                     onClick={() => speak(msg.text)}
-                    className="text-muted-foreground/40 transition-colors hover:text-foreground"
+                    disabled={!isVoiceEnabled}
+                    className="text-muted-foreground/40 transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:text-muted-foreground/40"
                     aria-label="Read message aloud"
+                    title={
+                      !isVoiceEnabled
+                        ? "Voice is muted"
+                        : isSpeaking && activeSpeechTextRef.current === msg.text.trim()
+                          ? "Stop reading"
+                          : "Read message aloud"
+                    }
                   >
-                    <Volume2 className="h-2.5 w-2.5" />
+                    {isVoiceEnabled ? (
+                      isSpeaking && activeSpeechTextRef.current === msg.text.trim() ? (
+                        <VolumeX className="h-2.5 w-2.5" />
+                      ) : (
+                        <Volume2 className="h-2.5 w-2.5" />
+                      )
+                    ) : (
+                      <VolumeX className="h-2.5 w-2.5" />
+                    )}
                   </button>
                 )}
               </div>

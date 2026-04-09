@@ -342,7 +342,7 @@ export function SetupChecklist({ settings, runtime }: SetupChecklistProps) {
               <div>3. Firefox: use latest version and set dom.webgpu.enabled=true in about:config.</div>
               <div>4. Update GPU drivers (NVIDIA/AMD/Intel) and verify support using webgpureport.org.</div>
               <div>5. Use secure context: WebGPU is most reliable on https:// or localhost (not plain local network http://192.168.x.x).</div>
-              <div>6. If tabs crash, use a smaller model (1B/2B), close heavy tabs, and keep system cooled/powered. Llama 3B class models often need around 4GB VRAM.</div>
+              <div>6. If the demo crashes, your GPU likely ran out of memory. Start with a smaller 1B or 0.5B model (for example, Qwen2.5-0.5B) first to verify everything is working.</div>
               <div>7. Re-check #enable-unsafe-webgpu after browser updates because flags can reset to default.</div>
               <div>8. For production URLs, enroll in Google WebGPU Origin Trial so WebGPU remains available outside local development.</div>
               <div className="mt-2">For higher stability, switch provider to OpenRouter API or Ollama local runtime.</div>
@@ -394,6 +394,17 @@ export function SetupChecklist({ settings, runtime }: SetupChecklistProps) {
           <div className="mt-2 rounded border border-border bg-background p-3 text-[11px] text-muted-foreground">
             <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
               Official WebLLM Model Repositories
+            </div>
+            <div>
+              <a
+                href="https://huggingface.co/mlc-ai/Qwen2.5-0.5B-Instruct-q4f16_1-MLC"
+                target="_blank"
+                rel="noreferrer"
+                className="underline underline-offset-2 hover:text-foreground"
+              >
+                Qwen2.5 0.5B (Instruct)
+              </a>{" "}
+              - best first model for low-memory systems and quick compatibility checks.
             </div>
             <div>
               <a
