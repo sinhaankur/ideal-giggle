@@ -144,6 +144,13 @@ export function ChatPanel({ messages, onSendMessage, isLoading, emotion, setting
     }
   }
 
+  const providerLabel =
+    settings.provider === "webllm"
+      ? "BROWSER LOCAL"
+      : settings.provider === "ollama"
+        ? "OLLAMA LOCAL"
+        : settings.provider.toUpperCase()
+
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
@@ -153,7 +160,7 @@ export function ChatPanel({ messages, onSendMessage, isLoading, emotion, setting
             {settings.name}
           </span>
           <span className="text-[9px] uppercase tracking-[0.15em] text-muted-foreground">
-            {settings.personality} -- {settings.provider === "local" ? "LOCAL LLM" : settings.provider === "cloud" ? "CLOUD AI" : "HYBRID"}
+            {settings.personality} -- {providerLabel}
           </span>
         </div>
         <div className="flex items-center gap-2">

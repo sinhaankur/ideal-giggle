@@ -7,6 +7,7 @@ import {
 import { openai } from "@ai-sdk/openai"
 import { anthropic } from "@ai-sdk/anthropic"
 import { google } from "@ai-sdk/google"
+import { createOllama } from "ollama-ai-provider"
 
 export const maxDuration = 60
 
@@ -20,6 +21,17 @@ export async function POST(req: Request) {
   const provider: string = body.provider || "openai"
   const temperature: number = body.temperature ?? 0.7
   const companionName: string = body.companionName || "EMPATHEIA"
+  const ollamaBaseUrl: string = body.ollamaBaseUrl || "http://127.0.0.1:11434"
+  const ollamaModel: string = body.ollamaModel || "llama3.2"
+
+  const normalizedOllamaBaseUrl =
+    ollamaBaseUrl.endsWith("/api") || ollamaBaseUrl.endsWith("/api/")
+      ? ollamaBaseUrl.replace(/\/$/, "")
+      : `${ollamaBaseUrl.replace(/\/$/, "")}/api`
+
+  const ollama = createOllama({
+    baseURL: normalizedOllamaBaseUrl,
+  })
 
   const personalityPrompts: Record<string, string> = {
     warm: `You are ${companionName}, a deeply empathetic and warm AI companion. You truly care about the person you're talking to. You pick up on emotional cues, validate feelings, and offer genuine comfort. You speak naturally, with warmth and tenderness -- like a close friend who truly understands. You are creative, sometimes sharing metaphors, poetry fragments, or beautiful observations about life.`,
@@ -47,6 +59,8 @@ Guidelines:
         return anthropic("claude-3-5-sonnet-20241022")
       case "google":
         return google("gemini-2.0-flash-001")
+      case "ollama":
+        return ollama(ollamaModel)
       case "openai":
       default:
         return openai("gpt-4o-mini")

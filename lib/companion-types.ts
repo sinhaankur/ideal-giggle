@@ -2,7 +2,17 @@ export type Emotion = "neutral" | "happy" | "sad" | "angry" | "fear" | "surprise
 
 export type Personality = "warm" | "analytical" | "playful" | "professional"
 
-export type AIProvider = "openai" | "anthropic" | "google"
+export type AIProvider = "openai" | "anthropic" | "google" | "webllm" | "ollama"
+
+const envDefaultProvider = process.env.NEXT_PUBLIC_DEFAULT_PROVIDER
+const defaultProvider: AIProvider =
+  envDefaultProvider === "openai" ||
+  envDefaultProvider === "anthropic" ||
+  envDefaultProvider === "google" ||
+  envDefaultProvider === "webllm" ||
+  envDefaultProvider === "ollama"
+    ? envDefaultProvider
+    : "openai"
 
 export interface FacialExpression {
   neutral: number
@@ -45,14 +55,20 @@ export interface CompanionSettings {
   provider: AIProvider
   temperature: number
   cameraDeviceId: string
+  webllmModel: string
+  ollamaBaseUrl: string
+  ollamaModel: string
 }
 
 export const DEFAULT_SETTINGS: CompanionSettings = {
   name: "Samantha",
   personality: "warm",
-  provider: "openai",
+  provider: defaultProvider,
   temperature: 0.7,
   cameraDeviceId: "",
+  webllmModel: "Llama-3.2-3B-Instruct-q4f16_1-MLC",
+  ollamaBaseUrl: "http://127.0.0.1:11434",
+  ollamaModel: "llama3.2",
 }
 
 export function detectEmotion(text: string): Emotion {
