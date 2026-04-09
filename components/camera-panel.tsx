@@ -15,6 +15,8 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isActive, setIsActive] = useState(false)
+  const [faceTrackingEnabled, setFaceTrackingEnabled] = useState(true)
+  const [faceTarget, setFaceTarget] = useState({ x: 50, y: 50, zoom: 1 })
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [currentEmotion, setCurrentEmotion] = useState<Emotion>("neutral")
   const [error, setError] = useState<string | null>(null)
@@ -164,6 +166,22 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
         const detection = detections[0]
         const expressions = detection.expressions
 
+        // Face-centered framing: move viewport center toward detected face center.
+        const videoWidth = video.videoWidth || 640
+        const videoHeight = video.videoHeight || 480
+        const box = detection.detection.box
+        const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
+        const nextX = clamp(((box.x + box.width / 2) / videoWidth) * 100, 20, 80)
+        const nextY = clamp(((box.y + box.height / 2) / videoHeight) * 100, 20, 80)
+        const faceWidthRatio = box.width / videoWidth
+        const nextZoom = clamp(0.5 / Math.max(faceWidthRatio, 0.18), 1, 1.7)
+
+        setFaceTarget((prev) => ({
+          x: prev.x * 0.7 + nextX * 0.3,
+          y: prev.y * 0.7 + nextY * 0.3,
+          zoom: prev.zoom * 0.7 + nextZoom * 0.3,
+        }))
+
         // Get the dominant expression
         const expressionScores = {
           neutral: expressions.neutral,
@@ -201,6 +219,11 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
         onEmotionDetected(detectedEmotion)
       } else {
         setFacialExpression((prev) => ({ ...prev, detection: false }))
+        setFaceTarget((prev) => ({
+          x: prev.x * 0.8 + 50 * 0.2,
+          y: prev.y * 0.8 + 50 * 0.2,
+          zoom: prev.zoom * 0.8 + 1 * 0.2,
+        }))
       }
     } catch (err) {
       console.error("Facial detection error:", err)
@@ -293,6 +316,7 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
       surprised: 0,
       detection: false,
     })
+    setFaceTarget({ x: 50, y: 50, zoom: 1 })
   }, [])
 
   useEffect(() => {
@@ -310,6 +334,9 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
     surprise: "SURPRISED",
     thinking: "CONTEMPLATIVE",
   }
+
+  const videoObjectPosition = faceTrackingEnabled ? `${faceTarget.x}% ${faceTarget.y}%` : "50% 50%"
+  const videoTransform = faceTrackingEnabled && facialExpression.detection ? `scale(${faceTarget.zoom.toFixed(3)})` : "scale(1)"
 
   return (
     <div className="flex flex-col gap-4">
@@ -369,7 +396,12 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
           autoPlay={true}
           playsInline={true}
           muted={true}
-          className={`h-full w-full object-cover ${isActive ? "block" : "hidden"}`}
+          className={`h-full w-full object-cover transition-[object-position,transform] duration-300 ${isActive ? "block" : "hidden"}`}
+          style={{
+            objectPosition: videoObjectPosition,
+            transform: videoTransform,
+            transformOrigin: "center center",
+          }}
         />
 
         <canvas
@@ -459,6 +491,30 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
           </>
         )}
       </button>
+
+      {/* Face Tracking Controls */}
+      <div className="rounded border border-border bg-card p-3">
+        <div className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground">
+          FACE TRACKING
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setFaceTrackingEnabled((prev) => !prev)}
+            className="rounded border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+          >
+            {faceTrackingEnabled ? "Tracking On" : "Tracking Off"}
+          </button>
+          <button
+            onClick={() => setFaceTarget({ x: 50, y: 50, zoom: 1 })}
+            className="rounded border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+          >
+            Recenter
+          </button>
+        </div>
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          Keeps camera framing centered on your face when detection is active.
+        </p>
+      </div>
 
       {/* Camera Selector */}
       {devices.length > 1 && (

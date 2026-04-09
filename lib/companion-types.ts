@@ -2,7 +2,7 @@ export type Emotion = "neutral" | "happy" | "sad" | "angry" | "fear" | "surprise
 
 export type Personality = "warm" | "analytical" | "playful" | "professional"
 
-export type AIProvider = "openai" | "anthropic" | "google" | "webllm" | "ollama"
+export type AIProvider = "openai" | "anthropic" | "google" | "webllm" | "ollama" | "openrouter"
 
 const envDefaultProvider = process.env.NEXT_PUBLIC_DEFAULT_PROVIDER
 const defaultProvider: AIProvider =
@@ -10,7 +10,8 @@ const defaultProvider: AIProvider =
   envDefaultProvider === "anthropic" ||
   envDefaultProvider === "google" ||
   envDefaultProvider === "webllm" ||
-  envDefaultProvider === "ollama"
+  envDefaultProvider === "ollama" ||
+  envDefaultProvider === "openrouter"
     ? envDefaultProvider
     : "openai"
 
@@ -49,15 +50,103 @@ export interface EmpathyData {
   feels: string[]
 }
 
+export interface EmpathyProfile {
+  version: string
+  preferredName: string
+  communicationStyle: string
+  supportGoals: string[]
+  negativeThoughtPatterns: string[]
+  reframePreferences: string[]
+  groundingPrompts: string[]
+  avoidPhrases: string[]
+}
+
+export const DEFAULT_EMPATHY_PROFILE: EmpathyProfile = {
+  version: "1.0",
+  preferredName: "Friend",
+  communicationStyle: "Warm, validating, and practical.",
+  supportGoals: [
+    "Help me pause and rethink negative thoughts",
+    "Guide me toward balanced interpretations",
+    "Suggest small, realistic next steps",
+  ],
+  negativeThoughtPatterns: [
+    "Catastrophizing",
+    "All-or-nothing thinking",
+    "Harsh self-criticism",
+  ],
+  reframePreferences: [
+    "Name the thought pattern first",
+    "Offer one compassionate alternative thought",
+    "Suggest one concrete action I can do now",
+  ],
+  groundingPrompts: [
+    "What evidence supports this thought?",
+    "What would I say to a close friend in this situation?",
+    "What is one balanced possibility I might be missing?",
+  ],
+  avoidPhrases: [
+    "Just calm down",
+    "You are overreacting",
+  ],
+}
+
+function hashToBase36(input: string): string {
+  let hash = 2166136261
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0).toString(36).toUpperCase()
+}
+
+export function generateEmpathyCode(params: {
+  profile: EmpathyProfile
+  empathyData: EmpathyData
+  introAnswers: string[]
+}): string {
+  const { profile, empathyData, introAnswers } = params
+
+  const styleToken =
+    profile.communicationStyle.toLowerCase().includes("direct") ||
+    profile.communicationStyle.toLowerCase().includes("analytical")
+      ? "RFLX"
+      : profile.communicationStyle.toLowerCase().includes("play")
+        ? "CRTV"
+        : "WARM"
+
+  const patternToken = profile.negativeThoughtPatterns.length
+    ? profile.negativeThoughtPatterns[0].replace(/[^a-zA-Z]/g, "").slice(0, 4).toUpperCase() || "MIND"
+    : "MIND"
+
+  const summary = JSON.stringify({
+    preferredName: profile.preferredName,
+    supportGoals: profile.supportGoals,
+    negativeThoughtPatterns: profile.negativeThoughtPatterns,
+    reframePreferences: profile.reframePreferences,
+    groundingPrompts: profile.groundingPrompts,
+    empathyData,
+    introAnswers,
+  })
+
+  const digest = hashToBase36(summary).slice(0, 6)
+  return `EMP-${styleToken}-${patternToken}-${digest}`
+}
+
 export interface CompanionSettings {
   name: string
   personality: Personality
   provider: AIProvider
   temperature: number
+  topP: number
+  maxOutputTokens: number
+  contextMessages: number
   cameraDeviceId: string
   webllmModel: string
   ollamaBaseUrl: string
   ollamaModel: string
+  openRouterApiKey: string
+  openRouterModel: string
 }
 
 export const DEFAULT_SETTINGS: CompanionSettings = {
@@ -65,10 +154,15 @@ export const DEFAULT_SETTINGS: CompanionSettings = {
   personality: "warm",
   provider: defaultProvider,
   temperature: 0.7,
+  topP: 0.95,
+  maxOutputTokens: 300,
+  contextMessages: 12,
   cameraDeviceId: "",
   webllmModel: "Llama-3.2-3B-Instruct-q4f16_1-MLC",
   ollamaBaseUrl: "http://127.0.0.1:11434",
   ollamaModel: "llama3.2",
+  openRouterApiKey: "",
+  openRouterModel: "meta-llama/llama-3.3-70b-instruct:free",
 }
 
 export function detectEmotion(text: string): Emotion {
