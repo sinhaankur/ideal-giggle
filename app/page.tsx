@@ -11,6 +11,7 @@ import { SetupChecklist } from "@/components/setup-checklist"
 import {
   DEFAULT_SETTINGS,
   DEFAULT_EMPATHY_PROFILE,
+  PROVIDER_DEFAULT_MODELS,
   detectEmotion,
   analyzeEmpathy,
   estimateSentimentScore,
@@ -514,6 +515,13 @@ export default function CompanionApp() {
 
   const isRemoteLoading = status === "streaming" || status === "submitted"
   const isLoading = settings.provider === "webllm" ? isWebLlmLoading : isRemoteLoading
+  const systemHealth = llmConnectionError || (settings.provider === "webllm" && webLlmStatus === "error")
+    ? "error"
+    : isLoading || (settings.provider === "webllm" && (webLlmStatus === "downloading" || webLlmStatus === "thinking"))
+      ? "busy"
+      : settings.provider === "webllm" && webLlmStatus !== "ready"
+        ? "initializing"
+        : "ready"
   const isColdFallbackMode =
     settings.provider === "webllm" && (webLlmStatus === "error" || Boolean(webLlmError) || Boolean(llmConnectionError))
   const elapsedMinutes = elapsedMs / 60000
@@ -1048,9 +1056,23 @@ export default function CompanionApp() {
 
         <div className="flex items-center gap-3">
           <div className="hidden items-center gap-2 md:flex">
-            <span className="h-2 w-2 rounded-full bg-foreground animate-pulse" />
+            <span
+              className={`h-2 w-2 rounded-full ${
+                systemHealth === "error"
+                  ? "bg-destructive"
+                  : systemHealth === "busy" || systemHealth === "initializing"
+                    ? "animate-pulse bg-amber-500"
+                    : "bg-emerald-500"
+              }`}
+            />
             <span className="text-sm text-muted-foreground">
-              System Active
+              {systemHealth === "error"
+                ? "System Error"
+                : systemHealth === "busy"
+                  ? "System Busy"
+                  : systemHealth === "initializing"
+                    ? "System Initializing"
+                    : "System Ready"}
             </span>
           </div>
           <button
@@ -1094,11 +1116,11 @@ export default function CompanionApp() {
                 <span className="text-muted-foreground">Model</span>
                 <span className="font-mono text-foreground">
                   {settings.provider === "openai"
-                    ? "GPT-4o Mini"
+                    ? PROVIDER_DEFAULT_MODELS.openai
                     : settings.provider === "anthropic"
-                      ? "Claude 3.5"
+                      ? PROVIDER_DEFAULT_MODELS.anthropic
                       : settings.provider === "google"
-                        ? "Gemini 2.0"
+                        ? PROVIDER_DEFAULT_MODELS.google
                         : settings.provider === "webllm"
                           ? settings.webllmModel
                           : settings.provider === "openrouter"
@@ -1161,7 +1183,15 @@ export default function CompanionApp() {
             </div>
           </div>
 
-          <SetupChecklist settings={settings} />
+          <SetupChecklist
+            settings={settings}
+            runtime={{
+              isLoading,
+              llmConnectionError,
+              webLlmStatus,
+              webLlmError,
+            }}
+          />
 
           {/* Decorative retro element */}
           <div className="mt-4 border-t border-border pt-3">
