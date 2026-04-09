@@ -230,6 +230,10 @@ const EMPATHY_QUEST_BANK: EmpathyQuestion[] = [
   })),
 ]
 
+const INTRO_CHAT_QUESTIONS = EMPATHY_QUEST_BANK.filter(
+  (item) => item.uiSection === DEPTH_TIER_LABELS.tier_1_surface
+)
+
 const WEBLLM_MODEL_REPO_MAP: Record<string, string> = {
   "Llama-3.2-3B-Instruct-q4f16_1-MLC": "https://huggingface.co/mlc-ai/Llama-3.2-3B-Instruct-q4f16_1-MLC/resolve/main/",
   "Llama-3.2-1B-Instruct-q4f16_1-MLC": "https://huggingface.co/mlc-ai/Llama-3.2-1B-Instruct-q4f16_1-MLC/resolve/main/",
@@ -416,6 +420,8 @@ export default function CompanionApp() {
   const [sessionDepthLevel, setSessionDepthLevel] = useState(1)
   const [metaHistory, setMetaHistory] = useState<EmpathyMetaRecord[]>([])
   const [introAnswers, setIntroAnswers] = useState<string[]>(Array(EMPATHY_QUEST_BANK.length).fill(""))
+  const [onboardingChatMessages, setOnboardingChatMessages] = useState<Message[]>([])
+  const [remoteFallbackMessages, setRemoteFallbackMessages] = useState<Message[]>([])
   const [empathyCode, setEmpathyCode] = useState("")
   const [conversationSentimentScore, setConversationSentimentScore] = useState(0)
   const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null)
@@ -579,6 +585,58 @@ export default function CompanionApp() {
     []
   )
 
+  const diagnoseWebGpuSupport = useCallback(async (): Promise<{ ok: true } | { ok: false; message: string }> => {
+    if (typeof navigator === "undefined" || typeof window === "undefined") {
+      return { ok: false, message: "WebLLM can only run in a browser window." }
+    }
+
+    if (!window.isSecureContext) {
+      return {
+        ok: false,
+        message: "WebGPU requires a secure context. Use https:// or localhost (avoid plain LAN http://).",
+      }
+    }
+
+    const nav = navigator as Navigator & {
+      gpu?: {
+        requestAdapter: (options?: unknown) => Promise<any>
+      }
+    }
+
+    if (!nav.gpu) {
+      return {
+        ok: false,
+        message: "WebGPU API is not available in this browser/profile. Try latest Chrome/Edge/Firefox with GPU acceleration enabled.",
+      }
+    }
+
+    try {
+      const adapter = await nav.gpu.requestAdapter({ powerPreference: "high-performance" })
+      if (!adapter) {
+        return {
+          ok: false,
+          message: "WebGPU detected, but no adapter was returned. Update GPU drivers or disable Remote Desktop/VM rendering.",
+        }
+      }
+
+      try {
+        await adapter.requestDevice()
+      } catch {
+        return {
+          ok: false,
+          message: "GPU adapter found, but device creation failed. Close heavy GPU apps/tabs and retry.",
+        }
+      }
+    } catch (error) {
+      return {
+        ok: false,
+        message: error instanceof Error ? error.message : "WebGPU initialization failed.",
+      }
+    }
+
+    return { ok: true }
+  }, [])
+
   const startShadowPrefetch = useCallback(async () => {
     if (shadowPrefetchStartedRef.current || settings.provider !== "webllm") return
     if (settings.webllmModel !== "Llama-3.2-1B-Instruct-q4f16_1-MLC") return
@@ -630,8 +688,9 @@ export default function CompanionApp() {
     setWebLlmError("")
 
     const initPromise = (async () => {
-      if (typeof navigator === "undefined" || !("gpu" in navigator)) {
-        throw new Error("WebLLM needs WebGPU in this browser. Connect an API provider from Settings, or use a WebGPU-enabled browser.")
+      const webGpuSupport = await diagnoseWebGpuSupport()
+      if (!webGpuSupport.ok) {
+        throw new Error(webGpuSupport.message)
       }
       const selectedModel = settings.webllmModel
       if (selectedModel === "Llama-3.2-1B-Instruct-q4f16_1-MLC") {
@@ -663,12 +722,12 @@ export default function CompanionApp() {
       const message = error instanceof Error ? error.message : "WebLLM initialization failed"
       setWebLlmStatus("error")
       setWebLlmError(message)
-      setLlmConnectionError("LLM is not connected. Open Settings and connect an API model.")
+      setLlmConnectionError(message)
       throw error
     } finally {
       webLlmInitPromiseRef.current = null
     }
-  }, [settings.webllmModel, createWorkerEngine])
+  }, [settings.webllmModel, createWorkerEngine, diagnoseWebGpuSupport])
 
   const handleInitializeWebLlm = useCallback(async () => {
     setIsInitializingWebLlm(true)
@@ -683,6 +742,14 @@ export default function CompanionApp() {
       setIsInitializingWebLlm(false)
     }
   }, [ensureWebLlmEngine])
+
+  useEffect(() => {
+    if (settings.provider !== "webllm") return
+    if (webLlmStatus !== "idle") return
+    if (isInitializingWebLlm) return
+    if (webLlmEngineRef.current || webLlmInitPromiseRef.current) return
+    void handleInitializeWebLlm()
+  }, [settings.provider, webLlmStatus, isInitializingWebLlm, handleInitializeWebLlm])
 
   const handleConnectLlmApi = useCallback(() => {
     setSettings((prev) =>
@@ -768,9 +835,12 @@ export default function CompanionApp() {
     fallbackPhase2InjectedRef.current = true
   }, [settings.provider, isColdFallbackMode, fallbackPhase])
 
-  const messages = settings.provider === "webllm" ? webLlmMessages : remoteMessages
-  const sessionDepth = settings.provider === "webllm" ? webLlmMessages.length : Math.max(chatMessages.length, sessionDepthLevel)
-  const answeredIntroCount = introAnswers.filter((ans) => ans.trim().length > 1).length
+  const introQuestionCount = INTRO_CHAT_QUESTIONS.length
+  const answeredIntroCount = introAnswers.slice(0, introQuestionCount).filter((ans) => ans.trim().length > 1).length
+  const providerMessages =
+    settings.provider === "webllm" ? webLlmMessages : [...remoteMessages, ...remoteFallbackMessages]
+  const messages = [...onboardingChatMessages, ...providerMessages]
+  const sessionDepth = Math.max(providerMessages.length + onboardingChatMessages.length, sessionDepthLevel)
   const introSentimentScore = useMemo(
     () => introAnswers.reduce((sum, answer) => sum + estimateSentimentScore(answer), 0),
     [introAnswers]
@@ -808,21 +878,6 @@ export default function CompanionApp() {
     [currentSummary, depthState.tier, deepestShadowQuestion, isColdFallbackMode, fallbackPhase]
   )
   const samanthaGuidance = `${getDeepPrompt(currentSummary, sessionDepth, depthState.tier, emotionalVelocity)} Next mirror question: ${suggestedNext.question}`
-  const displayedQuestionBank = useMemo(() => {
-    if (!isColdFallbackMode) {
-      return EMPATHY_QUEST_BANK.map((question, sourceIndex) => ({ ...question, sourceIndex }))
-    }
-
-    if (fallbackPhase < 3) {
-      return EMPATHY_QUEST_BANK
-        .map((question, sourceIndex) => ({ ...question, sourceIndex }))
-        .filter((question) => question.uiSection === DEPTH_TIER_LABELS.tier_1_surface)
-    }
-
-    return EMPATHY_QUEST_BANK
-      .map((question, sourceIndex) => ({ ...question, sourceIndex }))
-      .filter((question) => question.uiSection === DEPTH_TIER_LABELS.tier_4_shadow)
-  }, [isColdFallbackMode, fallbackPhase])
 
   useEffect(() => {
     if (settings.provider !== "webllm") return
@@ -877,6 +932,22 @@ export default function CompanionApp() {
     }
   }, [messages.length, empathyCode, generateCurrentEmpathyCode])
 
+  useEffect(() => {
+    if (!hasAgreed) return
+    if (onboardingChatMessages.length > 0) return
+    if (INTRO_CHAT_QUESTIONS.length === 0) return
+
+    setOnboardingChatMessages([
+      {
+        id: crypto.randomUUID(),
+        sender: "ai",
+        text: `Before we begin, let's map your starting point. ${INTRO_CHAT_QUESTIONS[0].question}`,
+        timestamp: new Date(),
+        emotion: "thinking",
+      },
+    ])
+  }, [hasAgreed, onboardingChatMessages.length])
+
   const handleSendMessage = useCallback(
     async (text: string) => {
       setLlmConnectionError("")
@@ -905,6 +976,38 @@ export default function CompanionApp() {
               : combinedEmotion
           : combinedEmotion
       setCurrentEmotion(sentimentEmotion)
+
+      if (answeredIntroCount < introQuestionCount) {
+        const introIndex = answeredIntroCount
+        setOnboardingChatMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            text,
+            sender: "user",
+            timestamp: new Date(),
+            emotion: sentimentEmotion,
+          },
+        ])
+
+        handleIntroAnswerChange(introIndex, text)
+
+        const nextIndex = introIndex + 1
+        const nextPrompt = INTRO_CHAT_QUESTIONS[nextIndex]?.question
+        setOnboardingChatMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            text: nextPrompt
+              ? `Thank you. ${nextPrompt}`
+              : "Perfect. Your introduction map is complete. We can now go deeper.",
+            sender: "ai",
+            timestamp: new Date(),
+            emotion: "thinking",
+          },
+        ])
+        return
+      }
 
       if (settings.provider === "webllm") {
         const userMessage: Message = {
@@ -987,7 +1090,7 @@ export default function CompanionApp() {
           const message = error instanceof Error ? error.message : "Unknown WebLLM error"
           setWebLlmStatus("error")
           setWebLlmError(message)
-          setLlmConnectionError("WebLLM is unavailable. Open Settings and connect an API provider.")
+          setLlmConnectionError(message)
 
           const trimmed = text.trim()
           const tokenCount = trimmed.split(/\s+/).filter(Boolean).length
@@ -1025,6 +1128,32 @@ export default function CompanionApp() {
       } catch (error) {
         const message = error instanceof Error ? error.message : "LLM request failed"
         setLlmConnectionError(message)
+
+        const trimmed = text.trim()
+        const tokenCount = trimmed.split(/\s+/).filter(Boolean).length
+        const lower = trimmed.toLowerCase()
+        const dissonance =
+          /(i am fine|i'm fine|im fine|fine)/.test(lower) &&
+          /(heavy|tight|stuck|anxious|sad|angry|overwhelmed|tired)/.test(lower)
+        const warmPause =
+          tokenCount < 8
+            ? "I hear you. Even without model connectivity, we can keep reflecting together."
+            : "I hear you, and even while model connectivity is unstable, we can still continue this reflection."
+        const dissonanceLine = dissonance
+          ? "I notice a mismatch between your words and emotional signal. "
+          : ""
+        const fallbackMirrorQuestion = suggestedNext.question || "What part of this feels most true right now?"
+
+        setRemoteFallbackMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            text: `${warmPause} ${dissonanceLine}${fallbackMirrorQuestion}`.trim(),
+            sender: "ai",
+            timestamp: new Date(),
+            emotion: sentimentEmotion,
+          },
+        ])
       }
     },
     [
@@ -1037,6 +1166,9 @@ export default function CompanionApp() {
       samanthaGuidance,
       suggestedNext.question,
       sessionStartedAt,
+      answeredIntroCount,
+      introQuestionCount,
+      handleIntroAnswerChange,
     ]
   )
 
@@ -1336,9 +1468,6 @@ export default function CompanionApp() {
             profile={empathyProfile}
             onProfileImport={handleProfileImport}
             onProfileExport={handleProfileExport}
-            questionBank={displayedQuestionBank}
-            introAnswers={introAnswers}
-            onIntroAnswerChange={handleIntroAnswerChange}
             empathyCode={empathyCode}
             onGenerateEmpathyCode={generateCurrentEmpathyCode}
             messageCount={messages.length}
