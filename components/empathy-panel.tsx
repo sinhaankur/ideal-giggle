@@ -1,20 +1,38 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { MessageSquare, Brain, HandMetal, Heart, Upload, Download, Copy, Link2 } from "lucide-react"
 import type { EmpathyData, EmpathyProfile } from "@/lib/companion-types"
+
+type EmpathyQuestionView = {
+  id: string
+  question: string
+  category: string
+  followUp: string
+  uiSection: string
+  anchor?: string
+  sourceIndex?: number
+}
 
 interface EmpathyPanelProps {
   data: EmpathyData
   profile: EmpathyProfile
   onProfileImport: (profile: EmpathyProfile) => void
   onProfileExport: () => void
-  introQuestions: string[]
+  questionBank: EmpathyQuestionView[]
   introAnswers: string[]
   onIntroAnswerChange: (index: number, answer: string) => void
   empathyCode: string
   onGenerateEmpathyCode: () => void
   messageCount: number
+  answeredIntroCount: number
+  currentStep: number
+  depthTierLabel: string
+  emotionalVelocity: number
+  densityWords: number
+  densitySentiment: number
+  suggestedQuestion: string
+  fallbackPhase: number
 }
 
 const quadrants = [
@@ -49,23 +67,42 @@ export function EmpathyPanel({
   profile,
   onProfileImport,
   onProfileExport,
-  introQuestions,
+  questionBank,
   introAnswers,
   onIntroAnswerChange,
   empathyCode,
   onGenerateEmpathyCode,
   messageCount,
+  answeredIntroCount,
+  currentStep,
+  depthTierLabel,
+  emotionalVelocity,
+  densityWords,
+  densitySentiment,
+  suggestedQuestion,
+  fallbackPhase,
 }: EmpathyPanelProps) {
   const [jsonStatus, setJsonStatus] = useState<string>("No profile JSON imported yet.")
   const [copyStatus, setCopyStatus] = useState<string>("")
+  const [idlePromptIndex, setIdlePromptIndex] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const triggerUpload = () => {
     fileInputRef.current?.click()
   }
 
-  const introCompleted = introAnswers.every((ans) => ans.trim().length > 1)
-  const canGenerateCode = introCompleted && messageCount >= 6
+  const canGenerateCode = messageCount >= 6
+  const questionTrigger = depthTierLabel
+  const depthVisualTone =
+    fallbackPhase >= 3
+      ? "border-slate-600 bg-slate-950 text-slate-100"
+      : depthTierLabel.startsWith("IV")
+      ? "border-foreground bg-foreground/5"
+      : depthTierLabel.startsWith("III")
+        ? "border-foreground/60 bg-card"
+        : depthTierLabel.startsWith("II")
+          ? "border-border/80 bg-card backdrop-blur-[1px]"
+          : "border-border bg-card"
 
   const copyEmpathyCode = async () => {
     if (!empathyCode) return
@@ -78,9 +115,21 @@ export function EmpathyPanel({
     }
   }
 
-  const shareQuery = encodeURIComponent(`Empathy Code ${empathyCode}`)
-  const redditLink = `https://www.reddit.com/search/?q=${shareQuery}`
-  const xLink = `https://x.com/search?q=${shareQuery}&src=typed_query`
+  const shareText = `Just mapped my mental model on Empatheia. My Empathy Code is ${empathyCode || "EMP-2026"}. Explore your own at sinhaankur.com`
+  const redditLink = `https://www.reddit.com/submit?title=${encodeURIComponent("My Empathy Code")}&text=${encodeURIComponent(shareText)}`
+  const xLink = `https://x.com/intent/tweet?text=${encodeURIComponent(shareText)}`
+
+  useEffect(() => {
+    if (answeredIntroCount >= 3 || questionBank.length === 0) {
+      return
+    }
+
+    const interval = setInterval(() => {
+      setIdlePromptIndex((prev) => (prev + 1) % questionBank.length)
+    }, 18000)
+
+    return () => clearInterval(interval)
+  }, [answeredIntroCount, questionBank])
 
   const handleJsonUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -170,21 +219,72 @@ export function EmpathyPanel({
       </div>
 
       {/* Intro Q&A and Empathy Code */}
-      <div className="border border-border bg-card p-3">
+      <div className={`border p-3 transition-all duration-500 ${depthVisualTone}`}>
         <div className="mb-2 text-[9px] uppercase tracking-[0.2em] text-muted-foreground">Introduction Questions</div>
+        <div className="mb-2 text-[9px] text-muted-foreground/90">Trigger Mode: {questionTrigger}</div>
+        <div className="mb-2 text-[9px] text-muted-foreground/90">
+          Current Step: {Math.min(currentStep + 1, questionBank.length)} / {questionBank.length}
+        </div>
+        <div className="mb-2 grid grid-cols-2 gap-2">
+          <div className="rounded border border-border bg-background px-2 py-1 text-[9px] text-muted-foreground">
+            Emotional Velocity: <span className="text-foreground">{(emotionalVelocity * 100).toFixed(0)}%</span>
+          </div>
+          <div className="rounded border border-border bg-background px-2 py-1 text-[9px] text-muted-foreground">
+            Density: <span className="text-foreground">{densityWords} words</span>
+          </div>
+        </div>
+        <div className="mb-3 h-1.5 w-full overflow-hidden rounded bg-border/60">
+          <div
+            className="h-full bg-foreground transition-all duration-500"
+            style={{ width: `${Math.max(8, Math.min(100, densitySentiment * 100))}%` }}
+          />
+        </div>
         <div className="space-y-2">
-          {introQuestions.map((question, index) => (
-            <div key={question}>
-              <label className="mb-1 block text-[10px] text-foreground">{question}</label>
+          {questionBank.map((item, index) => (
+            <div key={item.id}>
+              <label className="mb-1 block text-[10px] text-foreground">{item.question}</label>
+              <div className="mb-1 text-[9px] text-muted-foreground/80">
+                Feeds: {item.category} • Section: {item.uiSection}{item.anchor ? ` • Anchor: ${item.anchor}` : ""}
+              </div>
               <input
-                value={introAnswers[index] || ""}
-                onChange={(e) => onIntroAnswerChange(index, e.target.value)}
+                value={introAnswers[item.sourceIndex ?? index] || ""}
+                onChange={(e) => onIntroAnswerChange(item.sourceIndex ?? index, e.target.value)}
                 className="w-full rounded border border-border bg-background px-2 py-1 text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                 placeholder="Type your answer..."
               />
             </div>
           ))}
         </div>
+
+        {introAnswers[0]?.trim() && !introAnswers[1]?.trim() && (
+          <div className="mt-2 rounded border border-border bg-background px-2 py-1.5 text-[9px] text-muted-foreground">
+            We've talked about what triggers you, but I'm curious -- what is one physical thing you do to feel grounded in those moments?
+          </div>
+        )}
+
+        {answeredIntroCount >= 2 && answeredIntroCount < 3 && (
+          <div className="mt-2 rounded border border-border bg-background px-2 py-1.5 text-[9px] text-muted-foreground">
+            Stage 3 unlock: one more intro answer will enable Empathy Code generation.
+          </div>
+        )}
+
+        {answeredIntroCount < 3 && questionBank.length > 0 && (
+          <div className="mt-2 rounded border border-border bg-background px-2 py-1.5 text-[9px] text-muted-foreground">
+            Guided prompt: {questionBank[idlePromptIndex]?.followUp}
+          </div>
+        )}
+
+        {answeredIntroCount >= 3 && suggestedQuestion && (
+          <div className="mt-2 rounded border border-border bg-background px-2 py-1.5 text-[9px] text-muted-foreground">
+            Next recursive prompt: {suggestedQuestion}
+          </div>
+        )}
+
+        {fallbackPhase >= 3 && (
+          <div className="mt-2 rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-[9px] text-slate-200">
+            Shadow-Work Layer is active. Questions are now archetypal and intentionally uncomfortable.
+          </div>
+        )}
 
         <div className="mt-3 border-t border-border pt-2">
           <div className="mb-1 text-[9px] uppercase tracking-[0.2em] text-muted-foreground">Empathy Code</div>
@@ -227,7 +327,7 @@ export function EmpathyPanel({
             </a>
           </div>
           <div className="mt-2 text-[9px] text-muted-foreground/90">
-            {copyStatus || (canGenerateCode ? "Ready to generate code." : "Answer intro questions and exchange at least 6 messages to unlock code generation.")}
+            {copyStatus || (canGenerateCode ? "Ready to generate code." : "Exchange at least 6 messages to unlock code generation.")}
           </div>
         </div>
       </div>
@@ -280,7 +380,14 @@ export function EmpathyPanel({
         </div>
         <div className="grid grid-cols-4 gap-2">
           {quadrants.map(({ key, label }) => (
-            <div key={key} className="text-center">
+            <div
+              key={key}
+              className="rounded border border-border bg-background p-2 text-center transition-all duration-500"
+              style={{
+                opacity: data[key].length > 0 ? 1 : 0.3,
+                transform: `scale(${1 + data[key].length * 0.08})`,
+              }}
+            >
               <div className="text-sm font-bold text-foreground">{data[key].length}</div>
               <div className="text-[8px] uppercase tracking-[0.1em] text-muted-foreground">
                 {label}
