@@ -13,6 +13,8 @@ interface SetupChecklistProps {
     llmConnectionError: string
     webLlmStatus: string
     webLlmError: string
+    webLlmXpStage: "idle" | "echo-sync" | "shadow-prefetch" | "shadow-unlocked"
+    shadowPrefetchProgress: string
   }
 }
 
@@ -287,6 +289,26 @@ export function SetupChecklist({ settings, runtime }: SetupChecklistProps) {
       {settings.provider === "webllm" && (
         <>
           <StatusLine
+            label="Neural Sync XP"
+            state={
+              runtime.webLlmXpStage === "shadow-unlocked"
+                ? "ok"
+                : runtime.webLlmXpStage === "echo-sync" || runtime.webLlmXpStage === "shadow-prefetch"
+                  ? "pending"
+                  : "warning"
+            }
+            detail={
+              runtime.webLlmXpStage === "shadow-unlocked"
+                ? "Level 3 (The Shadow) unlocked. 3B intelligence is cached for deeper sessions."
+                : runtime.webLlmXpStage === "echo-sync"
+                  ? "Level 1 (The Echo) syncing with 1B model for fast onboarding."
+                  : runtime.webLlmXpStage === "shadow-prefetch"
+                    ? runtime.shadowPrefetchProgress || "Background prefetch for Level 3 is in progress."
+                    : "Initialize WebLLM to begin XP sync."
+            }
+          />
+
+          <StatusLine
             label="WebLLM Runtime"
             state={
               runtime.webLlmStatus === "ready"
@@ -322,6 +344,7 @@ export function SetupChecklist({ settings, runtime }: SetupChecklistProps) {
               <div>5. Use secure context: WebGPU is most reliable on https:// or localhost (not plain local network http://192.168.x.x).</div>
               <div>6. If tabs crash, use a smaller model (1B/2B), close heavy tabs, and keep system cooled/powered. Llama 3B class models often need around 4GB VRAM.</div>
               <div>7. Re-check #enable-unsafe-webgpu after browser updates because flags can reset to default.</div>
+              <div>8. For production URLs, enroll in Google WebGPU Origin Trial so WebGPU remains available outside local development.</div>
               <div className="mt-2">For higher stability, switch provider to OpenRouter API or Ollama local runtime.</div>
             </div>
           )}
@@ -366,6 +389,56 @@ export function SetupChecklist({ settings, runtime }: SetupChecklistProps) {
             </div>
             <div className="mt-2">Use regular browser windows (not Incognito) so IndexedDB keeps model weights between sessions.</div>
             <div className="mt-1">Chrome Dev/Canary may provide Gemini Nano via experimental browser APIs for zero-download local prompts.</div>
+          </div>
+
+          <div className="mt-2 rounded border border-border bg-background p-3 text-[11px] text-muted-foreground">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
+              Official WebLLM Model Repositories
+            </div>
+            <div>
+              <a
+                href="https://huggingface.co/mlc-ai/Llama-3.2-3B-Instruct-q4f16_1-MLC"
+                target="_blank"
+                rel="noreferrer"
+                className="underline underline-offset-2 hover:text-foreground"
+              >
+                Llama 3.2 3B (Instruct)
+              </a>{" "}
+              - best for deep conversational logic and shadow-work questioning.
+            </div>
+            <div>
+              <a
+                href="https://huggingface.co/mlc-ai/Llama-3.2-1B-Instruct-q4f16_1-MLC"
+                target="_blank"
+                rel="noreferrer"
+                className="underline underline-offset-2 hover:text-foreground"
+              >
+                Llama 3.2 1B (Instruct)
+              </a>{" "}
+              - best for low-end hardware and faster onboarding loops.
+            </div>
+            <div>
+              <a
+                href="https://huggingface.co/mlc-ai/gemma-2-2b-it-q4f16_1-MLC"
+                target="_blank"
+                rel="noreferrer"
+                className="underline underline-offset-2 hover:text-foreground"
+              >
+                Gemma 2 2B
+              </a>{" "}
+              - best for warm, creative conversation style.
+            </div>
+            <div>
+              <a
+                href="https://huggingface.co/mlc-ai/Mistral-7B-Instruct-v0.3-q4f16_1-MLC"
+                target="_blank"
+                rel="noreferrer"
+                className="underline underline-offset-2 hover:text-foreground"
+              >
+                Mistral 7B v0.3
+              </a>{" "}
+              - best for complex analysis and high-depth empathy coding.
+            </div>
           </div>
 
           <button

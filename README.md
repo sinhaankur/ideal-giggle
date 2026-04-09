@@ -107,6 +107,7 @@ WebLLM runs in-browser and needs WebGPU to use your local GPU for fast inference
 	- Keep laptop plugged in and avoid thermal throttling.
 	- Prefer secure contexts (`https://` or `localhost`) instead of plain local-network `http://192.168...` URLs.
 	- Re-check `chrome://flags/#enable-unsafe-webgpu` after browser updates because it can reset.
+	- For production deployments, apply for a Google WebGPU Origin Trial token so WebGPU remains available outside localhost.
 
 If browser WebGPU remains unstable, switch provider to OpenRouter API or Ollama for more consistent runtime behavior.
 
@@ -117,6 +118,19 @@ These websites run models directly in-browser and cache weights in IndexedDB:
 - WebLLM Chat: https://chat.webllm.ai
 - Hugging Face Chat: https://huggingface.co/chat
 - WebLLM Agents Playground: https://huggingface.co/spaces/webllm/web-llm-agent
+
+## Official WebLLM Model Repositories
+
+WebLLM uses pre-compiled MLC model formats. Recommended stable repositories:
+
+- Llama 3.2 3B (Instruct): https://huggingface.co/mlc-ai/Llama-3.2-3B-Instruct-q4f16_1-MLC
+	- Best for deep conversational logic and shadow-work flows.
+- Llama 3.2 1B (Instruct): https://huggingface.co/mlc-ai/Llama-3.2-1B-Instruct-q4f16_1-MLC
+	- Best for lower-end hardware or faster onboarding interactions.
+- Gemma 2 2B: https://huggingface.co/mlc-ai/gemma-2-2b-it-q4f16_1-MLC
+	- Best for warm and creative persona responses.
+- Mistral 7B v0.3: https://huggingface.co/mlc-ai/Mistral-7B-Instruct-v0.3-q4f16_1-MLC
+	- Best for complex analysis and deeper empathy-code generation.
 
 ## Seamless Browser Requirements
 
