@@ -2,7 +2,7 @@ export type Emotion = "neutral" | "happy" | "sad" | "angry" | "fear" | "surprise
 
 export type Personality = "warm" | "analytical" | "playful" | "professional"
 
-export type AIProvider = "openai" | "anthropic" | "google" | "webllm" | "ollama"
+export type AIProvider = "openai" | "anthropic" | "google" | "webllm" | "ollama" | "openrouter"
 
 const envDefaultProvider = process.env.NEXT_PUBLIC_DEFAULT_PROVIDER
 const defaultProvider: AIProvider =
@@ -10,7 +10,8 @@ const defaultProvider: AIProvider =
   envDefaultProvider === "anthropic" ||
   envDefaultProvider === "google" ||
   envDefaultProvider === "webllm" ||
-  envDefaultProvider === "ollama"
+  envDefaultProvider === "ollama" ||
+  envDefaultProvider === "openrouter"
     ? envDefaultProvider
     : "openai"
 
@@ -137,10 +138,15 @@ export interface CompanionSettings {
   personality: Personality
   provider: AIProvider
   temperature: number
+  topP: number
+  maxOutputTokens: number
+  contextMessages: number
   cameraDeviceId: string
   webllmModel: string
   ollamaBaseUrl: string
   ollamaModel: string
+  openRouterApiKey: string
+  openRouterModel: string
 }
 
 export const DEFAULT_SETTINGS: CompanionSettings = {
@@ -148,10 +154,15 @@ export const DEFAULT_SETTINGS: CompanionSettings = {
   personality: "warm",
   provider: defaultProvider,
   temperature: 0.7,
+  topP: 0.95,
+  maxOutputTokens: 300,
+  contextMessages: 12,
   cameraDeviceId: "",
   webllmModel: "Llama-3.2-3B-Instruct-q4f16_1-MLC",
   ollamaBaseUrl: "http://127.0.0.1:11434",
   ollamaModel: "llama3.2",
+  openRouterApiKey: "",
+  openRouterModel: "meta-llama/llama-3.3-70b-instruct:free",
 }
 
 export function detectEmotion(text: string): Emotion {

@@ -91,6 +91,7 @@ export default function CompanionApp() {
   const [webLlmStatus, setWebLlmStatus] = useState("idle")
   const [webLlmProgress, setWebLlmProgress] = useState("")
   const [webLlmError, setWebLlmError] = useState("")
+  const [llmConnectionError, setLlmConnectionError] = useState("")
 
   const webLlmMessagesRef = useRef<Message[]>([])
   const webLlmEngineRef = useRef<any>(null)
@@ -112,9 +113,10 @@ export default function CompanionApp() {
     setWebLlmStatus("idle")
     setWebLlmProgress("")
     setWebLlmError("")
+    setLlmConnectionError("")
   }, [settings.webllmModel])
 
-  const { messages: chatMessages, sendMessage, status } = useChat({
+  const { messages: chatMessages, sendMessage, status, error: remoteError } = useChat({
     api: chatApi,
     body: {
       emotion: currentEmotion,
@@ -126,11 +128,22 @@ export default function CompanionApp() {
       empathyCode,
       ollamaBaseUrl: settings.ollamaBaseUrl,
       ollamaModel: settings.ollamaModel,
+      openRouterApiKey: settings.openRouterApiKey,
+      openRouterModel: settings.openRouterModel,
+      topP: settings.topP,
+      maxOutputTokens: settings.maxOutputTokens,
+      contextMessages: settings.contextMessages,
     },
   })
 
   const isRemoteLoading = status === "streaming" || status === "submitted"
   const isLoading = settings.provider === "webllm" ? isWebLlmLoading : isRemoteLoading
+
+  useEffect(() => {
+    if (remoteError?.message) {
+      setLlmConnectionError(remoteError.message)
+    }
+  }, [remoteError])
 
   const ensureWebLlmEngine = useCallback(async () => {
     if (webLlmEngineRef.current) {
@@ -145,7 +158,7 @@ export default function CompanionApp() {
 
     const initPromise = (async () => {
       if (typeof navigator === "undefined" || !("gpu" in navigator)) {
-        throw new Error("WebGPU is not available in this browser. Use Chrome/Edge desktop with hardware acceleration.")
+        throw new Error("WebLLM needs WebGPU in this browser. Connect an API provider from Settings, or use a WebGPU-enabled browser.")
       }
 
       const webllm = await import("@mlc-ai/web-llm")
@@ -173,6 +186,7 @@ export default function CompanionApp() {
       const message = error instanceof Error ? error.message : "WebLLM initialization failed"
       setWebLlmStatus("error")
       setWebLlmError(message)
+      setLlmConnectionError("LLM is not connected. Open Settings and connect an API model.")
       throw error
     } finally {
       webLlmInitPromiseRef.current = null
@@ -181,6 +195,7 @@ export default function CompanionApp() {
 
   const handleInitializeWebLlm = useCallback(async () => {
     setIsInitializingWebLlm(true)
+    setLlmConnectionError("")
     try {
       await ensureWebLlmEngine()
       setWebLlmStatus("ready")
@@ -191,6 +206,15 @@ export default function CompanionApp() {
       setIsInitializingWebLlm(false)
     }
   }, [ensureWebLlmEngine])
+
+  const handleConnectLlmApi = useCallback(() => {
+    setSettings((prev) =>
+      prev.provider === "webllm"
+        ? { ...prev, provider: "openrouter" }
+        : prev
+    )
+    setShowSettings(true)
+  }, [])
 
   // Convert AI SDK UIMessage format to our Message format for the ChatPanel
   const remoteMessages: Message[] = useMemo(
@@ -237,6 +261,8 @@ export default function CompanionApp() {
 
   const handleSendMessage = useCallback(
     async (text: string) => {
+      setLlmConnectionError("")
+
       // Detect emotion from text
       const textEmotion = detectEmotion(text)
       // Combine with camera emotion (prefer text if not neutral)
@@ -262,10 +288,12 @@ export default function CompanionApp() {
           const engine = await ensureWebLlmEngine()
           setWebLlmStatus("thinking")
 
-          const conversation = [...webLlmMessagesRef.current, userMessage].map((m) => ({
-            role: m.sender === "user" ? "user" : "assistant",
-            content: m.text,
-          }))
+          const conversation = [...webLlmMessagesRef.current, userMessage]
+            .slice(-settings.contextMessages)
+            .map((m) => ({
+              role: m.sender === "user" ? "user" : "assistant",
+              content: m.text,
+            }))
 
           const completion = await engine.chat.completions.create({
             messages: [
@@ -282,7 +310,8 @@ export default function CompanionApp() {
               ...conversation,
             ],
             temperature: settings.temperature,
-            max_tokens: 300,
+            top_p: settings.topP,
+            max_tokens: settings.maxOutputTokens,
           })
 
           const aiContentRaw = completion.choices?.[0]?.message?.content
@@ -305,18 +334,12 @@ export default function CompanionApp() {
 
           setWebLlmMessages((prev) => [...prev, aiMessage])
           setWebLlmStatus("ready")
+          setLlmConnectionError("")
         } catch (error) {
           const message = error instanceof Error ? error.message : "Unknown WebLLM error"
-          const fallback: Message = {
-            id: crypto.randomUUID(),
-            text: `I could not initialize WebLLM. ${message}. Try selecting a smaller model and clicking Initialize Model.`,
-            sender: "ai",
-            timestamp: new Date(),
-            emotion: "neutral",
-          }
-          setWebLlmMessages((prev) => [...prev, fallback])
           setWebLlmStatus("error")
           setWebLlmError(message)
+          setLlmConnectionError("WebLLM is unavailable. Open Settings and connect an API provider.")
           console.error("WebLLM error:", error)
         } finally {
           setIsWebLlmLoading(false)
@@ -325,9 +348,19 @@ export default function CompanionApp() {
       }
 
       // Send via AI SDK for remote and Ollama providers
-      sendMessage({ text })
+      try {
+        await sendMessage({ text })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "LLM request failed"
+        setLlmConnectionError(message)
+      }
     },
-    [cameraEmotion, sendMessage, settings, ensureWebLlmEngine, empathyProfile, empathyCode]
+    [
+      cameraEmotion,
+      sendMessage,
+      settings,
+      ensureWebLlmEngine,
+    ]
   )
 
   const handleProfileImport = useCallback((profile: EmpathyProfile) => {
@@ -491,7 +524,9 @@ export default function CompanionApp() {
                         ? "Gemini 2.0"
                         : settings.provider === "webllm"
                           ? settings.webllmModel
-                          : settings.ollamaModel}
+                          : settings.provider === "openrouter"
+                            ? settings.openRouterModel
+                            : settings.ollamaModel}
                 </span>
               </div>
               {settings.provider === "webllm" && (
@@ -515,6 +550,17 @@ export default function CompanionApp() {
                   </button>
                 </>
               )}
+              {llmConnectionError && (
+                <>
+                  <div className="text-[10px] text-destructive">{llmConnectionError}</div>
+                  <button
+                    onClick={handleConnectLlmApi}
+                    className="mt-1 rounded border border-border bg-background px-2 py-1 text-[10px] font-medium text-foreground transition-colors hover:bg-accent"
+                  >
+                    Connect LLM API
+                  </button>
+                </>
+              )}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Personality</span>
                 <span className="text-foreground uppercase">{settings.personality}</span>
@@ -522,6 +568,14 @@ export default function CompanionApp() {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Temp</span>
                 <span className="text-foreground">{settings.temperature}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Top P</span>
+                <span className="text-foreground">{settings.topP.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Max Tokens</span>
+                <span className="text-foreground">{settings.maxOutputTokens}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Emotion</span>
