@@ -143,8 +143,6 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
           }
         }
       } catch (err) {
-        const errorMsg =
-          err instanceof Error ? err.message : "Failed to enumerate camera devices"
         console.error("Device enumeration error:", err)
         // Don't show error here, only show when user tries to start camera
       }

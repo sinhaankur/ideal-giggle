@@ -234,7 +234,140 @@ const INTRO_CHAT_QUESTIONS = EMPATHY_QUEST_BANK.filter(
   (item) => item.uiSection === DEPTH_TIER_LABELS.tier_1_surface
 )
 
+const HOW_ARE_YOU_PATTERN = /\b(how are you|how're you|how r u|how are u|how you doing|how is it going)\b/i
+
+function buildHumanCheckInReply(name: string, personality: CompanionSettings["personality"]) {
+  const signature = name?.trim() ? `- ${name}` : ""
+
+  if (personality === "analytical") {
+    return `I appreciate that check-in. I'm steady and fully here with you right now. ${signature}`.trim()
+  }
+  if (personality === "playful") {
+    return `I'm good, grounded, and glad you're here. Checking in like that feels really human. ${signature}`.trim()
+  }
+  if (personality === "professional") {
+    return `I appreciate you asking. I'm here, focused, and ready to help you think this through. ${signature}`.trim()
+  }
+
+  return `I'm here with you, calm and listening. I appreciate you asking how I'm doing. ${signature}`.trim()
+}
+
+function buildLocalCompanionReply(input: string, sentimentScore: number, suggestedQuestion: string) {
+  const lower = input.toLowerCase()
+
+  if (/\b(stupid|idiot|dumb|useless|nonsense)\b/.test(lower)) {
+    return "I can hear the frustration. I'm still here with you. Tell me one thing that feels most broken right now, and we'll tackle that first."
+  }
+
+  if (/\b(nothing works|not working|it is not|isn't working|cant|can't)\b/.test(lower)) {
+    return "That sounds exhausting. Let's make this simple: what failed first for you right now - model startup, message quality, camera, or audio?"
+  }
+
+  const reflective =
+    sentimentScore < -0.3
+      ? [
+          "That sounds heavy, and I appreciate you staying with it.",
+          "I can feel the weight in what you just said.",
+          "There's a lot underneath that, and you're not alone with it.",
+        ]
+      : sentimentScore > 0.3
+        ? [
+            "I can hear a little momentum in that.",
+            "There is energy in the way you are naming this.",
+            "That sounds like an important shift.",
+          ]
+        : [
+            "I hear you.",
+            "That makes sense, and I'm with you in it.",
+            "I am with you.",
+          ]
+
+  const bridges = [
+    "Let's stay with this one layer deeper.",
+    "We can explore this gently from here.",
+    "You don't have to rush this - we can unpack it step by step.",
+  ]
+
+  const prompt = articulateQuestion(suggestedQuestion || "What part of this feels most true right now")
+  const idx = Math.abs(input.trim().length || 1) % reflective.length
+  const bridgeIdx = Math.abs((input.trim().length || 1) + 1) % bridges.length
+
+  return `${reflective[idx]} ${bridges[bridgeIdx]} ${prompt}`
+}
+
+function ensureNonRepeatingFallback(nextText: string, previousText: string, suggestedQuestion: string) {
+  if (nextText !== previousText) return nextText
+
+  const alternatives = [
+    "Let me stay with you in this. What part of this feels sharpest right now?",
+    "I hear you. If we zoom in by one layer, what are you protecting in this moment?",
+    suggestedQuestion || "What do you need most from this chat right now?",
+  ]
+
+  const index = Math.abs((previousText.length || 1) + 2) % alternatives.length
+  return alternatives[index]
+}
+
+function articulateQuestion(input: string) {
+  const compact = input.replace(/\s+/g, " ").trim()
+  if (!compact) return "What feels most important for us to explore right now?"
+  const withoutTrailingPunctuation = compact.replace(/[.!?]+$/, "")
+  return `${withoutTrailingPunctuation}?`
+}
+
+function getToneModeInstruction(toneMode: CompanionSettings["toneMode"]) {
+  if (toneMode === "casual") {
+    return "Keep it casual and human: use simple, everyday language, contractions, and short natural lines."
+  }
+  if (toneMode === "deep") {
+    return "Keep it warm but deeper: reflective wording, emotional nuance, and one thoughtful follow-up question."
+  }
+  return "Keep it balanced: clear, natural, and grounded without sounding too formal or too slang-heavy."
+}
+
+type QuickPresetId = "fast-local" | "balanced-cloud" | "deep-empathy"
+
+function withQuickPreset(base: CompanionSettings, presetId: QuickPresetId): CompanionSettings {
+  if (presetId === "fast-local") {
+    return {
+      ...base,
+      provider: "webllm",
+      webllmModel: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC",
+      toneMode: "casual",
+      personality: "warm",
+      temperature: 0.7,
+      maxOutputTokens: 220,
+      mcpAutoFallback: true,
+    }
+  }
+
+  if (presetId === "balanced-cloud") {
+    return {
+      ...base,
+      provider: "openrouter",
+      openRouterModel: "qwen/qwen3-4b:free",
+      toneMode: "balanced",
+      personality: "warm",
+      temperature: 0.6,
+      maxOutputTokens: 260,
+      mcpAutoFallback: true,
+    }
+  }
+
+  return {
+    ...base,
+    provider: "openrouter",
+    openRouterModel: "meta-llama/llama-3.3-70b-instruct:free",
+    toneMode: "deep",
+    personality: "analytical",
+    temperature: 0.7,
+    maxOutputTokens: 320,
+    mcpAutoFallback: true,
+  }
+}
+
 const WEBLLM_MODEL_REPO_MAP: Record<string, string> = {
+  "Qwen2.5-0.5B-Instruct-q4f16_1-MLC": "https://huggingface.co/mlc-ai/Qwen2.5-0.5B-Instruct-q4f16_1-MLC/resolve/main/",
   "Llama-3.2-3B-Instruct-q4f16_1-MLC": "https://huggingface.co/mlc-ai/Llama-3.2-3B-Instruct-q4f16_1-MLC/resolve/main/",
   "Llama-3.2-1B-Instruct-q4f16_1-MLC": "https://huggingface.co/mlc-ai/Llama-3.2-1B-Instruct-q4f16_1-MLC/resolve/main/",
   "gemma-2-2b-it-q4f16_1-MLC": "https://huggingface.co/mlc-ai/gemma-2-2b-it-q4f16_1-MLC/resolve/main/",
@@ -334,9 +467,12 @@ function getNextDeepQuestion(
 ) {
   const targetQuadrant = getLowestQuadrant(summary)
   const potentialQuestions = DEEP_DISCOVERY_MATRIX[activeTier].filter((item) => item.cat.toLowerCase() === targetQuadrant)
+  const questionPool = potentialQuestions.length > 0 ? potentialQuestions : DEEP_DISCOVERY_MATRIX[activeTier]
+  const progressionSeed = summary.says + summary.thinks * 2 + summary.does * 3 + summary.feels * 5
+  const selected = questionPool[progressionSeed % questionPool.length]
 
   return {
-    question: potentialQuestions[0]?.q || "Tell me more about what you're thinking right now.",
+    question: articulateQuestion(selected?.q || "Tell me more about what you're thinking right now"),
     tier: activeTier,
     targetQuadrant: targetQuadrant.toUpperCase(),
   }
@@ -345,6 +481,7 @@ function getNextDeepQuestion(
 function buildSystemPrompt(
   companionName: string,
   personality: CompanionSettings["personality"],
+  toneMode: CompanionSettings["toneMode"],
   emotion: Emotion,
   empathyProfile: EmpathyProfile,
   empathyCode: string,
@@ -360,6 +497,8 @@ function buildSystemPrompt(
   return `${personalityPrompts[personality]}
 
 Current detected emotion from the user: ${emotion}. Adjust your response tone accordingly.
+Tone mode: ${toneMode.toUpperCase()}.
+Tone guidance: ${getToneModeInstruction(toneMode)}
 
 User empathy profile:
 - Preferred name: ${empathyProfile.preferredName}
@@ -376,6 +515,12 @@ Guidelines:
 - Help the user rethink and re-evaluate negative thoughts with compassionate cognitive reframing
 - Be creative -- occasionally use metaphors, analogies, or artistic observations
 - Keep responses conversational and human-like (2-4 sentences typically)
+- Keep wording fresh by avoiding repeated openings and repeated phrasing from your last two replies
+- Keep follow-up questions concise, specific, and naturally articulated
+- Prefer plain, everyday language with contractions (for example: "I'm", "you're", "let's")
+- Avoid sounding robotic, corporate, or overly clinical
+- Do not default to gratitude openers like "thank you for sharing"; use them sparingly and vary sentence openings
+- Start with a specific reflection tied to what the user actually said before asking a follow-up
 - Never diagnose or provide medical/psychological advice
 - If someone seems in crisis, gently suggest professional resources
 - Remember context from the conversation to show you truly listen
@@ -402,6 +547,7 @@ Response Structure:
 
 export default function CompanionApp() {
   const agreementStorageKey = "empatheia_user_agreement_v1"
+  const quickPresetStorageKey = "empatheia_quick_preset_v1"
   const chatApi = process.env.NEXT_PUBLIC_CHAT_API_URL || "/api/chat"
 
   const [settings, setSettings] = useState<CompanionSettings>(DEFAULT_SETTINGS)
@@ -416,7 +562,7 @@ export default function CompanionApp() {
   const [onboardingSummary, setOnboardingSummary] = useState({ says: 0, thinks: 0, does: 0, feels: 0 })
   const [currentEmotion, setCurrentEmotion] = useState<Emotion>("neutral")
   const [empathyProfile, setEmpathyProfile] = useState<EmpathyProfile>(DEFAULT_EMPATHY_PROFILE)
-  const [currentStep, setCurrentStep] = useState(0)
+  const [, setCurrentStep] = useState(0)
   const [sessionDepthLevel, setSessionDepthLevel] = useState(1)
   const [metaHistory, setMetaHistory] = useState<EmpathyMetaRecord[]>([])
   const [introAnswers, setIntroAnswers] = useState<string[]>(Array(EMPATHY_QUEST_BANK.length).fill(""))
@@ -428,7 +574,9 @@ export default function CompanionApp() {
   const [elapsedMs, setElapsedMs] = useState(0)
   const [mobilePanel, setMobilePanel] = useState<"camera" | "chat" | "empathy">("chat")
   const [hasAgreed, setHasAgreed] = useState(false)
+  const [showQuickStartModal, setShowQuickStartModal] = useState(false)
   const [agreementChecked, setAgreementChecked] = useState(false)
+  const [errorSummaryCopiedAt, setErrorSummaryCopiedAt] = useState<number | null>(null)
   const [webLlmMessages, setWebLlmMessages] = useState<Message[]>([])
   const [isWebLlmLoading, setIsWebLlmLoading] = useState(false)
   const [isInitializingWebLlm, setIsInitializingWebLlm] = useState(false)
@@ -453,12 +601,44 @@ export default function CompanionApp() {
   const shadowPrefetchPromiseRef = useRef<Promise<void> | null>(null)
   const introCountedRef = useRef<Set<number>>(new Set())
   const fallbackPhase2InjectedRef = useRef(false)
+  const lastFallbackReplyRef = useRef("")
 
   useEffect(() => {
     if (typeof window === "undefined") return
     const agreed = window.localStorage.getItem(agreementStorageKey) === "accepted"
     setHasAgreed(agreed)
-  }, [agreementStorageKey])
+
+    if (!agreed) return
+
+    const savedPreset = window.localStorage.getItem(quickPresetStorageKey)
+    if (savedPreset === "fast-local" || savedPreset === "balanced-cloud" || savedPreset === "deep-empathy") {
+      setSettings((prev) => withQuickPreset(prev, savedPreset))
+      setShowQuickStartModal(false)
+      return
+    }
+
+    if (savedPreset === "default") {
+      setShowQuickStartModal(false)
+      return
+    }
+
+    setShowQuickStartModal(true)
+  }, [agreementStorageKey, quickPresetStorageKey])
+
+  const handleChooseQuickPreset = useCallback(
+    (preset: QuickPresetId | "default") => {
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(quickPresetStorageKey, preset)
+      }
+
+      if (preset !== "default") {
+        setSettings((prev) => withQuickPreset(prev, preset))
+      }
+
+      setShowQuickStartModal(false)
+    },
+    [quickPresetStorageKey]
+  )
 
   useEffect(() => {
     webLlmMessagesRef.current = webLlmMessages
@@ -506,11 +686,12 @@ export default function CompanionApp() {
   const preflightVelocity = Math.min(1, Math.abs(conversationSentimentScore) / preflightDepth)
   const preflightQuestion = getNextDeepQuestion(currentSummary, preflightTier.tier)
 
-  const { messages: chatMessages, sendMessage, status, error: remoteError } = useChat({
+  const { messages: chatMessages, sendMessage, status, error: remoteError } = useChat(({
     api: chatApi,
     body: {
       emotion: currentEmotion,
       personality: settings.personality,
+      toneMode: settings.toneMode,
       provider: settings.provider,
       temperature: settings.temperature,
       companionName: settings.name,
@@ -518,7 +699,7 @@ export default function CompanionApp() {
       empathyCode,
       ollamaBaseUrl: settings.ollamaBaseUrl,
       ollamaModel: settings.ollamaModel,
-      openRouterApiKey: settings.openRouterApiKey,
+      openRouterApiKey: process.env.NODE_ENV === "production" ? "" : settings.openRouterApiKey,
       openRouterModel: settings.openRouterModel,
       topP: settings.topP,
       maxOutputTokens: settings.maxOutputTokens,
@@ -532,12 +713,14 @@ export default function CompanionApp() {
       ),
       nextDeepQuestion: preflightQuestion.question,
     },
-  })
+  }) as any)
 
   const isRemoteLoading = status === "streaming" || status === "submitted"
   const isLoading = settings.provider === "webllm" ? isWebLlmLoading : isRemoteLoading
-  const systemHealth = llmConnectionError || (settings.provider === "webllm" && webLlmStatus === "error")
-    ? "error"
+  const hasLocalFallbackActive =
+    Boolean(llmConnectionError) || (settings.provider === "webllm" && webLlmStatus === "error")
+  const systemHealth = hasLocalFallbackActive
+    ? "fallback"
     : isLoading || (settings.provider === "webllm" && (webLlmStatus === "downloading" || webLlmStatus === "thinking"))
       ? "busy"
       : settings.provider === "webllm" && webLlmStatus !== "ready"
@@ -579,8 +762,15 @@ export default function CompanionApp() {
           : {}),
       }
 
-      const engine = await webllm.CreateWebWorkerMLCEngine(worker, selectedModel, engineConfig)
-      return { engine, worker }
+      try {
+        const engine = await webllm.CreateWebWorkerMLCEngine(worker, selectedModel, engineConfig)
+        return { engine, worker }
+      } catch {
+        worker.terminate()
+        // Fallback for environments where worker initialization is blocked.
+        const engine = await webllm.CreateMLCEngine(selectedModel, engineConfig)
+        return { engine, worker: null as Worker | null }
+      }
     },
     []
   )
@@ -760,6 +950,52 @@ export default function CompanionApp() {
     setShowSettings(true)
   }, [])
 
+  const requestMcpFallbackReply = useCallback(
+    async (text: string) => {
+      if (!settings.mcpAutoFallback) return null
+
+      const history = [...webLlmMessagesRef.current]
+        .slice(-Math.max(2, settings.contextMessages - 1))
+        .map((item) => ({
+          role: item.sender === "user" ? "user" : "assistant",
+          content: item.text,
+        }))
+
+      try {
+        const response = await fetch("/api/mcp-fallback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mcpBaseUrl: settings.mcpBaseUrl,
+            mcpModel: settings.mcpModel,
+            mcpApiKey: settings.mcpApiKey,
+            systemPrompt: `You are ${settings.name}, a ${settings.personality} empathetic companion. ${getToneModeInstruction(settings.toneMode)} Start with a specific emotional reflection, avoid repetitive thank-you openings, reply naturally in 2-4 sentences, and ask one meaningful follow-up question.`,
+            messages: [...history, { role: "user", content: text }],
+          }),
+        })
+
+        if (!response.ok) return null
+        const payload = await response.json()
+        if (typeof payload.text !== "string" || payload.text.trim().length === 0) {
+          return null
+        }
+        return payload.text.trim()
+      } catch {
+        return null
+      }
+    },
+    [
+      settings.mcpAutoFallback,
+      settings.mcpBaseUrl,
+      settings.mcpModel,
+      settings.mcpApiKey,
+      settings.contextMessages,
+      settings.name,
+      settings.personality,
+      settings.toneMode,
+    ]
+  )
+
   // Convert AI SDK UIMessage format to our Message format for the ChatPanel
   const remoteMessages: Message[] = useMemo(
     () =>
@@ -837,9 +1073,14 @@ export default function CompanionApp() {
 
   const introQuestionCount = INTRO_CHAT_QUESTIONS.length
   const answeredIntroCount = introAnswers.slice(0, introQuestionCount).filter((ans) => ans.trim().length > 1).length
-  const providerMessages =
-    settings.provider === "webllm" ? webLlmMessages : [...remoteMessages, ...remoteFallbackMessages]
-  const messages = [...onboardingChatMessages, ...providerMessages]
+  const providerMessages = useMemo(
+    () => (settings.provider === "webllm" ? webLlmMessages : [...remoteMessages, ...remoteFallbackMessages]),
+    [settings.provider, webLlmMessages, remoteMessages, remoteFallbackMessages]
+  )
+  const messages = useMemo(
+    () => [...onboardingChatMessages, ...providerMessages],
+    [onboardingChatMessages, providerMessages]
+  )
   const sessionDepth = Math.max(providerMessages.length + onboardingChatMessages.length, sessionDepthLevel)
   const introSentimentScore = useMemo(
     () => introAnswers.reduce((sum, answer) => sum + estimateSentimentScore(answer), 0),
@@ -977,8 +1218,79 @@ export default function CompanionApp() {
           : combinedEmotion
       setCurrentEmotion(sentimentEmotion)
 
+      const isHowAreYouCheckIn = HOW_ARE_YOU_PATTERN.test(text)
+
+      if (isHowAreYouCheckIn) {
+        const checkInReply = buildHumanCheckInReply(settings.name, settings.personality)
+
+        if (answeredIntroCount < introQuestionCount) {
+          const introPrompt = INTRO_CHAT_QUESTIONS[answeredIntroCount]?.question
+          setOnboardingChatMessages((prev) => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              text,
+              sender: "user",
+              timestamp: new Date(),
+              emotion: sentimentEmotion,
+            },
+            {
+              id: crypto.randomUUID(),
+              text: introPrompt
+                ? `${checkInReply} Before we continue, ${introPrompt}`
+                : checkInReply,
+              sender: "ai",
+              timestamp: new Date(),
+              emotion: "thinking",
+            },
+          ])
+          return
+        }
+
+        if (settings.provider === "webllm") {
+          setWebLlmMessages((prev) => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              text,
+              sender: "user",
+              timestamp: new Date(),
+              emotion: sentimentEmotion,
+            },
+            {
+              id: crypto.randomUUID(),
+              text: checkInReply,
+              sender: "ai",
+              timestamp: new Date(),
+              emotion: "thinking",
+            },
+          ])
+        } else {
+          setRemoteFallbackMessages((prev) => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              text,
+              sender: "user",
+              timestamp: new Date(),
+              emotion: sentimentEmotion,
+            },
+            {
+              id: crypto.randomUUID(),
+              text: checkInReply,
+              sender: "ai",
+              timestamp: new Date(),
+              emotion: "thinking",
+            },
+          ])
+        }
+
+        return
+      }
+
       if (answeredIntroCount < introQuestionCount) {
         const introIndex = answeredIntroCount
+        const currentIntroQuestion = INTRO_CHAT_QUESTIONS[introIndex]
         setOnboardingChatMessages((prev) => [
           ...prev,
           {
@@ -994,12 +1306,19 @@ export default function CompanionApp() {
 
         const nextIndex = introIndex + 1
         const nextPrompt = INTRO_CHAT_QUESTIONS[nextIndex]?.question
+        const reflectiveBridge =
+          analysis.sentimentScore < -0.25
+            ? "That sounds emotionally heavy."
+            : analysis.sentimentScore > 0.25
+              ? "I can hear momentum in the way you describe this."
+              : "I hear you clearly."
+        const contextBridge = currentIntroQuestion?.followUp || "Stay with this for one more layer."
         setOnboardingChatMessages((prev) => [
           ...prev,
           {
             id: crypto.randomUUID(),
             text: nextPrompt
-              ? `Thank you. ${nextPrompt}`
+              ? `${reflectiveBridge} ${contextBridge} ${nextPrompt}`
               : "Perfect. Your introduction map is complete. We can now go deeper.",
             sender: "ai",
             timestamp: new Date(),
@@ -1016,6 +1335,50 @@ export default function CompanionApp() {
           sender: "user",
           timestamp: new Date(),
           emotion: sentimentEmotion,
+        }
+
+        const shouldUseImmediateFallback =
+          webLlmStatus === "error" && !webLlmEngineRef.current
+
+        if (shouldUseImmediateFallback) {
+          const mcpFallbackText = await requestMcpFallbackReply(text)
+          if (mcpFallbackText) {
+            setWebLlmMessages((prev) => [
+              ...prev,
+              userMessage,
+              {
+                id: crypto.randomUUID(),
+                text: mcpFallbackText,
+                sender: "ai",
+                timestamp: new Date(),
+                emotion: sentimentEmotion,
+                mode: "mcp-fallback",
+              },
+            ])
+            return
+          }
+
+          const baseFallback = buildLocalCompanionReply(text, analysis.sentimentScore, suggestedNext.question)
+          const fallbackText = ensureNonRepeatingFallback(
+            baseFallback,
+            lastFallbackReplyRef.current,
+            suggestedNext.question
+          )
+          lastFallbackReplyRef.current = fallbackText
+
+          setWebLlmMessages((prev) => [
+            ...prev,
+            userMessage,
+            {
+              id: crypto.randomUUID(),
+              text: fallbackText,
+              sender: "ai",
+              timestamp: new Date(),
+              emotion: sentimentEmotion,
+              mode: "fallback",
+            },
+          ])
+          return
         }
 
         setWebLlmMessages((prev) => [...prev, userMessage])
@@ -1039,6 +1402,7 @@ export default function CompanionApp() {
                 content: buildSystemPrompt(
                   settings.name,
                   settings.personality,
+                  settings.toneMode,
                   sentimentEmotion,
                   empathyProfile,
                   empathyCode,
@@ -1092,26 +1456,37 @@ export default function CompanionApp() {
           setWebLlmError(message)
           setLlmConnectionError(message)
 
-          const trimmed = text.trim()
-          const tokenCount = trimmed.split(/\s+/).filter(Boolean).length
-          const lower = trimmed.toLowerCase()
-          const dissonance =
-            /(i am fine|i'm fine|im fine|fine)/.test(lower) &&
-            /(heavy|tight|stuck|anxious|sad|angry|overwhelmed|tired)/.test(lower)
-          const warmPause = tokenCount < 8
-            ? "Thank you for sharing that."
-            : "I hear you, and it sounds like this carries more weight than the words alone."
-          const dissonanceLine = dissonance
-            ? "I notice a gap between what you are saying and what your body/emotions are signaling. "
-            : ""
-          const fallbackMirrorQuestion = suggestedNext.question || "And if you dig just an inch deeper, what's underneath that?"
+          const mcpFallbackText = await requestMcpFallbackReply(text)
+          if (mcpFallbackText) {
+            setWebLlmMessages((prev) => [
+              ...prev,
+              {
+                id: crypto.randomUUID(),
+                text: mcpFallbackText,
+                sender: "ai",
+                timestamp: new Date(),
+                emotion: sentimentEmotion,
+                mode: "mcp-fallback",
+              },
+            ])
+            return
+          }
+
+          const baseFallback = buildLocalCompanionReply(text, analysis.sentimentScore, suggestedNext.question)
+          const fallbackText = ensureNonRepeatingFallback(
+            baseFallback,
+            lastFallbackReplyRef.current,
+            suggestedNext.question
+          )
+          lastFallbackReplyRef.current = fallbackText
 
           const localFallback: Message = {
             id: crypto.randomUUID(),
-            text: `${warmPause} ${dissonanceLine}${fallbackMirrorQuestion}`.trim(),
+            text: fallbackText,
             sender: "ai",
             timestamp: new Date(),
             emotion: sentimentEmotion,
+            mode: "fallback",
           }
           setWebLlmMessages((prev) => [...prev, localFallback])
 
@@ -1129,31 +1504,40 @@ export default function CompanionApp() {
         const message = error instanceof Error ? error.message : "LLM request failed"
         setLlmConnectionError(message)
 
-        const trimmed = text.trim()
-        const tokenCount = trimmed.split(/\s+/).filter(Boolean).length
-        const lower = trimmed.toLowerCase()
-        const dissonance =
-          /(i am fine|i'm fine|im fine|fine)/.test(lower) &&
-          /(heavy|tight|stuck|anxious|sad|angry|overwhelmed|tired)/.test(lower)
-        const warmPause =
-          tokenCount < 8
-            ? "I hear you. Even without model connectivity, we can keep reflecting together."
-            : "I hear you, and even while model connectivity is unstable, we can still continue this reflection."
-        const dissonanceLine = dissonance
-          ? "I notice a mismatch between your words and emotional signal. "
-          : ""
-        const fallbackMirrorQuestion = suggestedNext.question || "What part of this feels most true right now?"
+        const baseFallback = buildLocalCompanionReply(text, analysis.sentimentScore, suggestedNext.question)
+        const fallbackText = ensureNonRepeatingFallback(
+          baseFallback,
+          lastFallbackReplyRef.current,
+          suggestedNext.question
+        )
+        lastFallbackReplyRef.current = fallbackText
 
-        setRemoteFallbackMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            text: `${warmPause} ${dissonanceLine}${fallbackMirrorQuestion}`.trim(),
-            sender: "ai",
-            timestamp: new Date(),
-            emotion: sentimentEmotion,
-          },
-        ])
+        setRemoteFallbackMessages((prev) => {
+          const hasMatchingUserTail = prev[prev.length - 1]?.sender === "user" && prev[prev.length - 1]?.text === text
+          const withUserTurn = hasMatchingUserTail
+            ? prev
+            : [
+                ...prev,
+                {
+                  id: crypto.randomUUID(),
+                  text,
+                  sender: "user" as const,
+                  timestamp: new Date(),
+                },
+              ]
+
+          return [
+            ...withUserTurn,
+            {
+              id: crypto.randomUUID(),
+              text: fallbackText,
+              sender: "ai",
+              timestamp: new Date(),
+              emotion: sentimentEmotion,
+              mode: "fallback",
+            },
+          ]
+        })
       }
     },
     [
@@ -1169,6 +1553,8 @@ export default function CompanionApp() {
       answeredIntroCount,
       introQuestionCount,
       handleIntroAnswerChange,
+      requestMcpFallbackReply,
+      webLlmStatus,
     ]
   )
 
@@ -1194,6 +1580,140 @@ export default function CompanionApp() {
     URL.revokeObjectURL(url)
   }, [empathyProfile, empathyData])
 
+  const hasDownloadableError =
+    Boolean(webLlmError) || Boolean(llmConnectionError) || (settings.provider === "webllm" && webLlmStatus === "error")
+
+  const buildErrorPayload = useCallback(() => {
+    const timestamp = new Date().toISOString()
+    const modelInUse =
+      settings.provider === "openai"
+        ? PROVIDER_DEFAULT_MODELS.openai
+        : settings.provider === "anthropic"
+          ? PROVIDER_DEFAULT_MODELS.anthropic
+          : settings.provider === "google"
+            ? PROVIDER_DEFAULT_MODELS.google
+            : settings.provider === "webllm"
+              ? settings.webllmModel
+              : settings.provider === "openrouter"
+                ? settings.openRouterModel
+                : settings.ollamaModel
+
+      return {
+      generatedAt: timestamp,
+      app: "EMPATHEIA",
+      runtime: {
+        provider: settings.provider,
+        model: modelInUse,
+        systemHealth,
+        webLlmStatus,
+        webLlmProgress,
+        webLlmXpStage,
+        isLoading,
+        isInitializingWebLlm,
+      },
+      errors: {
+        llmConnectionError,
+        webLlmError,
+      },
+      settingsSnapshot: {
+        personality: settings.personality,
+        toneMode: settings.toneMode,
+        temperature: settings.temperature,
+        topP: settings.topP,
+        maxOutputTokens: settings.maxOutputTokens,
+        contextMessages: settings.contextMessages,
+        mcpAutoFallback: settings.mcpAutoFallback,
+        hasOpenRouterApiKey: Boolean(settings.openRouterApiKey),
+        hasMcpApiKey: Boolean(settings.mcpApiKey),
+      },
+      session: {
+        startedAt: sessionStartedAt ? new Date(sessionStartedAt).toISOString() : null,
+        elapsedMs,
+        messageCount: messages.length,
+        fallbackPhase,
+        recentMessages: messages.slice(-8).map((m) => ({
+          sender: m.sender,
+          mode: m.mode || null,
+          emotion: m.emotion || null,
+          at: m.timestamp.toISOString(),
+          preview: m.text.slice(0, 280),
+        })),
+      },
+      environment: {
+        userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "unknown",
+        language: typeof navigator !== "undefined" ? navigator.language : "unknown",
+      },
+    }
+  }, [
+    elapsedMs,
+    fallbackPhase,
+    isInitializingWebLlm,
+    isLoading,
+    llmConnectionError,
+    messages,
+    sessionStartedAt,
+    settings,
+    systemHealth,
+    webLlmError,
+    webLlmProgress,
+    webLlmStatus,
+    webLlmXpStage,
+  ])
+
+  const handleDownloadErrorLog = useCallback(() => {
+    const payload = buildErrorPayload()
+    const timestamp = payload.generatedAt
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = `empatheia-error-log-${timestamp.replace(/[.:]/g, "-")}.json`
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }, [buildErrorPayload])
+
+  const handleCopyErrorSummary = useCallback(async () => {
+    const payload = buildErrorPayload()
+    const summary = [
+      `EMPATHEIA Error Summary`,
+      `generatedAt: ${payload.generatedAt}`,
+      `provider: ${payload.runtime.provider}`,
+      `model: ${payload.runtime.model}`,
+      `systemHealth: ${payload.runtime.systemHealth}`,
+      `webLlmStatus: ${payload.runtime.webLlmStatus}`,
+      `llmConnectionError: ${payload.errors.llmConnectionError || "none"}`,
+      `webLlmError: ${payload.errors.webLlmError || "none"}`,
+      `messageCount: ${payload.session.messageCount}`,
+      `fallbackPhase: ${payload.session.fallbackPhase}`,
+      `recentMessages: ${payload.session.recentMessages.length}`,
+    ].join("\n")
+
+    try {
+      await navigator.clipboard.writeText(summary)
+    } catch {
+      const textarea = document.createElement("textarea")
+      textarea.value = summary
+      textarea.setAttribute("readonly", "")
+      textarea.style.position = "absolute"
+      textarea.style.left = "-9999px"
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand("copy")
+      document.body.removeChild(textarea)
+    }
+
+    setErrorSummaryCopiedAt(Date.now())
+  }, [buildErrorPayload])
+
+  useEffect(() => {
+    if (!errorSummaryCopiedAt) return
+    const timer = window.setTimeout(() => {
+      setErrorSummaryCopiedAt(null)
+    }, 1800)
+    return () => window.clearTimeout(timer)
+  }, [errorSummaryCopiedAt])
+
   const handleCameraEmotion = useCallback((emotion: Emotion) => {
     setCameraEmotion(emotion)
   }, [])
@@ -1213,11 +1733,7 @@ export default function CompanionApp() {
   }, [agreementStorageKey])
 
   return (
-    <main
-      className={`relative flex h-screen flex-col overflow-hidden ${
-        isColdFallbackMode && fallbackPhase >= 3 ? "bg-slate-950 text-slate-100" : "bg-background"
-      }`}
-    >
+    <main className="relative flex h-screen flex-col overflow-hidden bg-background">
       {!hasAgreed && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/95 px-4">
           <div className="w-full max-w-xl rounded-lg border border-border bg-card p-6">
@@ -1248,6 +1764,50 @@ export default function CompanionApp() {
               className="mt-4 w-full rounded border border-foreground bg-foreground px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-foreground/90 disabled:cursor-not-allowed disabled:opacity-40"
             >
               I Agree and Continue
+            </button>
+          </div>
+        </div>
+      )}
+
+      {hasAgreed && showQuickStartModal && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-background/90 px-4">
+          <div className="w-full max-w-xl rounded-lg border border-border bg-card p-6">
+            <h2 className="text-lg font-semibold text-foreground">Choose Your Conversation Mode</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Pick one option and start chatting immediately. You can change this later in Settings.
+            </p>
+
+            <div className="mt-4 grid gap-3">
+              <button
+                onClick={() => handleChooseQuickPreset("fast-local")}
+                className="rounded border border-border bg-background px-4 py-3 text-left transition-colors hover:border-muted-foreground/50"
+              >
+                <div className="text-sm font-semibold text-foreground">Fast & Local</div>
+                <div className="text-xs text-muted-foreground">No API setup. Best first-run reliability.</div>
+              </button>
+
+              <button
+                onClick={() => handleChooseQuickPreset("balanced-cloud")}
+                className="rounded border border-border bg-background px-4 py-3 text-left transition-colors hover:border-muted-foreground/50"
+              >
+                <div className="text-sm font-semibold text-foreground">Balanced Cloud</div>
+                <div className="text-xs text-muted-foreground">Recommended for most users. Smooth quality with low latency.</div>
+              </button>
+
+              <button
+                onClick={() => handleChooseQuickPreset("deep-empathy")}
+                className="rounded border border-border bg-background px-4 py-3 text-left transition-colors hover:border-muted-foreground/50"
+              >
+                <div className="text-sm font-semibold text-foreground">Deep Empathy</div>
+                <div className="text-xs text-muted-foreground">Stronger reflection quality for long-form conversations.</div>
+              </button>
+            </div>
+
+            <button
+              onClick={() => handleChooseQuickPreset("default")}
+              className="mt-4 w-full rounded border border-border bg-card px-4 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Keep default settings for now
             </button>
           </div>
         </div>
@@ -1286,16 +1846,16 @@ export default function CompanionApp() {
           <div className="hidden items-center gap-2 md:flex">
             <span
               className={`h-2 w-2 rounded-full ${
-                systemHealth === "error"
-                  ? "bg-destructive"
+                systemHealth === "fallback"
+                  ? "bg-amber-500"
                   : systemHealth === "busy" || systemHealth === "initializing"
                     ? "animate-pulse bg-amber-500"
                     : "bg-emerald-500"
               }`}
             />
             <span className="text-sm text-muted-foreground">
-              {systemHealth === "error"
-                ? "System Error"
+              {systemHealth === "fallback"
+                ? "Local Fallback Active"
                 : systemHealth === "busy"
                   ? "System Busy"
                   : systemHealth === "initializing"
@@ -1388,9 +1948,29 @@ export default function CompanionApp() {
                   </button>
                 </>
               )}
+              {hasDownloadableError && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  <button
+                    onClick={handleDownloadErrorLog}
+                    className="rounded border border-border bg-background px-2 py-1 text-[10px] font-medium text-foreground transition-colors hover:bg-accent"
+                  >
+                    Download Error Log
+                  </button>
+                  <button
+                    onClick={handleCopyErrorSummary}
+                    className="rounded border border-border bg-background px-2 py-1 text-[10px] font-medium text-foreground transition-colors hover:bg-accent"
+                  >
+                    {errorSummaryCopiedAt ? "Copied" : "Copy Error Summary"}
+                  </button>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Personality</span>
                 <span className="text-foreground uppercase">{settings.personality}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Tone</span>
+                <span className="text-foreground uppercase">{settings.toneMode}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Temp</span>
@@ -1431,7 +2011,7 @@ export default function CompanionApp() {
                   key={i}
                   className="h-1 flex-1 bg-muted-foreground/10"
                   style={{
-                    opacity: i < Math.ceil(8 * (currentEmotion === "neutral" ? 0.3 : 0.7)),
+                    opacity: i < Math.ceil(8 * (currentEmotion === "neutral" ? 0.3 : 0.7)) ? 1 : 0.25,
                   }}
                 />
               ))}

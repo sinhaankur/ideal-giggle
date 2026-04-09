@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/home/ankursinha/Documents/GitHub/ideal-giggle"
+      ],
+      "env": {}
+    }
+  }
+}
