@@ -7,6 +7,7 @@ An empathetic AI companion built with Next.js, React, and AI SDK.
 - Camera-based facial expression detection (face-api.js)
 - Mood-aware tone adaptation in responses
 - Multiple providers: OpenAI, Anthropic, Google, OpenRouter (open-source hosted models), WebLLM (browser local), Ollama (local runtime)
+- Hybrid intelligence fallback: if model runtime fails, empathy-map quadrants still update using sentiment + keyword heuristics
 
 ## Run Locally
 
@@ -102,7 +103,10 @@ WebLLM runs in-browser and needs WebGPU to use your local GPU for fast inference
 4. Fix slow/crashy sessions:
 	- Use smaller models (1B/2B) for lower VRAM use.
 	- Close heavy tabs/applications to free GPU memory.
+	- 3B class models often need around 4GB of available VRAM.
 	- Keep laptop plugged in and avoid thermal throttling.
+	- Prefer secure contexts (`https://` or `localhost`) instead of plain local-network `http://192.168...` URLs.
+	- Re-check `chrome://flags/#enable-unsafe-webgpu` after browser updates because it can reset.
 
 If browser WebGPU remains unstable, switch provider to OpenRouter API or Ollama for more consistent runtime behavior.
 
