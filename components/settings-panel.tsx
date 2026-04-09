@@ -3,6 +3,57 @@
 import { Settings, Server, Cloud, Thermometer, User, Sparkles, Cpu, Download } from "lucide-react"
 import type { CompanionSettings, AIProvider, Personality, ToneMode } from "@/lib/companion-types"
 
+const WEBLLM_MODEL_PRESETS = [
+  "Qwen2.5-0.5B-Instruct-q4f16_1-MLC",
+  "Llama-3.2-1B-Instruct-q4f16_1-MLC",
+  "Llama-3.2-3B-Instruct-q4f16_1-MLC",
+  "gemma-2-2b-it-q4f16_1-MLC",
+  "Mistral-7B-Instruct-v0.3-q4f16_1-MLC",
+]
+
+const OPENROUTER_MODEL_PRESETS = [
+  "qwen/qwen3-4b:free",
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "deepseek/deepseek-r1-distill-llama-70b:free",
+  "qwen/qwen-2.5-72b-instruct:free",
+  "mistralai/mistral-7b-instruct:free",
+  "google/gemma-2-9b-it:free",
+]
+
+const PROVIDERS: { value: AIProvider; label: string; desc: string; icon: typeof Server }[] = [
+  {
+    value: "webllm",
+    label: "WebLLM",
+    desc: "Runs in your browser and downloads model locally",
+    icon: Cpu,
+  },
+  {
+    value: "ollama",
+    label: "Ollama",
+    desc: "Uses your local Ollama runtime",
+    icon: Cpu,
+  },
+  {
+    value: "openrouter",
+    label: "OpenRouter (OSS API)",
+    desc: "Hosted open-source models via API",
+    icon: Cloud,
+  },
+]
+
+const PERSONALITIES: { value: Personality; label: string; desc: string }[] = [
+  { value: "warm", label: "WARM", desc: "Empathetic and caring" },
+  { value: "analytical", label: "ANALYTICAL", desc: "Logical and precise" },
+  { value: "playful", label: "PLAYFUL", desc: "Creative and fun" },
+  { value: "professional", label: "DIRECT", desc: "Professional and concise" },
+]
+
+const TONE_MODES: { value: ToneMode; label: string; desc: string }[] = [
+  { value: "casual", label: "CASUAL", desc: "Relaxed and everyday" },
+  { value: "balanced", label: "BALANCED", desc: "Natural and clear" },
+  { value: "deep", label: "DEEP", desc: "Reflective and probing" },
+]
+
 interface SettingsPanelProps {
   settings: CompanionSettings
   onSettingsChange: (settings: CompanionSettings) => void
@@ -15,75 +66,6 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
   const update = (partial: Partial<CompanionSettings>) => {
     onSettingsChange({ ...settings, ...partial })
   }
-
-  const webLlmModelPresets = [
-    "Qwen2.5-0.5B-Instruct-q4f16_1-MLC",
-    "Llama-3.2-1B-Instruct-q4f16_1-MLC",
-    "Llama-3.2-3B-Instruct-q4f16_1-MLC",
-    "gemma-2-2b-it-q4f16_1-MLC",
-    "Mistral-7B-Instruct-v0.3-q4f16_1-MLC",
-  ]
-
-  const openRouterModelPresets = [
-    "qwen/qwen3-4b:free",
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "deepseek/deepseek-r1-distill-llama-70b:free",
-    "qwen/qwen-2.5-72b-instruct:free",
-    "mistralai/mistral-7b-instruct:free",
-    "google/gemma-2-9b-it:free",
-  ]
-
-  const providers: { value: AIProvider; label: string; desc: string; icon: typeof Server }[] = [
-    {
-      value: "openai",
-      label: "OpenAI",
-      desc: "GPT-4o Mini -- Advanced reasoning",
-      icon: Cloud,
-    },
-    {
-      value: "anthropic",
-      label: "Anthropic",
-      desc: "Claude 3.5 Sonnet -- Thoughtful communication",
-      icon: Cloud,
-    },
-    {
-      value: "google",
-      label: "Google",
-      desc: "Gemini 2.0 Flash -- Fast and capable",
-      icon: Cloud,
-    },
-    {
-      value: "webllm",
-      label: "WebLLM",
-      desc: "Runs in your browser and downloads model locally",
-      icon: Cpu,
-    },
-    {
-      value: "ollama",
-      label: "Ollama",
-      desc: "Uses your local Ollama runtime",
-      icon: Cpu,
-    },
-    {
-      value: "openrouter",
-      label: "OpenRouter (OSS API)",
-      desc: "Hosted open-source models via API",
-      icon: Cloud,
-    },
-  ]
-
-  const personalities: { value: Personality; label: string; desc: string }[] = [
-    { value: "warm", label: "WARM", desc: "Empathetic and caring" },
-    { value: "analytical", label: "ANALYTICAL", desc: "Logical and precise" },
-    { value: "playful", label: "PLAYFUL", desc: "Creative and fun" },
-    { value: "professional", label: "DIRECT", desc: "Professional and concise" },
-  ]
-
-  const toneModes: { value: ToneMode; label: string; desc: string }[] = [
-    { value: "casual", label: "CASUAL", desc: "Relaxed and everyday" },
-    { value: "balanced", label: "BALANCED", desc: "Natural and clear" },
-    { value: "deep", label: "DEEP", desc: "Reflective and probing" },
-  ]
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
@@ -135,7 +117,7 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
               </span>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              {personalities.map((p) => (
+              {PERSONALITIES.map((p) => (
                 <button
                   key={p.value}
                   onClick={() => update({ personality: p.value })}
@@ -163,7 +145,7 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
               </span>
             </div>
             <div className="grid grid-cols-1 gap-2">
-              {toneModes.map((tone) => (
+              {TONE_MODES.map((tone) => (
                 <button
                   key={tone.value}
                   onClick={() => update({ toneMode: tone.value })}
@@ -252,7 +234,7 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
               </span>
             </div>
             <div className="flex flex-col gap-2">
-              {providers.map((p) => {
+              {PROVIDERS.map((p) => {
                 const Icon = p.icon
                 return (
                   <button
@@ -290,7 +272,7 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
                 WebLLM Model
               </label>
               <select
-                value={webLlmModelPresets.includes(settings.webllmModel) ? settings.webllmModel : "custom"}
+                value={WEBLLM_MODEL_PRESETS.includes(settings.webllmModel) ? settings.webllmModel : "custom"}
                 onChange={(e) => {
                   if (e.target.value !== "custom") {
                     update({ webllmModel: e.target.value })
@@ -298,7 +280,7 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
                 }}
                 className="mb-2 w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               >
-                {webLlmModelPresets.map((model) => (
+                {WEBLLM_MODEL_PRESETS.map((model) => (
                   <option key={model} value={model}>
                     {model}
                   </option>
@@ -380,60 +362,62 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
           )}
 
           {/* MCP Fallback Settings */}
-          <div className="mb-6 rounded border border-border bg-background p-3">
-            <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
-              <Server className="h-4 w-4 text-foreground" />
-              <span className="text-sm font-semibold text-foreground">
-                MCP Fallback (Optional)
-              </span>
-            </div>
+          {settings.provider === "webllm" && (
+            <div className="mb-6 rounded border border-border bg-background p-3">
+              <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
+                <Server className="h-4 w-4 text-foreground" />
+                <span className="text-sm font-semibold text-foreground">
+                  MCP Fallback (Optional)
+                </span>
+              </div>
 
-            <label className="mb-2 flex items-center gap-2 text-sm text-foreground">
+              <label className="mb-2 flex items-center gap-2 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  checked={settings.mcpAutoFallback}
+                  onChange={(e) => update({ mcpAutoFallback: e.target.checked })}
+                />
+                <span>Use MCP server when WebLLM is unavailable</span>
+              </label>
+
+              <label className="mb-2 block text-sm font-medium text-foreground">
+                MCP Base URL
+              </label>
               <input
-                type="checkbox"
-                checked={settings.mcpAutoFallback}
-                onChange={(e) => update({ mcpAutoFallback: e.target.checked })}
+                type="text"
+                value={settings.mcpBaseUrl}
+                onChange={(e) => update({ mcpBaseUrl: e.target.value })}
+                className="mb-3 w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder="http://127.0.0.1:8787"
               />
-              <span>Use MCP server when WebLLM is unavailable</span>
-            </label>
 
-            <label className="mb-2 block text-sm font-medium text-foreground">
-              MCP Base URL
-            </label>
-            <input
-              type="text"
-              value={settings.mcpBaseUrl}
-              onChange={(e) => update({ mcpBaseUrl: e.target.value })}
-              className="mb-3 w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="http://127.0.0.1:8787"
-            />
+              <label className="mb-2 block text-sm font-medium text-foreground">
+                MCP Model
+              </label>
+              <input
+                type="text"
+                value={settings.mcpModel}
+                onChange={(e) => update({ mcpModel: e.target.value })}
+                className="mb-3 w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder="gpt-4o-mini"
+              />
 
-            <label className="mb-2 block text-sm font-medium text-foreground">
-              MCP Model
-            </label>
-            <input
-              type="text"
-              value={settings.mcpModel}
-              onChange={(e) => update({ mcpModel: e.target.value })}
-              className="mb-3 w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="gpt-4o-mini"
-            />
+              <label className="mb-2 block text-sm font-medium text-foreground">
+                MCP API Key (optional)
+              </label>
+              <input
+                type="password"
+                value={settings.mcpApiKey}
+                onChange={(e) => update({ mcpApiKey: e.target.value })}
+                className="w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder="Leave blank for local MCP without auth"
+              />
 
-            <label className="mb-2 block text-sm font-medium text-foreground">
-              MCP API Key (optional)
-            </label>
-            <input
-              type="password"
-              value={settings.mcpApiKey}
-              onChange={(e) => update({ mcpApiKey: e.target.value })}
-              className="w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="Leave blank for local MCP without auth"
-            />
-
-            <p className="mt-2 text-xs text-muted-foreground">
-              This assumes your local MCP service exposes an OpenAI-compatible chat endpoint.
-            </p>
-          </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                This assumes your local MCP service exposes an OpenAI-compatible chat endpoint.
+              </p>
+            </div>
+          )}
 
           {/* Ollama Settings */}
           {settings.provider === "ollama" && (
@@ -504,7 +488,7 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
                 OpenRouter Model
               </label>
               <select
-                value={openRouterModelPresets.includes(settings.openRouterModel) ? settings.openRouterModel : "custom"}
+                value={OPENROUTER_MODEL_PRESETS.includes(settings.openRouterModel) ? settings.openRouterModel : "custom"}
                 onChange={(e) => {
                   if (e.target.value !== "custom") {
                     update({ openRouterModel: e.target.value })
@@ -512,7 +496,7 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
                 }}
                 className="mb-2 w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               >
-                {openRouterModelPresets.map((model) => (
+                {OPENROUTER_MODEL_PRESETS.map((model) => (
                   <option key={model} value={model}>
                     {model}
                   </option>

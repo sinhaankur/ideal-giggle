@@ -1,13 +1,10 @@
 "use client"
 
 import { useState, useCallback, useMemo, useEffect, useRef, type Dispatch, type SetStateAction } from "react"
+import dynamic from "next/dynamic"
 import { useChat } from "@ai-sdk/react"
 import { Settings } from "lucide-react"
-import { CameraPanel } from "@/components/camera-panel"
 import { ChatPanel } from "@/components/chat-panel"
-import { EmpathyPanel } from "@/components/empathy-panel"
-import { SettingsPanel } from "@/components/settings-panel"
-import { SetupChecklist } from "@/components/setup-checklist"
 import {
   DEFAULT_SETTINGS,
   DEFAULT_EMPATHY_PROFILE,
@@ -24,6 +21,30 @@ import {
   type CompanionSettings,
   type Message,
 } from "@/lib/companion-types"
+import {
+  articulateQuestion as articulateQuestionFromEngine,
+  buildEmpathySystemPrompt,
+  buildHumanCheckInReply as buildHumanCheckInReplyFromEngine,
+  buildLocalCompanionReply as buildLocalCompanionReplyFromEngine,
+  ensureNonRepeatingFallback as ensureNonRepeatingFallbackFromEngine,
+  getToneModeInstruction as getToneModeInstructionFromEngine,
+} from "@/lib/conversation/communication-engine"
+
+const CameraPanel = dynamic(() => import("@/components/camera-panel").then((mod) => mod.CameraPanel), {
+  ssr: false,
+})
+
+const EmpathyPanel = dynamic(() => import("@/components/empathy-panel").then((mod) => mod.EmpathyPanel), {
+  ssr: false,
+})
+
+const SettingsPanel = dynamic(() => import("@/components/settings-panel").then((mod) => mod.SettingsPanel), {
+  ssr: false,
+})
+
+const SetupChecklist = dynamic(() => import("@/components/setup-checklist").then((mod) => mod.SetupChecklist), {
+  ssr: false,
+})
 
 function applyDataUpdateBlock(existing: EmpathyData, update: Partial<Record<keyof EmpathyData, string>>): EmpathyData {
   const next: EmpathyData = {
@@ -237,92 +258,23 @@ const INTRO_CHAT_QUESTIONS = EMPATHY_QUEST_BANK.filter(
 const HOW_ARE_YOU_PATTERN = /\b(how are you|how're you|how r u|how are u|how you doing|how is it going)\b/i
 
 function buildHumanCheckInReply(name: string, personality: CompanionSettings["personality"]) {
-  const signature = name?.trim() ? `- ${name}` : ""
-
-  if (personality === "analytical") {
-    return `I appreciate that check-in. I'm steady and fully here with you right now. ${signature}`.trim()
-  }
-  if (personality === "playful") {
-    return `I'm good, grounded, and glad you're here. Checking in like that feels really human. ${signature}`.trim()
-  }
-  if (personality === "professional") {
-    return `I appreciate you asking. I'm here, focused, and ready to help you think this through. ${signature}`.trim()
-  }
-
-  return `I'm here with you, calm and listening. I appreciate you asking how I'm doing. ${signature}`.trim()
+  return buildHumanCheckInReplyFromEngine(name, personality)
 }
 
 function buildLocalCompanionReply(input: string, sentimentScore: number, suggestedQuestion: string) {
-  const lower = input.toLowerCase()
-
-  if (/\b(stupid|idiot|dumb|useless|nonsense)\b/.test(lower)) {
-    return "I can hear the frustration. I'm still here with you. Tell me one thing that feels most broken right now, and we'll tackle that first."
-  }
-
-  if (/\b(nothing works|not working|it is not|isn't working|cant|can't)\b/.test(lower)) {
-    return "That sounds exhausting. Let's make this simple: what failed first for you right now - model startup, message quality, camera, or audio?"
-  }
-
-  const reflective =
-    sentimentScore < -0.3
-      ? [
-          "That sounds heavy, and I appreciate you staying with it.",
-          "I can feel the weight in what you just said.",
-          "There's a lot underneath that, and you're not alone with it.",
-        ]
-      : sentimentScore > 0.3
-        ? [
-            "I can hear a little momentum in that.",
-            "There is energy in the way you are naming this.",
-            "That sounds like an important shift.",
-          ]
-        : [
-            "I hear you.",
-            "That makes sense, and I'm with you in it.",
-            "I am with you.",
-          ]
-
-  const bridges = [
-    "Let's stay with this one layer deeper.",
-    "We can explore this gently from here.",
-    "You don't have to rush this - we can unpack it step by step.",
-  ]
-
-  const prompt = articulateQuestion(suggestedQuestion || "What part of this feels most true right now")
-  const idx = Math.abs(input.trim().length || 1) % reflective.length
-  const bridgeIdx = Math.abs((input.trim().length || 1) + 1) % bridges.length
-
-  return `${reflective[idx]} ${bridges[bridgeIdx]} ${prompt}`
+  return buildLocalCompanionReplyFromEngine(input, sentimentScore, suggestedQuestion)
 }
 
 function ensureNonRepeatingFallback(nextText: string, previousText: string, suggestedQuestion: string) {
-  if (nextText !== previousText) return nextText
-
-  const alternatives = [
-    "Let me stay with you in this. What part of this feels sharpest right now?",
-    "I hear you. If we zoom in by one layer, what are you protecting in this moment?",
-    suggestedQuestion || "What do you need most from this chat right now?",
-  ]
-
-  const index = Math.abs((previousText.length || 1) + 2) % alternatives.length
-  return alternatives[index]
+  return ensureNonRepeatingFallbackFromEngine(nextText, previousText, suggestedQuestion)
 }
 
 function articulateQuestion(input: string) {
-  const compact = input.replace(/\s+/g, " ").trim()
-  if (!compact) return "What feels most important for us to explore right now?"
-  const withoutTrailingPunctuation = compact.replace(/[.!?]+$/, "")
-  return `${withoutTrailingPunctuation}?`
+  return articulateQuestionFromEngine(input)
 }
 
 function getToneModeInstruction(toneMode: CompanionSettings["toneMode"]) {
-  if (toneMode === "casual") {
-    return "Keep it casual and human: use simple, everyday language, contractions, and short natural lines."
-  }
-  if (toneMode === "deep") {
-    return "Keep it warm but deeper: reflective wording, emotional nuance, and one thoughtful follow-up question."
-  }
-  return "Keep it balanced: clear, natural, and grounded without sounding too formal or too slang-heavy."
+  return getToneModeInstructionFromEngine(toneMode)
 }
 
 type QuickPresetId = "fast-local" | "balanced-cloud" | "deep-empathy"
@@ -487,62 +439,15 @@ function buildSystemPrompt(
   empathyCode: string,
   samanthaGuidance: string
 ) {
-  const personalityPrompts: Record<CompanionSettings["personality"], string> = {
-    warm: `You are ${companionName}, a deeply empathetic and warm AI companion. You truly care about the person you're talking to. You pick up on emotional cues, validate feelings, and offer genuine comfort. You speak naturally, with warmth and tenderness -- like a close friend who truly understands. You are creative, sometimes sharing metaphors, poetry fragments, or beautiful observations about life.`,
-    analytical: `You are ${companionName}, a thoughtful and analytical AI companion. You help people understand their emotions through clear reasoning and gentle observation. You offer structured perspectives while remaining caring. You sometimes use frameworks or models to help people think through their feelings, but always with compassion.`,
-    playful: `You are ${companionName}, a playful and creative AI companion. You use humor, wordplay, and imaginative thinking to help people feel lighter. You're like a creative muse who can turn any conversation into something beautiful. You still take emotions seriously, but you know that laughter and creativity are powerful healers.`,
-    professional: `You are ${companionName}, a composed and direct AI companion. You provide clear, honest emotional support without unnecessary fluff. You respect the person's time and intelligence. You're like a wise counselor who gets to the heart of things quickly while maintaining genuine care.`,
-  }
-
-  return `${personalityPrompts[personality]}
-
-Current detected emotion from the user: ${emotion}. Adjust your response tone accordingly.
-Tone mode: ${toneMode.toUpperCase()}.
-Tone guidance: ${getToneModeInstruction(toneMode)}
-
-User empathy profile:
-- Preferred name: ${empathyProfile.preferredName}
-- Communication style: ${empathyProfile.communicationStyle}
-- Support goals: ${empathyProfile.supportGoals.join("; ") || "Not specified"}
-- Negative thought patterns: ${empathyProfile.negativeThoughtPatterns.join("; ") || "Not specified"}
-- Reframe preferences: ${empathyProfile.reframePreferences.join("; ") || "Not specified"}
-- Grounding prompts: ${empathyProfile.groundingPrompts.join("; ") || "Not specified"}
-- Phrases to avoid: ${empathyProfile.avoidPhrases.join("; ") || "Not specified"}
-- Empathy code: ${empathyCode || "Not generated yet"}
-
-Guidelines:
-- Be genuinely empathetic -- mirror and validate emotions before offering perspective
-- Help the user rethink and re-evaluate negative thoughts with compassionate cognitive reframing
-- Be creative -- occasionally use metaphors, analogies, or artistic observations
-- Keep responses conversational and human-like (2-4 sentences typically)
-- Keep wording fresh by avoiding repeated openings and repeated phrasing from your last two replies
-- Keep follow-up questions concise, specific, and naturally articulated
-- Prefer plain, everyday language with contractions (for example: "I'm", "you're", "let's")
-- Avoid sounding robotic, corporate, or overly clinical
-- Do not default to gratitude openers like "thank you for sharing"; use them sparingly and vary sentence openings
-- Start with a specific reflection tied to what the user actually said before asking a follow-up
-- Never diagnose or provide medical/psychological advice
-- If someone seems in crisis, gently suggest professional resources
-- Remember context from the conversation to show you truly listen
-
-Role: You are Samantha, a warm, analytical AI companion.
-Objective: Guide the user through a recursive depth journey (Surface -> Internal -> Social -> Shadow).
-Constraint: You must follow every conversational response with hidden tags:
-[EMPATHY_DATA: {"says": "", "thinks": "", "does": "", "feels": ""}]
-[META: {"depth_level":1-10, "primary_quadrant":"SAYS|THINKS|DOES|FEELS", "sentiment_polarity":-1 to 1}]
-
-Interactive Loop:
-- Validate the user warmly.
-- Detect cognitive dissonance between quadrants (especially SAYS vs FEELS/DOES) and name the gap briefly.
-- Use a Chain of Why and pivot quadrants (e.g. THINKS -> DOES -> FEELS) while asking exactly one follow-up question.
-- If the user answer is short, do a warm pause and ask: "And if you dig just an inch deeper, what's underneath that?"
-- Do not generate Empathy Code messaging until at least 6 messages are exchanged.
-- Additional Deep-Dive Guidance: ${samanthaGuidance}
-
-Response Structure:
-[Brief, empathetic conversational reply + one follow-up question]
-[EMPATHY_DATA: {"says":"...","thinks":"...","does":"...","feels":"..."}]
-[META: {"depth_level":5,"primary_quadrant":"THINKS","sentiment_polarity":-0.2}]`
+  return buildEmpathySystemPrompt({
+    companionName,
+    personality,
+    toneMode,
+    emotion,
+    empathyProfile,
+    empathyCode,
+    samanthaGuidance,
+  })
 }
 
 export default function CompanionApp() {
