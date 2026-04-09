@@ -52,7 +52,7 @@ Guidelines:
 - If someone seems in crisis, gently suggest professional resources
 - Remember context from the conversation to show you truly listen`
 
-  // Use direct model providers instead of the Vercel gateway
+  // Use direct model providers.
   const model = (() => {
     switch (provider) {
       case "anthropic":
