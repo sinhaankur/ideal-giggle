@@ -10,10 +10,13 @@ import { SettingsPanel } from "@/components/settings-panel"
 import { SetupChecklist } from "@/components/setup-checklist"
 import {
   DEFAULT_SETTINGS,
+  DEFAULT_EMPATHY_PROFILE,
   detectEmotion,
   analyzeEmpathy,
+  generateEmpathyCode,
   type Emotion,
   type EmpathyData,
+  type EmpathyProfile,
   type CompanionSettings,
   type Message,
 } from "@/lib/companion-types"
@@ -21,7 +24,9 @@ import {
 function buildSystemPrompt(
   companionName: string,
   personality: CompanionSettings["personality"],
-  emotion: Emotion
+  emotion: Emotion,
+  empathyProfile: EmpathyProfile,
+  empathyCode: string
 ) {
   const personalityPrompts: Record<CompanionSettings["personality"], string> = {
     warm: `You are ${companionName}, a deeply empathetic and warm AI companion. You truly care about the person you're talking to. You pick up on emotional cues, validate feelings, and offer genuine comfort. You speak naturally, with warmth and tenderness -- like a close friend who truly understands. You are creative, sometimes sharing metaphors, poetry fragments, or beautiful observations about life.`,
@@ -34,8 +39,19 @@ function buildSystemPrompt(
 
 Current detected emotion from the user: ${emotion}. Adjust your response tone accordingly.
 
+User empathy profile:
+- Preferred name: ${empathyProfile.preferredName}
+- Communication style: ${empathyProfile.communicationStyle}
+- Support goals: ${empathyProfile.supportGoals.join("; ") || "Not specified"}
+- Negative thought patterns: ${empathyProfile.negativeThoughtPatterns.join("; ") || "Not specified"}
+- Reframe preferences: ${empathyProfile.reframePreferences.join("; ") || "Not specified"}
+- Grounding prompts: ${empathyProfile.groundingPrompts.join("; ") || "Not specified"}
+- Phrases to avoid: ${empathyProfile.avoidPhrases.join("; ") || "Not specified"}
+- Empathy code: ${empathyCode || "Not generated yet"}
+
 Guidelines:
 - Be genuinely empathetic -- mirror and validate emotions before offering perspective
+- Help the user rethink and re-evaluate negative thoughts with compassionate cognitive reframing
 - Be creative -- occasionally use metaphors, analogies, or artistic observations
 - Keep responses conversational and human-like (2-4 sentences typically)
 - Never diagnose or provide medical/psychological advice
@@ -44,6 +60,7 @@ Guidelines:
 }
 
 export default function CompanionApp() {
+  const agreementStorageKey = "empatheia_user_agreement_v1"
   const chatApi = process.env.NEXT_PUBLIC_CHAT_API_URL || "/api/chat"
 
   const [settings, setSettings] = useState<CompanionSettings>(DEFAULT_SETTINGS)
@@ -56,15 +73,34 @@ export default function CompanionApp() {
     feels: [],
   })
   const [currentEmotion, setCurrentEmotion] = useState<Emotion>("neutral")
+  const [empathyProfile, setEmpathyProfile] = useState<EmpathyProfile>(DEFAULT_EMPATHY_PROFILE)
+  const introQuestions = [
+    "What usually triggers your negative thoughts?",
+    "What kind of support tone helps you most?",
+    "Which thought pattern shows up most often?",
+    "What helps you feel grounded quickly?",
+  ]
+  const [introAnswers, setIntroAnswers] = useState<string[]>(Array(4).fill(""))
+  const [empathyCode, setEmpathyCode] = useState("")
   const [mobilePanel, setMobilePanel] = useState<"camera" | "chat" | "empathy">("chat")
+  const [hasAgreed, setHasAgreed] = useState(false)
+  const [agreementChecked, setAgreementChecked] = useState(false)
   const [webLlmMessages, setWebLlmMessages] = useState<Message[]>([])
   const [isWebLlmLoading, setIsWebLlmLoading] = useState(false)
+  const [isInitializingWebLlm, setIsInitializingWebLlm] = useState(false)
   const [webLlmStatus, setWebLlmStatus] = useState("idle")
   const [webLlmProgress, setWebLlmProgress] = useState("")
+  const [webLlmError, setWebLlmError] = useState("")
 
   const webLlmMessagesRef = useRef<Message[]>([])
   const webLlmEngineRef = useRef<any>(null)
   const webLlmInitPromiseRef = useRef<Promise<any> | null>(null)
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const agreed = window.localStorage.getItem(agreementStorageKey) === "accepted"
+    setHasAgreed(agreed)
+  }, [agreementStorageKey])
 
   useEffect(() => {
     webLlmMessagesRef.current = webLlmMessages
@@ -75,6 +111,7 @@ export default function CompanionApp() {
     webLlmInitPromiseRef.current = null
     setWebLlmStatus("idle")
     setWebLlmProgress("")
+    setWebLlmError("")
   }, [settings.webllmModel])
 
   const { messages: chatMessages, sendMessage, status } = useChat({
@@ -85,6 +122,8 @@ export default function CompanionApp() {
       provider: settings.provider,
       temperature: settings.temperature,
       companionName: settings.name,
+      empathyProfile,
+      empathyCode,
       ollamaBaseUrl: settings.ollamaBaseUrl,
       ollamaModel: settings.ollamaModel,
     },
@@ -102,8 +141,13 @@ export default function CompanionApp() {
     }
 
     setWebLlmStatus("downloading")
+    setWebLlmError("")
 
     const initPromise = (async () => {
+      if (typeof navigator === "undefined" || !("gpu" in navigator)) {
+        throw new Error("WebGPU is not available in this browser. Use Chrome/Edge desktop with hardware acceleration.")
+      }
+
       const webllm = await import("@mlc-ai/web-llm")
       const engine = await webllm.CreateMLCEngine(settings.webllmModel, {
         initProgressCallback(report) {
@@ -125,10 +169,28 @@ export default function CompanionApp() {
 
     try {
       return await initPromise
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "WebLLM initialization failed"
+      setWebLlmStatus("error")
+      setWebLlmError(message)
+      throw error
     } finally {
       webLlmInitPromiseRef.current = null
     }
   }, [settings.webllmModel])
+
+  const handleInitializeWebLlm = useCallback(async () => {
+    setIsInitializingWebLlm(true)
+    try {
+      await ensureWebLlmEngine()
+      setWebLlmStatus("ready")
+      setWebLlmProgress("Model ready for chat.")
+    } catch {
+      // Error state already handled in ensureWebLlmEngine.
+    } finally {
+      setIsInitializingWebLlm(false)
+    }
+  }, [ensureWebLlmEngine])
 
   // Convert AI SDK UIMessage format to our Message format for the ChatPanel
   const remoteMessages: Message[] = useMemo(
@@ -148,6 +210,30 @@ export default function CompanionApp() {
   )
 
   const messages = settings.provider === "webllm" ? webLlmMessages : remoteMessages
+
+  const generateCurrentEmpathyCode = useCallback(() => {
+    const code = generateEmpathyCode({
+      profile: empathyProfile,
+      empathyData,
+      introAnswers,
+    })
+    setEmpathyCode(code)
+  }, [empathyProfile, empathyData, introAnswers])
+
+  const handleIntroAnswerChange = useCallback((index: number, answer: string) => {
+    setIntroAnswers((prev) => {
+      const next = [...prev]
+      next[index] = answer
+      return next
+    })
+  }, [])
+
+  useEffect(() => {
+    const introComplete = introAnswers.every((ans) => ans.trim().length > 1)
+    if (!empathyCode && introComplete && messages.length >= 6) {
+      generateCurrentEmpathyCode()
+    }
+  }, [introAnswers, messages.length, empathyCode, generateCurrentEmpathyCode])
 
   const handleSendMessage = useCallback(
     async (text: string) => {
@@ -185,7 +271,13 @@ export default function CompanionApp() {
             messages: [
               {
                 role: "system",
-                content: buildSystemPrompt(settings.name, settings.personality, combinedEmotion),
+                content: buildSystemPrompt(
+                  settings.name,
+                  settings.personality,
+                  combinedEmotion,
+                  empathyProfile,
+                  empathyCode
+                ),
               },
               ...conversation,
             ],
@@ -214,15 +306,17 @@ export default function CompanionApp() {
           setWebLlmMessages((prev) => [...prev, aiMessage])
           setWebLlmStatus("ready")
         } catch (error) {
+          const message = error instanceof Error ? error.message : "Unknown WebLLM error"
           const fallback: Message = {
             id: crypto.randomUUID(),
-            text: "I could not initialize WebLLM. Check model name, browser memory, or network and try again.",
+            text: `I could not initialize WebLLM. ${message}. Try selecting a smaller model and clicking Initialize Model.`,
             sender: "ai",
             timestamp: new Date(),
             emotion: "neutral",
           }
           setWebLlmMessages((prev) => [...prev, fallback])
           setWebLlmStatus("error")
+          setWebLlmError(message)
           console.error("WebLLM error:", error)
         } finally {
           setIsWebLlmLoading(false)
@@ -233,8 +327,30 @@ export default function CompanionApp() {
       // Send via AI SDK for remote and Ollama providers
       sendMessage({ text })
     },
-    [cameraEmotion, sendMessage, settings, ensureWebLlmEngine]
+    [cameraEmotion, sendMessage, settings, ensureWebLlmEngine, empathyProfile, empathyCode]
   )
+
+  const handleProfileImport = useCallback((profile: EmpathyProfile) => {
+    setEmpathyProfile(profile)
+  }, [])
+
+  const handleProfileExport = useCallback(() => {
+    const bundle = {
+      profile: empathyProfile,
+      empathyData,
+      exportedAt: new Date().toISOString(),
+    }
+
+    const blob = new Blob([JSON.stringify(bundle, null, 2)], {
+      type: "application/json",
+    })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = `empathy-profile-${new Date().toISOString().slice(0, 10)}.json`
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }, [empathyProfile, empathyData])
 
   const handleCameraEmotion = useCallback((emotion: Emotion) => {
     setCameraEmotion(emotion)
@@ -247,8 +363,49 @@ export default function CompanionApp() {
     []
   )
 
+  const handleAcceptAgreement = useCallback(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(agreementStorageKey, "accepted")
+    }
+    setHasAgreed(true)
+  }, [agreementStorageKey])
+
   return (
-    <main className="flex h-screen flex-col overflow-hidden bg-background">
+    <main className="relative flex h-screen flex-col overflow-hidden bg-background">
+      {!hasAgreed && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/95 px-4">
+          <div className="w-full max-w-xl rounded-lg border border-border bg-card p-6">
+            <h2 className="text-lg font-semibold text-foreground">Empathy Tool Agreement</h2>
+            <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+              This tool is designed to help you reflect, rethink, and re-evaluate negative thoughts with empathetic support.
+              It is not a substitute for clinical care, diagnosis, or emergency support.
+            </p>
+            <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+              <li>I understand this is supportive guidance, not medical advice.</li>
+              <li>I will seek professional help for urgent mental health concerns.</li>
+              <li>I consent to using my conversation context and uploaded profile JSON for personalized responses.</li>
+            </ul>
+
+            <label className="mt-4 flex items-start gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={agreementChecked}
+                onChange={(e) => setAgreementChecked(e.target.checked)}
+                className="mt-1"
+              />
+              <span>I have read and agree to use this empathy tool responsibly.</span>
+            </label>
+
+            <button
+              onClick={handleAcceptAgreement}
+              disabled={!agreementChecked}
+              className="mt-4 w-full rounded border border-foreground bg-foreground px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-foreground/90 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              I Agree and Continue
+            </button>
+          </div>
+        </div>
+      )}
       {/* Top Bar */}
       <header className="flex items-center justify-between border-b border-border px-4 py-3 md:px-6">
         <div className="flex items-center gap-3">
@@ -346,6 +503,16 @@ export default function CompanionApp() {
                   {webLlmProgress && (
                     <div className="text-[10px] text-muted-foreground">{webLlmProgress}</div>
                   )}
+                  {webLlmError && (
+                    <div className="text-[10px] text-destructive">{webLlmError}</div>
+                  )}
+                  <button
+                    onClick={handleInitializeWebLlm}
+                    disabled={isInitializingWebLlm}
+                    className="mt-1 rounded border border-border bg-background px-2 py-1 text-[10px] font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
+                  >
+                    {isInitializingWebLlm ? "Initializing..." : "Initialize Model"}
+                  </button>
                 </>
               )}
               <div className="flex justify-between">
@@ -405,15 +572,34 @@ export default function CompanionApp() {
             mobilePanel === "empathy" ? "block" : "hidden md:block"
           }`}
         >
-          <EmpathyPanel data={empathyData} />
+          <EmpathyPanel
+            data={empathyData}
+            profile={empathyProfile}
+            onProfileImport={handleProfileImport}
+            onProfileExport={handleProfileExport}
+            introQuestions={introQuestions}
+            introAnswers={introAnswers}
+            onIntroAnswerChange={handleIntroAnswerChange}
+            empathyCode={empathyCode}
+            onGenerateEmpathyCode={generateCurrentEmpathyCode}
+            messageCount={messages.length}
+          />
         </aside>
       </div>
 
       {/* Bottom Status Bar */}
       <footer className="flex items-center justify-between border-t border-border px-4 py-2 md:px-6">
-        <span className="text-xs text-muted-foreground/70">
-          EMPATHEIA — AI Companion
-        </span>
+        <div className="flex items-center gap-3 text-xs text-muted-foreground/70">
+          <span>EMPATHEIA — AI Companion</span>
+          <a
+            href="https://www.sinhaankur.com"
+            target="_blank"
+            rel="noreferrer"
+            className="underline underline-offset-2 transition-colors hover:text-foreground"
+          >
+            Built by www.sinhaankur.com
+          </a>
+        </div>
         <span className="text-xs text-muted-foreground/70">
           {new Date().toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}
         </span>

@@ -14,6 +14,13 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
     onSettingsChange({ ...settings, ...partial })
   }
 
+  const webLlmModelPresets = [
+    "Llama-3.2-1B-Instruct-q4f32_1-MLC",
+    "Llama-3.2-3B-Instruct-q4f16_1-MLC",
+    "Qwen2.5-1.5B-Instruct-q4f16_1-MLC",
+    "Phi-3.5-mini-instruct-q4f16_1-MLC",
+  ]
+
   const providers: { value: AIProvider; label: string; desc: string; icon: typeof Server }[] = [
     {
       value: "openai",
@@ -169,12 +176,28 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
               <label className="mb-2 block text-sm font-medium text-foreground">
                 WebLLM Model
               </label>
+              <select
+                value={webLlmModelPresets.includes(settings.webllmModel) ? settings.webllmModel : "custom"}
+                onChange={(e) => {
+                  if (e.target.value !== "custom") {
+                    update({ webllmModel: e.target.value })
+                  }
+                }}
+                className="mb-2 w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                {webLlmModelPresets.map((model) => (
+                  <option key={model} value={model}>
+                    {model}
+                  </option>
+                ))}
+                <option value="custom">Custom model id</option>
+              </select>
               <input
                 type="text"
                 value={settings.webllmModel}
                 onChange={(e) => update({ webllmModel: e.target.value })}
                 className="w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="Llama-3.2-3B-Instruct-q4f16_1-MLC"
+                placeholder="Enter or paste model id"
               />
               <p className="mt-2 text-xs text-muted-foreground">
                 First run downloads model files in-browser, then chats fully local.
