@@ -2,6 +2,8 @@ export type Emotion = "neutral" | "happy" | "sad" | "angry" | "fear" | "surprise
 
 export type Personality = "warm" | "analytical" | "playful" | "professional"
 
+export type ToneMode = "casual" | "balanced" | "deep"
+
 export type AIProvider = "openai" | "anthropic" | "google" | "webllm" | "ollama" | "openrouter"
 
 export const PROVIDER_DEFAULT_MODELS = {
@@ -47,6 +49,7 @@ export interface Message {
   sender: "user" | "ai"
   timestamp: Date
   emotion?: Emotion
+  mode?: "fallback" | "mcp-fallback"
 }
 
 export interface EmpathyData {
@@ -113,15 +116,6 @@ export const DEFAULT_EMPATHY_PROFILE: EmpathyProfile = {
     "Just calm down",
     "You are overreacting",
   ],
-}
-
-function hashToBase36(input: string): string {
-  let hash = 2166136261
-  for (let i = 0; i < input.length; i += 1) {
-    hash ^= input.charCodeAt(i)
-    hash = Math.imul(hash, 16777619)
-  }
-  return (hash >>> 0).toString(36).toUpperCase()
 }
 
 export function calculateResonance(sessionData: EmpathyData) {
@@ -221,6 +215,7 @@ export function generateEmpathyCode(params: {
 export interface CompanionSettings {
   name: string
   personality: Personality
+  toneMode: ToneMode
   provider: AIProvider
   temperature: number
   topP: number
@@ -230,6 +225,10 @@ export interface CompanionSettings {
   webllmModel: string
   ollamaBaseUrl: string
   ollamaModel: string
+  mcpBaseUrl: string
+  mcpModel: string
+  mcpApiKey: string
+  mcpAutoFallback: boolean
   openRouterApiKey: string
   openRouterModel: string
 }
@@ -237,17 +236,22 @@ export interface CompanionSettings {
 export const DEFAULT_SETTINGS: CompanionSettings = {
   name: "Samantha",
   personality: "warm",
+  toneMode: "balanced",
   provider: defaultProvider,
   temperature: 0.7,
   topP: 0.95,
   maxOutputTokens: 300,
   contextMessages: 12,
   cameraDeviceId: "",
-  webllmModel: "Llama-3.2-3B-Instruct-q4f16_1-MLC",
+  webllmModel: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC",
   ollamaBaseUrl: "http://127.0.0.1:11434",
   ollamaModel: "llama3.2",
+  mcpBaseUrl: "http://127.0.0.1:8787",
+  mcpModel: "gpt-4o-mini",
+  mcpApiKey: "",
+  mcpAutoFallback: false,
   openRouterApiKey: "",
-  openRouterModel: "meta-llama/llama-3.3-70b-instruct:free",
+  openRouterModel: "qwen/qwen3-4b:free",
 }
 
 export function detectEmotion(text: string): Emotion {

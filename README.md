@@ -26,6 +26,8 @@ GOOGLE_GENERATIVE_AI_API_KEY=your_google_key
 OPENROUTER_API_KEY=your_openrouter_key
 ```
 
+You can also copy `.env.example` to `.env.local` and only fill the keys you need.
+
 You can provide one or more keys depending on which provider you want to use.
 
 ### Optional for local-only providers
@@ -58,7 +60,8 @@ Open settings in the app and choose provider:
 
 - OpenRouter (hosted open-source models):
 	- Set provider to OpenRouter
-	- Add your OpenRouter API key in settings, or set `OPENROUTER_API_KEY` in `.env.local`
+	- In local dev: add your OpenRouter API key in settings, or set `OPENROUTER_API_KEY` in `.env.local`
+	- In production: set `OPENROUTER_API_KEY` on the server and avoid browser key entry
 	- Pick a preset open-source model or paste a custom OpenRouter model id
 
 - WebLLM:
@@ -71,6 +74,20 @@ Open settings in the app and choose provider:
 	- Keep default base URL `http://127.0.0.1:11434` or change it
 	- Set model id (for example `llama3.2`)
 	- Ensure Ollama daemon/model is running locally
+
+## Fastest User Onboarding (Recommended)
+
+Use Settings -> Quick Start Presets:
+
+- Fast & Local: zero API setup, stable first-run experience.
+- Balanced Cloud: recommended for most users, smoother quality with low latency.
+- Deep Empathy: stronger reflective depth for longer conversations.
+
+For least user friction in production:
+
+1. Keep default provider as WebLLM.
+2. Set `OPENROUTER_API_KEY` on the server for automatic cloud path when needed.
+3. Let users switch presets instead of manual provider/model tuning.
 
 ## Setup Checklist Panel
 

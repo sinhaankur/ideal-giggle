@@ -1,7 +1,7 @@
 "use client"
 
 import { Settings, Server, Cloud, Thermometer, User, Sparkles, Cpu, Download } from "lucide-react"
-import type { CompanionSettings, AIProvider, Personality } from "@/lib/companion-types"
+import type { CompanionSettings, AIProvider, Personality, ToneMode } from "@/lib/companion-types"
 
 interface SettingsPanelProps {
   settings: CompanionSettings
@@ -10,11 +10,14 @@ interface SettingsPanelProps {
 }
 
 export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsPanelProps) {
+  const isProductionBuild = process.env.NODE_ENV === "production"
+
   const update = (partial: Partial<CompanionSettings>) => {
     onSettingsChange({ ...settings, ...partial })
   }
 
   const webLlmModelPresets = [
+    "Qwen2.5-0.5B-Instruct-q4f16_1-MLC",
     "Llama-3.2-1B-Instruct-q4f16_1-MLC",
     "Llama-3.2-3B-Instruct-q4f16_1-MLC",
     "gemma-2-2b-it-q4f16_1-MLC",
@@ -22,6 +25,7 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
   ]
 
   const openRouterModelPresets = [
+    "qwen/qwen3-4b:free",
     "meta-llama/llama-3.3-70b-instruct:free",
     "deepseek/deepseek-r1-distill-llama-70b:free",
     "qwen/qwen-2.5-72b-instruct:free",
@@ -73,6 +77,12 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
     { value: "analytical", label: "ANALYTICAL", desc: "Logical and precise" },
     { value: "playful", label: "PLAYFUL", desc: "Creative and fun" },
     { value: "professional", label: "DIRECT", desc: "Professional and concise" },
+  ]
+
+  const toneModes: { value: ToneMode; label: string; desc: string }[] = [
+    { value: "casual", label: "CASUAL", desc: "Relaxed and everyday" },
+    { value: "balanced", label: "BALANCED", desc: "Natural and clear" },
+    { value: "deep", label: "DEEP", desc: "Reflective and probing" },
   ]
 
   return (
@@ -141,6 +151,95 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
                   <span className="text-xs text-muted-foreground">{p.desc}</span>
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Tone Mode */}
+          <div className="mb-6">
+            <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
+              <Sparkles className="h-4 w-4 text-foreground" />
+              <span className="text-sm font-semibold text-foreground">
+                Conversation Tone
+              </span>
+            </div>
+            <div className="grid grid-cols-1 gap-2">
+              {toneModes.map((tone) => (
+                <button
+                  key={tone.value}
+                  onClick={() => update({ toneMode: tone.value })}
+                  className={`flex items-center justify-between rounded border p-3 text-left text-sm transition-colors ${
+                    settings.toneMode === tone.value
+                      ? "border-foreground bg-foreground/5"
+                      : "border-border hover:border-muted-foreground/40"
+                  }`}
+                >
+                  <span className="font-bold text-foreground">{tone.label}</span>
+                  <span className="text-xs text-muted-foreground">{tone.desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Quick Start Presets */}
+          <div className="mb-6 rounded border border-border bg-background p-3">
+            <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
+              <Sparkles className="h-4 w-4 text-foreground" />
+              <span className="text-sm font-semibold text-foreground">
+                Quick Start Presets
+              </span>
+            </div>
+            <div className="grid grid-cols-1 gap-2">
+              <button
+                onClick={() =>
+                  onSettingsChange({
+                    ...settings,
+                    provider: "webllm",
+                    webllmModel: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC",
+                    toneMode: "casual",
+                    personality: "warm",
+                    temperature: 0.7,
+                    maxOutputTokens: 220,
+                  })
+                }
+                className="rounded border border-border px-3 py-2 text-left text-sm transition-colors hover:border-muted-foreground/40"
+              >
+                <div className="font-semibold text-foreground">Fast & Local</div>
+                <div className="text-xs text-muted-foreground">No API setup. Best for quick and stable onboarding.</div>
+              </button>
+              <button
+                onClick={() =>
+                  onSettingsChange({
+                    ...settings,
+                    provider: "openrouter",
+                    openRouterModel: "qwen/qwen3-4b:free",
+                    toneMode: "balanced",
+                    personality: "warm",
+                    temperature: 0.6,
+                    maxOutputTokens: 260,
+                  })
+                }
+                className="rounded border border-border px-3 py-2 text-left text-sm transition-colors hover:border-muted-foreground/40"
+              >
+                <div className="font-semibold text-foreground">Balanced Cloud</div>
+                <div className="text-xs text-muted-foreground">Recommended for most users. Smooth quality with low latency.</div>
+              </button>
+              <button
+                onClick={() =>
+                  onSettingsChange({
+                    ...settings,
+                    provider: "openrouter",
+                    openRouterModel: "meta-llama/llama-3.3-70b-instruct:free",
+                    toneMode: "deep",
+                    personality: "analytical",
+                    temperature: 0.7,
+                    maxOutputTokens: 320,
+                  })
+                }
+                className="rounded border border-border px-3 py-2 text-left text-sm transition-colors hover:border-muted-foreground/40"
+              >
+                <div className="font-semibold text-foreground">Deep Empathy</div>
+                <div className="text-xs text-muted-foreground">Richer reflection quality for longer emotional conversations.</div>
+              </button>
             </div>
           </div>
 
@@ -216,8 +315,22 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
               <p className="mt-2 text-xs text-muted-foreground">
                 First run downloads model files in-browser, then chats fully local.
               </p>
+              <p className="mt-2 text-xs text-amber-300/90">
+                If the demo crashes, your GPU likely ran out of memory. Start with a smaller 1B or 0.5B model first.
+              </p>
               <div className="mt-3 rounded border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
                 <div className="mb-1 font-semibold text-foreground">Official WebLLM Repositories</div>
+                <div>
+                  <a
+                    href="https://huggingface.co/mlc-ai/Qwen2.5-0.5B-Instruct-q4f16_1-MLC"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline underline-offset-2 hover:text-foreground"
+                  >
+                    Qwen2.5 0.5B (Instruct)
+                  </a>{" "}
+                  - best first test model for low-memory systems and crash recovery.
+                </div>
                 <div>
                   <a
                     href="https://huggingface.co/mlc-ai/Llama-3.2-3B-Instruct-q4f16_1-MLC"
@@ -265,6 +378,62 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
               </div>
             </div>
           )}
+
+          {/* MCP Fallback Settings */}
+          <div className="mb-6 rounded border border-border bg-background p-3">
+            <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
+              <Server className="h-4 w-4 text-foreground" />
+              <span className="text-sm font-semibold text-foreground">
+                MCP Fallback (Optional)
+              </span>
+            </div>
+
+            <label className="mb-2 flex items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={settings.mcpAutoFallback}
+                onChange={(e) => update({ mcpAutoFallback: e.target.checked })}
+              />
+              <span>Use MCP server when WebLLM is unavailable</span>
+            </label>
+
+            <label className="mb-2 block text-sm font-medium text-foreground">
+              MCP Base URL
+            </label>
+            <input
+              type="text"
+              value={settings.mcpBaseUrl}
+              onChange={(e) => update({ mcpBaseUrl: e.target.value })}
+              className="mb-3 w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="http://127.0.0.1:8787"
+            />
+
+            <label className="mb-2 block text-sm font-medium text-foreground">
+              MCP Model
+            </label>
+            <input
+              type="text"
+              value={settings.mcpModel}
+              onChange={(e) => update({ mcpModel: e.target.value })}
+              className="mb-3 w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="gpt-4o-mini"
+            />
+
+            <label className="mb-2 block text-sm font-medium text-foreground">
+              MCP API Key (optional)
+            </label>
+            <input
+              type="password"
+              value={settings.mcpApiKey}
+              onChange={(e) => update({ mcpApiKey: e.target.value })}
+              className="w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="Leave blank for local MCP without auth"
+            />
+
+            <p className="mt-2 text-xs text-muted-foreground">
+              This assumes your local MCP service exposes an OpenAI-compatible chat endpoint.
+            </p>
+          </div>
 
           {/* Ollama Settings */}
           {settings.provider === "ollama" && (
@@ -328,7 +497,7 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
                 value={settings.openRouterApiKey}
                 onChange={(e) => update({ openRouterApiKey: e.target.value })}
                 className="mb-3 w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="sk-or-v1-..."
+                placeholder={isProductionBuild ? "Optional in production when server key is configured" : "sk-or-v1-..."}
               />
 
               <label className="mb-2 block text-sm font-medium text-foreground">
@@ -360,7 +529,7 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
               />
 
               <p className="mt-2 text-xs text-muted-foreground">
-                Uses OpenRouter hosted APIs for open-source models. You can also set OPENROUTER_API_KEY on your server.
+                Uses OpenRouter hosted APIs for open-source models. In production, server-side OPENROUTER_API_KEY is recommended.
               </p>
             </div>
           )}
