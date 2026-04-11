@@ -3,6 +3,7 @@
 import { useRef, useState } from "react"
 import { MessageSquare, Brain, HandMetal, Heart, Upload, Download, Copy, Link2 } from "lucide-react"
 import type { EmpathyData, EmpathyProfile } from "@/lib/companion-types"
+import type { UserUnderstanding } from "@/lib/conversation/communication-engine"
 
 interface EmpathyPanelProps {
   data: EmpathyData
@@ -18,6 +19,7 @@ interface EmpathyPanelProps {
   densitySentiment: number
   suggestedQuestion: string
   fallbackPhase: number
+  userUnderstanding: UserUnderstanding
 }
 
 const quadrants = [
@@ -59,6 +61,32 @@ function stickRotation(index: number) {
   return NOTE_ROTATIONS[index % NOTE_ROTATIONS.length]
 }
 
+function loadTone(load: UserUnderstanding["emotionalLoad"]) {
+  if (load === "high") return "border-amber-400/60 bg-amber-100/70 text-amber-900"
+  if (load === "moderate") return "border-sky-300/60 bg-sky-100/70 text-sky-900"
+  return "border-emerald-300/60 bg-emerald-100/70 text-emerald-900"
+}
+
+function opennessTone(openness: UserUnderstanding["openness"]) {
+  if (openness === "low") return "border-zinc-400/60 bg-zinc-200/70 text-zinc-900"
+  if (openness === "medium") return "border-indigo-300/60 bg-indigo-100/70 text-indigo-900"
+  return "border-violet-300/60 bg-violet-100/70 text-violet-900"
+}
+
+function intentTone(intent: UserUnderstanding["primaryIntent"]) {
+  if (intent === "problem-solving") return "border-cyan-300/60 bg-cyan-100/70 text-cyan-900"
+  if (intent === "venting") return "border-orange-300/60 bg-orange-100/70 text-orange-900"
+  if (intent === "reflection") return "border-blue-300/60 bg-blue-100/70 text-blue-900"
+  if (intent === "check-in") return "border-green-300/60 bg-green-100/70 text-green-900"
+  return "border-slate-300/60 bg-slate-100/70 text-slate-900"
+}
+
+function styleTone(style: UserUnderstanding["preferredResponseStyle"]) {
+  if (style === "direct") return "border-rose-300/60 bg-rose-100/70 text-rose-900"
+  if (style === "structured") return "border-teal-300/60 bg-teal-100/70 text-teal-900"
+  return "border-lime-300/60 bg-lime-100/70 text-lime-900"
+}
+
 export function EmpathyPanel({
   data,
   profile,
@@ -73,6 +101,7 @@ export function EmpathyPanel({
   densitySentiment,
   suggestedQuestion,
   fallbackPhase,
+  userUnderstanding,
 }: EmpathyPanelProps) {
   const [jsonStatus, setJsonStatus] = useState<string>("No profile JSON imported yet.")
   const [copyStatus, setCopyStatus] = useState<string>("")
@@ -175,6 +204,33 @@ export function EmpathyPanel({
           <div className="h-full bg-foreground transition-all duration-500" style={{ width: `${Math.max(8, Math.min(100, densitySentiment * 100))}%` }} />
         </div>
         {suggestedQuestion && <div className="text-[9px] text-muted-foreground">Prompt: {suggestedQuestion}</div>}
+        <div className="mt-2 grid grid-cols-2 gap-2 text-[9px] text-muted-foreground">
+          <div className={`rounded border px-2 py-1 ${intentTone(userUnderstanding.primaryIntent)}`}>
+            Intent: <span className="text-foreground capitalize">{userUnderstanding.primaryIntent}</span>
+          </div>
+          <div className={`rounded border px-2 py-1 ${loadTone(userUnderstanding.emotionalLoad)}`}>
+            Load: <span className="text-foreground capitalize">{userUnderstanding.emotionalLoad}</span>
+          </div>
+          <div className={`rounded border px-2 py-1 ${opennessTone(userUnderstanding.openness)}`}>
+            Openness: <span className="text-foreground capitalize">{userUnderstanding.openness}</span>
+          </div>
+          <div className={`rounded border px-2 py-1 ${styleTone(userUnderstanding.preferredResponseStyle)}`}>
+            Style: <span className="text-foreground capitalize">{userUnderstanding.preferredResponseStyle}</span>
+          </div>
+        </div>
+        <div className="mt-2 rounded border border-border bg-background px-2 py-1 text-[9px] text-muted-foreground">
+          Needs: <span className="text-foreground">{userUnderstanding.needs.join("; ")}</span>
+        </div>
+        <div className="mt-2 rounded border border-border/80 bg-background/80 px-2 py-1 text-[8px] uppercase tracking-[0.12em] text-muted-foreground">
+          <div className="mb-1 text-[8px] font-semibold text-foreground/80">Color legend</div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="rounded border border-amber-400/60 bg-amber-100/70 px-1.5 py-0.5 text-amber-900">high load</span>
+            <span className="rounded border border-zinc-400/60 bg-zinc-200/70 px-1.5 py-0.5 text-zinc-900">low openness</span>
+            <span className="rounded border border-orange-300/60 bg-orange-100/70 px-1.5 py-0.5 text-orange-900">venting</span>
+            <span className="rounded border border-cyan-300/60 bg-cyan-100/70 px-1.5 py-0.5 text-cyan-900">problem-solving</span>
+            <span className="rounded border border-rose-300/60 bg-rose-100/70 px-1.5 py-0.5 text-rose-900">direct style</span>
+          </div>
+        </div>
         {fallbackPhase >= 3 && <div className="mt-1 text-[9px] text-amber-300">Shadow-work mode active</div>}
       </div>
 

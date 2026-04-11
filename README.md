@@ -9,6 +9,10 @@ An empathetic AI companion built with Next.js, React, and AI SDK.
 - Multiple providers: OpenAI, Anthropic, Google, OpenRouter (open-source hosted models), WebLLM (browser local), Ollama (local runtime)
 - Hybrid intelligence fallback: if model runtime fails, empathy-map quadrants still update using sentiment + keyword heuristics
 
+## Empathy Engine Docs
+
+- Full conceptual model and tree of understanding: [docs/empathy-engine.md](docs/empathy-engine.md)
+
 ## Run Locally
 
 1. Install dependencies:
@@ -29,6 +33,34 @@ OPENROUTER_API_KEY=your_openrouter_key
 You can also copy `.env.example` to `.env.local` and only fill the keys you need.
 
 You can provide one or more keys depending on which provider you want to use.
+
+### API Rate Limiting (Middleware)
+
+The app now includes middleware-level per-IP throttling for all `POST /api/*` calls, with tighter defaults for chat endpoints.
+
+Environment knobs (optional):
+
+```bash
+API_RATE_LIMIT_WINDOW_MS=60000
+API_RATE_LIMIT_MAX=90
+API_RATE_LIMIT_CHAT_MAX=60
+API_RATE_LIMIT_FALLBACK_MAX=40
+# Optional distributed limiter backend (multi-instance safe)
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
+```
+
+Notes:
+
+- Middleware throttling runs before route logic.
+- Route-level guards still exist as a second layer.
+- If `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are set, middleware uses a distributed sliding-window limiter via Upstash.
+- Without Upstash env vars, middleware falls back to in-memory limits (good for single-instance deployments).
+
+Diagnostics endpoint:
+
+- `GET /api/limiter-status` returns active limiter mode and route thresholds.
+- If `LIMITER_STATUS_TOKEN` is set, include request header `x-admin-token: <LIMITER_STATUS_TOKEN>`.
 
 ### Optional for local-only providers
 

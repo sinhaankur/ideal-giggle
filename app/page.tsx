@@ -23,8 +23,10 @@ import {
 } from "@/lib/companion-types"
 import {
   articulateQuestion as articulateQuestionFromEngine,
+  buildUserUnderstandingGuidance,
   buildClarificationPrompt,
   buildEmpathySystemPrompt,
+  inferUserUnderstanding,
   buildHumanCheckInReply as buildHumanCheckInReplyFromEngine,
   buildLocalCompanionReply as buildLocalCompanionReplyFromEngine,
   ensureNonRepeatingFallback as ensureNonRepeatingFallbackFromEngine,
@@ -143,6 +145,11 @@ type DepthTierId = "tier_1_surface" | "tier_2_internal" | "tier_3_social" | "tie
 
 const DEEP_DISCOVERY_MATRIX: Record<DepthTierId, Array<{ id: string; q: string; cat: EmpathyQuestion["category"]; anchor?: string }>> = {
   tier_1_surface: [
+    {
+      id: "surface_checkin",
+      q: "How are you feeling today?",
+      cat: "FEELS",
+    },
     {
       id: "surface_trigger",
       q: "What was the specific external event that pulled you out of your flow?",
@@ -273,6 +280,21 @@ function ensureNonRepeatingFallback(nextText: string, previousText: string, sugg
 
 function articulateQuestion(input: string) {
   return articulateQuestionFromEngine(input)
+}
+
+function toOpenEndedPrompt(input: string) {
+  const base = articulateQuestion(input).replace(/[?]+$/, "").trim()
+  if (!base) return "When you're ready, share what feels most important right now."
+  return `When you're ready, share ${base.charAt(0).toLowerCase()}${base.slice(1)}.`
+}
+
+function buildAnswerAdaptivePrompt(answer: string, fallbackPrompt: string) {
+  const normalized = answer.replace(/\s+/g, " ").trim()
+  if (!normalized) return toOpenEndedPrompt(fallbackPrompt)
+
+  const words = normalized.split(/\s+/).filter(Boolean)
+  const clipped = words.slice(0, 10).join(" ")
+  return `I hear "${clipped}${words.length > 10 ? "..." : ""}". When you're ready, go one layer deeper into what matters most in that.`
 }
 
 function getToneModeInstruction(toneMode: CompanionSettings["toneMode"]) {
@@ -417,16 +439,42 @@ Current tier: ${DEPTH_TIER_LABELS[tier]}.`
 
 function getNextDeepQuestion(
   summary: { says: number; thinks: number; does: number; feels: number },
-  activeTier: DepthTierId
+  activeTier: DepthTierId,
+  lastUserAnswer?: string
 ) {
+  const evidenceCount = summary.says + summary.thinks + summary.does + summary.feels
   const targetQuadrant = getLowestQuadrant(summary)
+  const normalizedLastAnswer = (lastUserAnswer || "").trim()
+  const answerWordCount = normalizedLastAnswer.length > 0
+    ? normalizedLastAnswer.split(/\s+/).filter(Boolean).length
+    : 0
+
+  // Keep early turns simple so the user can settle into the conversation.
+  if (evidenceCount <= 1) {
+    return {
+      question: "How are you feeling today?",
+      tier: "tier_1_surface" as const,
+      targetQuadrant: "FEELS",
+    }
+  }
+
+  if (evidenceCount <= 3 || answerWordCount > 0 && answerWordCount <= 6) {
+    return {
+      question: toOpenEndedPrompt("What feels most present for you right now"),
+      tier: "tier_1_surface" as const,
+      targetQuadrant: "FEELS",
+    }
+  }
+
   const potentialQuestions = DEEP_DISCOVERY_MATRIX[activeTier].filter((item) => item.cat.toLowerCase() === targetQuadrant)
   const questionPool = potentialQuestions.length > 0 ? potentialQuestions : DEEP_DISCOVERY_MATRIX[activeTier]
   const progressionSeed = summary.says + summary.thinks * 2 + summary.does * 3 + summary.feels * 5
   const selected = questionPool[progressionSeed % questionPool.length]
 
   return {
-    question: articulateQuestion(selected?.q || "Tell me more about what you're thinking right now"),
+    question: lastUserAnswer
+      ? buildAnswerAdaptivePrompt(lastUserAnswer, selected?.q || "Tell me more about what you're thinking right now")
+      : toOpenEndedPrompt(selected?.q || "Tell me more about what you're thinking right now"),
     tier: activeTier,
     targetQuadrant: targetQuadrant.toUpperCase(),
   }
@@ -439,7 +487,8 @@ function buildSystemPrompt(
   emotion: Emotion,
   empathyProfile: EmpathyProfile,
   empathyCode: string,
-  samanthaGuidance: string
+  samanthaGuidance: string,
+  userText: string
 ) {
   return buildEmpathySystemPrompt({
     companionName,
@@ -449,6 +498,7 @@ function buildSystemPrompt(
     empathyProfile,
     empathyCode,
     samanthaGuidance,
+    userUnderstandingGuidance: buildUserUnderstandingGuidance(userText),
   })
 }
 
@@ -930,6 +980,7 @@ export default function CompanionApp() {
         }))
 
       try {
+        const userUnderstandingGuidance = buildUserUnderstandingGuidance(text)
         const response = await fetch("/api/mcp-fallback", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -937,7 +988,7 @@ export default function CompanionApp() {
             mcpBaseUrl: settings.mcpBaseUrl,
             mcpModel: settings.mcpModel,
             mcpApiKey: settings.mcpApiKey,
-            systemPrompt: `You are ${settings.name}, a ${settings.personality} empathetic companion. ${getToneModeInstruction(settings.toneMode)} Start with a specific emotional reflection, avoid repetitive thank-you openings, reply naturally in 2-4 sentences, and ask one meaningful follow-up question.`,
+            systemPrompt: `You are ${settings.name}, a ${settings.personality} empathetic companion. ${getToneModeInstruction(settings.toneMode)} Start with a specific emotional reflection, avoid repetitive thank-you openings, reply naturally in 2-4 sentences, and ask one meaningful follow-up question. ${userUnderstandingGuidance}`,
             messages: [...history, { role: "user", content: text }],
           }),
         })
@@ -1079,13 +1130,18 @@ export default function CompanionApp() {
     () =>
       depthState.tier === "tier_4_shadow" || (isColdFallbackMode && fallbackPhase === 3)
         ? {
-            question: deepestShadowQuestion,
+            question: toOpenEndedPrompt(deepestShadowQuestion),
             tier: "tier_4_shadow" as const,
             targetQuadrant: getLowestQuadrant(currentSummary).toUpperCase(),
           }
-        : getNextDeepQuestion(currentSummary, depthState.tier),
-    [currentSummary, depthState.tier, deepestShadowQuestion, isColdFallbackMode, fallbackPhase]
+        : getNextDeepQuestion(currentSummary, depthState.tier, messages[messages.length - 1]?.text),
+    [currentSummary, depthState.tier, deepestShadowQuestion, isColdFallbackMode, fallbackPhase, messages]
   )
+  const latestUserText = useMemo(
+    () => [...messages].reverse().find((message) => message.sender === "user")?.text || "",
+    [messages]
+  )
+  const userUnderstandingSnapshot = useMemo(() => inferUserUnderstanding(latestUserText), [latestUserText])
   const samanthaGuidance = `${getDeepPrompt(currentSummary, sessionDepth, depthState.tier, emotionalVelocity)} Next mirror question: ${suggestedNext.question}`
 
   useEffect(() => {
@@ -1150,7 +1206,7 @@ export default function CompanionApp() {
       {
         id: crypto.randomUUID(),
         sender: "ai",
-        text: `Before we begin, let's map your starting point. ${INTRO_CHAT_QUESTIONS[0].question}`,
+        text: "Before we begin, let's start simple. How are you feeling today?",
         timestamp: new Date(),
         emotion: "thinking",
       },
@@ -1205,7 +1261,7 @@ export default function CompanionApp() {
             {
               id: crypto.randomUUID(),
               text: introPrompt
-                ? `${checkInReply} Before we continue, ${introPrompt}`
+                ? `${checkInReply} Before we continue, ${toOpenEndedPrompt(introPrompt)}`
                 : checkInReply,
               sender: "ai",
               timestamp: new Date(),
@@ -1300,8 +1356,8 @@ export default function CompanionApp() {
           {
             id: crypto.randomUUID(),
             text: nextPrompt
-              ? `${reflectiveBridge} ${contextBridge} ${nextPrompt}`
-              : "Perfect. Your introduction map is complete. We can now go deeper.",
+              ? `${reflectiveBridge} ${contextBridge} ${buildAnswerAdaptivePrompt(text, nextPrompt)}`
+              : "Thank you for sharing that. Opening up like this can be hard, and you are doing enough. We can move one step at a time from here - when you're ready, share the part that feels most alive right now.",
             sender: "ai",
             timestamp: new Date(),
             emotion: "thinking",
@@ -1388,7 +1444,8 @@ export default function CompanionApp() {
                   sentimentEmotion,
                   empathyProfile,
                   empathyCode,
-                  samanthaGuidance
+                  samanthaGuidance,
+                  text
                 ),
               },
               ...conversation,
@@ -2049,6 +2106,7 @@ export default function CompanionApp() {
             densitySentiment={depthState.sentimentIntensity}
             suggestedQuestion={suggestedNext.question}
             fallbackPhase={fallbackPhase}
+            userUnderstanding={userUnderstandingSnapshot}
           />
         </aside>
       </div>
@@ -2064,6 +2122,14 @@ export default function CompanionApp() {
             className="underline underline-offset-2 transition-colors hover:text-foreground"
           >
             Built by www.sinhaankur.com
+          </a>
+          <a
+            href="https://github.com/sinhaankur/ideal-giggle#readme"
+            target="_blank"
+            rel="noreferrer"
+            className="underline underline-offset-2 transition-colors hover:text-foreground"
+          >
+            Read the docs
           </a>
         </div>
         <span className="text-xs text-muted-foreground/70">
