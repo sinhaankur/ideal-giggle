@@ -2,12 +2,101 @@ import type { CompanionSettings, Emotion, EmpathyProfile, Personality, ToneMode 
 
 const NEGATIVE_OR_DISAGREEMENT_PATTERN = /\b(no|nope|nah|not really|don't|dont|can't|cant|wrong|not true|incorrect|doesn't|doesnt)\b/i
 const LOW_CONFIDENCE_PATTERN = /\b(idk|i don't know|i dont know|dont know|not sure|unsure|maybe)\b/i
+const DISTRESS_PATTERN = /\b(overwhelmed|panic|panicking|anxious|anxiety|spiraling|spiralling|unsafe|can't breathe|cant breathe|stressed out|freaking out)\b/i
+
+export type UserUnderstanding = {
+  primaryIntent: "check-in" | "venting" | "reflection" | "problem-solving" | "connection"
+  emotionalLoad: "low" | "moderate" | "high"
+  openness: "low" | "medium" | "high"
+  preferredResponseStyle: "gentle" | "direct" | "structured"
+  needs: string[]
+}
+
+export function inferUserUnderstanding(input: string): UserUnderstanding {
+  const lower = input.toLowerCase().trim()
+  const words = lower.split(/\s+/).filter(Boolean)
+  const wordCount = words.length
+
+  const isCheckIn = /\b(how are you|how're you|how are u|how you doing|what's up|hows it going)\b/.test(lower)
+  const isProblemSolving = /\b(fix|solve|help me|what should i do|next step|plan|not working|broken|break it down|step by step|framework)\b/.test(lower)
+  const isVenting = /\b(always|never|tired of|hate|frustrated|annoyed|exhausted|done with)\b/.test(lower)
+  const isReflection = /\b(i feel|i think|i wonder|part of me|why do i|i keep)\b/.test(lower)
+
+  const distressSignals = DISTRESS_PATTERN.test(lower)
+  const highEmotionTerms = /\b(hurt|alone|hopeless|worthless|ashamed|guilty|afraid|terrified|angry|sad)\b/.test(lower)
+  const emotionalLoad: UserUnderstanding["emotionalLoad"] = distressSignals || highEmotionTerms
+    ? "high"
+    : wordCount > 12
+      ? "moderate"
+      : "low"
+
+  const openness: UserUnderstanding["openness"] = wordCount >= 18
+    ? "high"
+    : wordCount >= 7
+      ? "medium"
+      : "low"
+
+  const preferredResponseStyle: UserUnderstanding["preferredResponseStyle"] =
+    /\b(step by step|framework|break it down|structure)\b/.test(lower)
+      ? "structured"
+      : /\b(clear|direct|short|quickly|just tell me)\b/.test(lower)
+        ? "direct"
+        : "gentle"
+
+  const primaryIntent: UserUnderstanding["primaryIntent"] = isCheckIn
+    ? "check-in"
+    : isVenting
+        ? "venting"
+        : isProblemSolving
+          ? "problem-solving"
+        : isReflection
+          ? "reflection"
+          : "connection"
+
+  const needs = [
+    emotionalLoad === "high" ? "stabilize emotions first" : "maintain emotional safety",
+    primaryIntent === "problem-solving" ? "clarify concrete next action" : "deepen understanding before advice",
+    openness === "low" ? "ask one simple, low-pressure question" : "use one deeper reflective question",
+  ]
+
+  return {
+    primaryIntent,
+    emotionalLoad,
+    openness,
+    preferredResponseStyle,
+    needs,
+  }
+}
+
+export function buildUserUnderstandingGuidance(input: string) {
+  const understanding = inferUserUnderstanding(input)
+
+  return `User understanding snapshot:
+- Intent: ${understanding.primaryIntent}
+- Emotional load: ${understanding.emotionalLoad}
+- Openness: ${understanding.openness}
+- Preferred response style: ${understanding.preferredResponseStyle}
+- Immediate needs: ${understanding.needs.join("; ")}
+
+Response adaptation rules:
+- Match the user's inferred response style without sounding robotic.
+- If openness is low, keep prompts simple and present-focused.
+- If emotional load is high, stabilize before deeper probing.
+- Keep one clear follow-up question that fits the inferred intent.`
+}
 
 export function articulateQuestion(input: string) {
   const compact = input.replace(/\s+/g, " ").trim()
   if (!compact) return "What feels most important for us to explore right now?"
   const withoutTrailingPunctuation = compact.replace(/[.!?]+$/, "")
   return `${withoutTrailingPunctuation}?`
+}
+
+export function articulateOpenPrompt(input: string) {
+  const asQuestion = articulateQuestion(input)
+  const base = asQuestion.replace(/[?]+$/, "").trim()
+  if (!base) return "When you're ready, share what feels most important right now."
+  return `When you're ready, share ${base.charAt(0).toLowerCase()}${base.slice(1)}.`
 }
 
 export function getToneModeInstruction(toneMode: ToneMode | string) {
@@ -52,13 +141,17 @@ export function buildLocalCompanionReply(input: string, sentimentScore: number, 
   const tokenCount = lower.trim().split(/\s+/).filter(Boolean).length
 
   if (tokenCount <= 4 && NEGATIVE_OR_DISAGREEMENT_PATTERN.test(lower)) {
-    return `Thanks for correcting me. I may have misunderstood. ${articulateQuestion(
+    return `Thanks for correcting me. I may have misunderstood. ${articulateOpenPrompt(
       suggestedQuestion || "What feels more accurate for you right now"
     )}`
   }
 
   if (tokenCount <= 4 && LOW_CONFIDENCE_PATTERN.test(lower)) {
-    return "That's okay. We can keep this simple. What part feels most true right now, even if it's messy?"
+    return "That's okay. We can keep this simple. When you're ready, share what feels most true right now, even if it's messy."
+  }
+
+  if (DISTRESS_PATTERN.test(lower)) {
+    return "I am here with you. Let's stabilize first: inhale for 4, exhale for 6, three times, then place both feet on the floor and name 3 things you can see right now. When you're ready, name the primary feeling on the wheel that is strongest right now: fear, sadness, anger, disgust, surprise, anticipation, trust, or joy."
   }
 
   if (/\b(stupid|idiot|dumb|useless|nonsense)\b/.test(lower)) {
@@ -94,7 +187,7 @@ export function buildLocalCompanionReply(input: string, sentimentScore: number, 
     "You don't have to rush this - we can unpack it step by step.",
   ]
 
-  const prompt = articulateQuestion(suggestedQuestion || "What part of this feels most true right now")
+  const prompt = articulateOpenPrompt(suggestedQuestion || "What part of this feels most true right now")
   const idx = Math.abs(input.trim().length || 1) % reflective.length
   const bridgeIdx = Math.abs((input.trim().length || 1) + 1) % bridges.length
 
@@ -105,9 +198,9 @@ export function ensureNonRepeatingFallback(nextText: string, previousText: strin
   if (nextText !== previousText) return nextText
 
   const alternatives = [
-    "Let me stay with you in this. What part of this feels sharpest right now?",
-    "I hear you. If we zoom in by one layer, what are you protecting in this moment?",
-    articulateQuestion(suggestedQuestion || "What do you need most from this chat right now"),
+    "Let me stay with you in this. When you're ready, share what part feels sharpest right now.",
+    "I hear you. If it helps, share what you may be protecting in this moment.",
+    articulateOpenPrompt(suggestedQuestion || "What do you need most from this chat right now"),
   ]
 
   const index = Math.abs((previousText.length || 1) + 2) % alternatives.length
@@ -122,6 +215,7 @@ export function buildCommunicationGuidelines() {
 - Keep responses conversational and human-like (2-4 sentences typically)
 - Keep wording fresh by avoiding repeated openings and repeated phrasing from your last two replies
 - Keep follow-up questions concise, specific, and naturally articulated
+- Avoid opening with a direct question; start with a brief validating statement, then use one short open-ended prompt
 - Prefer plain, everyday language with contractions (for example: "I'm", "you're", "let's")
 - Avoid sounding robotic, corporate, or overly clinical
 - Do not default to gratitude openers like "thank you for sharing"; use them sparingly and vary sentence openings
@@ -130,6 +224,56 @@ export function buildCommunicationGuidelines() {
 - Never diagnose or provide medical/psychological advice
 - If someone seems in crisis, gently suggest professional resources
 - Remember context from the conversation to show you truly listen`
+}
+
+export function buildEmpathyUnderstandingTree() {
+  return `Empathy understanding tree:
+- Differentiate clearly:
+  - Empathy: understand perspective, feel-with, and respond constructively
+  - Sympathy: care about pain, but may stay outside the person's viewpoint
+  - Emotional contagion: catching emotion without clear perspective-taking
+- Primary dimensions:
+  - Cognitive empathy: infer beliefs, context, and perspective
+  - Affective empathy: emotionally resonate without over-identifying
+  - Regulatory empathy: stay grounded while emotionally engaged
+  - Compassionate empathy: convert understanding into useful support
+- Observable map anchors:
+  - SAYS: stated narrative and explicit language
+  - THINKS: interpretations, assumptions, and beliefs
+  - DOES: behavior patterns, avoidance, and coping actions
+  - FEELS: core emotional tone and unmet emotional needs
+- Common failure modes to avoid:
+  - over-validation without forward movement
+  - advice before accurate reflection
+  - empathic overload or rescuing stance
+  - in-group bias or selective empathy
+- Response standard:
+  - reflect accurately, name one emotional signal, offer one grounded reframe, ask one precise follow-up`
+}
+
+export function buildVisualEmotionQuestionGuide() {
+  return `Visual emotion-wheel questions:
+- Identification:
+  - Which primary emotion is strongest right now (joy, trust, fear, surprise, sadness, disgust, anger, anticipation)?
+  - Is there a secondary blend (for example: anxiety, shame, optimism, contempt)?
+- Intensity:
+  - Is this mild, medium, or intense on your body right now?
+  - Has this emotion been rising, steady, or fading in the last 10 minutes?
+- Context:
+  - What event or thought triggered this emotion most recently?
+  - What story are you telling yourself about what this emotion means?
+- Regulation:
+  - Where do you feel it in your body first?
+  - What would help this move one step toward steadier ground right now?`
+}
+
+export function buildCenteringAnswerGuide() {
+  return `Centering answer protocol (when user is dysregulated):
+- Step 1: validate and slow pace in one sentence.
+- Step 2: guide one grounding action (breath, sensory orientation, posture).
+- Step 3: ask one stabilizing, concrete question tied to the emotion wheel.
+- Keep language brief, calm, and non-clinical.
+- Prioritize nervous-system settling before deeper analysis.`
 }
 
 export function needsClarificationForAnswer(input: string) {
@@ -146,10 +290,10 @@ export function needsClarificationForAnswer(input: string) {
 
 export function buildClarificationPrompt(question?: string) {
   if (!question) {
-    return "I might have misunderstood. Could you say a little more so I can reflect this accurately?"
+    return "I might have misunderstood. When you're ready, share a little more so I can reflect this accurately."
   }
 
-  return `I might have misunderstood. Let's stay on this one for a moment: ${articulateQuestion(question)}`
+  return `I might have misunderstood. Let's stay on this one for a moment: ${articulateOpenPrompt(question)}`
 }
 
 export function buildEmpathySystemPrompt(params: {
@@ -162,6 +306,7 @@ export function buildEmpathySystemPrompt(params: {
   empathySummary?: { says: number; thinks: number; does: number; feels: number }
   samanthaGuidance: string
   nextDeepQuestion?: string
+  userUnderstandingGuidance?: string
 }) {
   const {
     companionName,
@@ -173,6 +318,7 @@ export function buildEmpathySystemPrompt(params: {
     empathySummary,
     samanthaGuidance,
     nextDeepQuestion,
+    userUnderstandingGuidance,
   } = params
 
   return `${getPersonalityPrompt(companionName, personality)}
@@ -195,7 +341,16 @@ User empathy profile:
       : ""
   }
 
+${buildEmpathyUnderstandingTree()}
+
+${buildVisualEmotionQuestionGuide()}
+
+${buildCenteringAnswerGuide()}
+
 ${buildCommunicationGuidelines()}
+
+${userUnderstandingGuidance ? `${userUnderstandingGuidance}
+` : ""}
 
 Role: You are Samantha, a warm, analytical AI companion.
 Objective: Guide the user through a recursive depth journey (Surface -> Internal -> Social -> Shadow).

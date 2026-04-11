@@ -1,5 +1,6 @@
 "use client"
 
+import { useCallback, useEffect, useState } from "react"
 import { Settings, Server, Cloud, Thermometer, User, Sparkles, Cpu, Download } from "lucide-react"
 import type { CompanionSettings, AIProvider, Personality, ToneMode } from "@/lib/companion-types"
 
@@ -60,12 +61,66 @@ interface SettingsPanelProps {
   onClose: () => void
 }
 
+type LimiterStatusPayload = {
+  ok: boolean
+  limiter: {
+    mode: "distributed" | "memory"
+    policy: {
+      windowMs: number
+      routes: {
+        global: number
+        chat: number
+        mcpFallback: number
+      }
+    }
+    distributedConfigured: boolean
+  }
+  serverTime: string
+}
+
 export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsPanelProps) {
   const isProductionBuild = process.env.NODE_ENV === "production"
+  const [limiterStatus, setLimiterStatus] = useState<LimiterStatusPayload | null>(null)
+  const [limiterError, setLimiterError] = useState("")
+  const [isLimiterLoading, setIsLimiterLoading] = useState(false)
+  const [limiterTokenInput, setLimiterTokenInput] = useState("")
 
   const update = (partial: Partial<CompanionSettings>) => {
     onSettingsChange({ ...settings, ...partial })
   }
+
+  const fetchLimiterStatus = useCallback(async () => {
+    setIsLimiterLoading(true)
+    setLimiterError("")
+
+    try {
+      const headers: Record<string, string> = {}
+      if (limiterTokenInput.trim()) {
+        headers["x-admin-token"] = limiterTokenInput.trim()
+      }
+
+      const response = await fetch("/api/limiter-status", { headers, cache: "no-store" })
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null)
+        const message = typeof payload?.error === "string" ? payload.error : `Request failed (${response.status})`
+        setLimiterStatus(null)
+        setLimiterError(message)
+        return
+      }
+
+      const payload = (await response.json()) as LimiterStatusPayload
+      setLimiterStatus(payload)
+    } catch {
+      setLimiterStatus(null)
+      setLimiterError("Unable to fetch limiter status.")
+    } finally {
+      setIsLimiterLoading(false)
+    }
+  }, [limiterTokenInput])
+
+  useEffect(() => {
+    fetchLimiterStatus()
+  }, [fetchLimiterStatus])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
@@ -603,6 +658,63 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
             <p className="mt-2 text-xs text-muted-foreground">
               Controls how many recent messages are sent as conversation memory per request.
             </p>
+          </div>
+
+          <div className="mb-6 rounded border border-border bg-background p-3">
+            <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
+              <Server className="h-4 w-4 text-foreground" />
+              <span className="text-sm font-semibold text-foreground">Limiter Diagnostics</span>
+            </div>
+
+            <label className="mb-2 block text-sm font-medium text-foreground">Admin Token (optional)</label>
+            <input
+              type="password"
+              value={limiterTokenInput}
+              onChange={(e) => setLimiterTokenInput(e.target.value)}
+              className="mb-3 w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="Needed only if LIMITER_STATUS_TOKEN is set"
+            />
+
+            <button
+              onClick={fetchLimiterStatus}
+              disabled={isLimiterLoading}
+              className="mb-3 w-full rounded border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-accent disabled:opacity-60"
+            >
+              {isLimiterLoading ? "Refreshing..." : "Refresh Limiter Status"}
+            </button>
+
+            {limiterStatus && (
+              <div className="rounded border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
+                <div>
+                  Mode:{" "}
+                  <span
+                    className={`inline-flex items-center rounded border px-1.5 py-0.5 font-semibold uppercase tracking-[0.08em] ${
+                      limiterStatus.limiter.mode === "distributed"
+                        ? "border-emerald-300/70 bg-emerald-100/80 text-emerald-900"
+                        : "border-amber-300/70 bg-amber-100/80 text-amber-900"
+                    }`}
+                  >
+                    {limiterStatus.limiter.mode}
+                  </span>
+                </div>
+                <div>
+                  Window: <span className="font-semibold text-foreground">{Math.round(limiterStatus.limiter.policy.windowMs / 1000)}s</span>
+                </div>
+                <div>
+                  Limits: <span className="font-semibold text-foreground">global {limiterStatus.limiter.policy.routes.global} / chat {limiterStatus.limiter.policy.routes.chat} / fallback {limiterStatus.limiter.policy.routes.mcpFallback}</span>
+                </div>
+                <div>
+                  Distributed Configured: <span className="font-semibold text-foreground">{limiterStatus.limiter.distributedConfigured ? "yes" : "no"}</span>
+                </div>
+                {limiterStatus.limiter.mode === "memory" && (
+                  <div className="mt-1 text-amber-300">
+                    Running on single-instance memory limits.
+                  </div>
+                )}
+              </div>
+            )}
+
+            {limiterError && <p className="text-xs text-amber-300">{limiterError}</p>}
           </div>
         </div>
 

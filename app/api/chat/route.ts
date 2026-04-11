@@ -9,9 +9,35 @@ import { anthropic } from "@ai-sdk/anthropic"
 import { google } from "@ai-sdk/google"
 import { createOllama } from "ollama-ai-provider"
 import { PROVIDER_DEFAULT_MODELS } from "@/lib/companion-types"
-import { buildEmpathySystemPrompt } from "@/lib/conversation/communication-engine"
+import { buildEmpathySystemPrompt, buildUserUnderstandingGuidance } from "@/lib/conversation/communication-engine"
+import {
+  badRequestFromZod,
+  chatRequestSchema,
+  checkRateLimit,
+  getClientIp,
+  rateLimitJsonResponse,
+} from "@/lib/api/request-guards"
+import { z } from "zod"
+import type { EmpathyProfile } from "@/lib/companion-types"
 
 export const maxDuration = 60
+
+function getLatestUserMessageText(messages: UIMessage[]) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message.role !== "user") continue
+
+    const text = (message.parts || [])
+      .filter((part): part is { type: "text"; text: string } => part.type === "text")
+      .map((part) => part.text)
+      .join(" ")
+      .trim()
+
+    if (text) return text
+  }
+
+  return ""
+}
 
 function getLowestQuadrant(currentSummary: { says: number; thinks: number; does: number; feels: number }) {
   return (Object.keys(currentSummary) as Array<keyof typeof currentSummary>).reduce((a, b) =>
@@ -30,10 +56,29 @@ function getDeepPrompt(
 }
 
 export async function POST(req: Request) {
-  const body = await req.json()
+  const ip = getClientIp(req)
+  const limit = checkRateLimit({
+    key: `chat:${ip}`,
+    limit: 45,
+    windowMs: 60_000,
+  })
+  if (!limit.allowed) {
+    return rateLimitJsonResponse(limit.retryAfterSec)
+  }
+
+  let body: z.infer<typeof chatRequestSchema>
+  try {
+    const rawBody = await req.json()
+    body = chatRequestSchema.parse(rawBody)
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return badRequestFromZod(error)
+    }
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 })
+  }
   
   // Extract messages and custom data from the request
-  const messages: UIMessage[] = body.messages || []
+  const messages = body.messages as UIMessage[]
   const emotion: string = body.emotion || "neutral"
   const personality: string = body.personality || "warm"
   const toneMode: string = body.toneMode || "balanced"
@@ -48,7 +93,7 @@ export async function POST(req: Request) {
     body.samanthaGuidance || getDeepPrompt(empathySummary, sessionDepth)
   const nextDeepQuestion: string = body.nextDeepQuestion || ""
   const companionName: string = body.companionName || "EMPATHEIA"
-  const empathyProfile = body.empathyProfile || null
+  const empathyProfile = (body.empathyProfile as EmpathyProfile | null | undefined) || null
   const empathyCode: string = body.empathyCode || ""
   const ollamaBaseUrl: string = body.ollamaBaseUrl || "http://127.0.0.1:11434"
   const ollamaModel: string = body.ollamaModel || "llama3.2"
@@ -83,6 +128,7 @@ export async function POST(req: Request) {
     empathySummary,
     samanthaGuidance,
     nextDeepQuestion: nextDeepQuestion || "Use your best tier-appropriate follow-up.",
+    userUnderstandingGuidance: buildUserUnderstandingGuidance(getLatestUserMessageText(messages)),
   })
 
   // Use direct model providers.
