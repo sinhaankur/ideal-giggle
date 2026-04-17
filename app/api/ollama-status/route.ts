@@ -1,7 +1,8 @@
 export async function GET(req: Request) {
   const url = new URL(req.url)
-  const baseUrlParam = url.searchParams.get("baseUrl") || "http://127.0.0.1:11434"
-  const model = url.searchParams.get("model") || "llama3.2"
+  const baseUrlParam =
+    url.searchParams.get("baseUrl") || process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434"
+  const model = url.searchParams.get("model") || process.env.OLLAMA_MODEL || "llama3.2"
 
   const normalizedBaseUrl = baseUrlParam.replace(/\/$/, "")
   const tagsUrl = normalizedBaseUrl.endsWith("/api")

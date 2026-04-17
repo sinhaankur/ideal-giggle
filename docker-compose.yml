@@ -1,0 +1,93 @@
+services:
+  empathia-allinone:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner-ollama
+    image: empathia:allinone
+    container_name: empathia-allinone
+    profiles:
+      - allinone
+    ports:
+      - "3000:3000"
+      - "11434:11434"
+    volumes:
+      - ollama-data-allinone:/root/.ollama
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_DEFAULT_PROVIDER: ${NEXT_PUBLIC_DEFAULT_PROVIDER:-ollama}
+      NEXT_PUBLIC_OLLAMA_BASE_URL: ${NEXT_PUBLIC_OLLAMA_BASE_URL:-http://127.0.0.1:11434}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://127.0.0.1:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
+      OLLAMA_AUTO_PULL: ${OLLAMA_AUTO_PULL:-true}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GOOGLE_GENERATIVE_AI_API_KEY: ${GOOGLE_GENERATIVE_AI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      API_RATE_LIMIT_WINDOW_MS: ${API_RATE_LIMIT_WINDOW_MS:-60000}
+      API_RATE_LIMIT_MAX: ${API_RATE_LIMIT_MAX:-90}
+      API_RATE_LIMIT_CHAT_MAX: ${API_RATE_LIMIT_CHAT_MAX:-60}
+      API_RATE_LIMIT_FALLBACK_MAX: ${API_RATE_LIMIT_FALLBACK_MAX:-40}
+      UPSTASH_REDIS_REST_URL: ${UPSTASH_REDIS_REST_URL:-}
+      UPSTASH_REDIS_REST_TOKEN: ${UPSTASH_REDIS_REST_TOKEN:-}
+      LIMITER_STATUS_TOKEN: ${LIMITER_STATUS_TOKEN:-}
+    restart: unless-stopped
+
+  empathia:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: empathia:local
+    container_name: empathia
+    ports:
+      - "3000:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_DEFAULT_PROVIDER: ${NEXT_PUBLIC_DEFAULT_PROVIDER:-webllm}
+      NEXT_PUBLIC_OLLAMA_BASE_URL: ${NEXT_PUBLIC_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GOOGLE_GENERATIVE_AI_API_KEY: ${GOOGLE_GENERATIVE_AI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      API_RATE_LIMIT_WINDOW_MS: ${API_RATE_LIMIT_WINDOW_MS:-60000}
+      API_RATE_LIMIT_MAX: ${API_RATE_LIMIT_MAX:-90}
+      API_RATE_LIMIT_CHAT_MAX: ${API_RATE_LIMIT_CHAT_MAX:-60}
+      API_RATE_LIMIT_FALLBACK_MAX: ${API_RATE_LIMIT_FALLBACK_MAX:-40}
+      UPSTASH_REDIS_REST_URL: ${UPSTASH_REDIS_REST_URL:-}
+      UPSTASH_REDIS_REST_TOKEN: ${UPSTASH_REDIS_REST_TOKEN:-}
+      LIMITER_STATUS_TOKEN: ${LIMITER_STATUS_TOKEN:-}
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    profiles:
+      - ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: ollama-init
+    profiles:
+      - ollama
+    depends_on:
+      - ollama
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
+    volumes:
+      - ./scripts/ollama-init.sh:/usr/local/bin/ollama-init.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/ollama-init.sh"]
+    restart: "no"
+
+volumes:
+  ollama-data:
+  ollama-data-allinone:

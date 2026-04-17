@@ -1,5 +1,13 @@
 import { generateText } from "ai"
 import { createOpenAI } from "@ai-sdk/openai"
+import {
+  badRequestFromZod,
+  checkRateLimit,
+  getClientIp,
+  mcpFallbackRequestSchema,
+  rateLimitJsonResponse,
+} from "@/lib/api/request-guards"
+import { z } from "zod"
 
 type FallbackMessage = {
   role: "user" | "assistant"
@@ -13,8 +21,28 @@ function normalizeBaseUrl(baseUrl: string) {
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json()
-    const messages: FallbackMessage[] = Array.isArray(body.messages) ? body.messages : []
+    const ip = getClientIp(req)
+    const limit = checkRateLimit({
+      key: `mcp-fallback:${ip}`,
+      limit: 30,
+      windowMs: 60_000,
+    })
+    if (!limit.allowed) {
+      return rateLimitJsonResponse(limit.retryAfterSec)
+    }
+
+    let body: z.infer<typeof mcpFallbackRequestSchema>
+    try {
+      const rawBody = await req.json()
+      body = mcpFallbackRequestSchema.parse(rawBody)
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return badRequestFromZod(error)
+      }
+      return Response.json({ error: "Invalid JSON body" }, { status: 400 })
+    }
+
+    const messages: FallbackMessage[] = body.messages
     const mcpBaseUrl: string = body.mcpBaseUrl || "http://127.0.0.1:8787"
     const mcpModel: string = body.mcpModel || "gpt-4o-mini"
     const mcpApiKey: string = body.mcpApiKey || ""
