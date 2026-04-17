@@ -218,6 +218,29 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
             </div>
           </div>
 
+          {/* Accessibility */}
+          <div className="mb-6 rounded border border-border bg-background p-3">
+            <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
+              <Sparkles className="h-4 w-4 text-foreground" />
+              <span className="text-sm font-semibold text-foreground">
+                Accessibility
+              </span>
+            </div>
+
+            <label className="mb-2 flex items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={settings.accessibilityMode}
+                onChange={(e) => update({ accessibilityMode: e.target.checked })}
+              />
+              <span>Enable accessibility UX mode</span>
+            </label>
+
+            <p className="text-xs text-muted-foreground">
+              When enabled, reduced motion and keyboard shortcut assistance are activated.
+            </p>
+          </div>
+
           {/* Quick Start Presets */}
           <div className="mb-6 rounded border border-border bg-background p-3">
             <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
