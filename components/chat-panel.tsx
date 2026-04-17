@@ -293,6 +293,11 @@ export function ChatPanel({
   }, [quickPrompts])
 
   useEffect(() => {
+    if (!settings.accessibilityMode) {
+      setShowShortcutHelp(false)
+      return
+    }
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setShowShortcutHelp(false)
@@ -328,7 +333,7 @@ export function ChatPanel({
     return () => {
       document.removeEventListener("keydown", handleKeyDown)
     }
-  }, [applyQuickPrompt, emergencyMute])
+  }, [applyQuickPrompt, emergencyMute, settings.accessibilityMode])
 
   const lastMessageAt = messages.length
     ? (messages[messages.length - 1].timestamp instanceof Date
@@ -415,6 +420,7 @@ export function ChatPanel({
           phase={orbPhase}
           activityLevel={orbActivity}
           intensity={orbActivity}
+          reducedMotionEnabled={settings.accessibilityMode}
         />
       </div>
 
@@ -613,21 +619,25 @@ export function ChatPanel({
             <Send className="h-3.5 w-3.5" />
           </button>
 
-          <button
-            onClick={() => setShowShortcutHelp((prev) => !prev)}
-            className="flex h-8 w-8 items-center justify-center border border-border bg-card text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            aria-label="Show keyboard shortcuts"
-            title="Keyboard shortcuts"
-          >
-            ?
-          </button>
+          {settings.accessibilityMode && (
+            <button
+              onClick={() => setShowShortcutHelp((prev) => !prev)}
+              className="flex h-8 w-8 items-center justify-center border border-border bg-card text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              aria-label="Show keyboard shortcuts"
+              title="Keyboard shortcuts"
+            >
+              ?
+            </button>
+          )}
         </div>
 
-        <div className="mt-2 text-[10px] text-muted-foreground/70">
-          Shortcuts: <span className="text-foreground">Alt+1/2/3</span> quick prompts, <span className="text-foreground">/</span> focus input, <span className="text-foreground">?</span> help.
-        </div>
+        {settings.accessibilityMode && (
+          <div className="mt-2 text-[10px] text-muted-foreground/70">
+            Shortcuts: <span className="text-foreground">Alt+1/2/3</span> quick prompts, <span className="text-foreground">/</span> focus input, <span className="text-foreground">?</span> help.
+          </div>
+        )}
 
-        {showShortcutHelp && (
+        {settings.accessibilityMode && showShortcutHelp && (
           <div className="absolute bottom-14 right-4 z-20 w-72 rounded border border-border bg-card p-3 text-[11px] text-muted-foreground shadow-lg">
             <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-foreground">Keyboard Shortcuts</div>
             <div className="space-y-1">
