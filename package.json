@@ -9,6 +9,8 @@
     "start": "NEXT_TELEMETRY_DISABLED=1 next start",
     "lint": "NEXT_TELEMETRY_DISABLED=1 eslint .",
     "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
     "typecheck": "tsc --noEmit",
     "check": "pnpm lint && pnpm test && pnpm typecheck && pnpm build"
   },
@@ -74,7 +76,9 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4.1.13",
+    "@playwright/test": "^1.59.1",
     "@types/node": "^22",
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",

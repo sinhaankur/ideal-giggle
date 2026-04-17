@@ -95,8 +95,9 @@ export async function POST(req: Request) {
   const companionName: string = body.companionName || "EMPATHEIA"
   const empathyProfile = (body.empathyProfile as EmpathyProfile | null | undefined) || null
   const empathyCode: string = body.empathyCode || ""
-  const ollamaBaseUrl: string = body.ollamaBaseUrl || "http://127.0.0.1:11434"
-  const ollamaModel: string = body.ollamaModel || "llama3.2"
+  const ollamaBaseUrl: string =
+    body.ollamaBaseUrl || process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434"
+  const ollamaModel: string = body.ollamaModel || process.env.OLLAMA_MODEL || "llama3.2"
   const envOpenRouterApiKey = process.env.OPENROUTER_API_KEY || ""
   const bodyOpenRouterApiKey: string = body.openRouterApiKey || ""
   const openRouterApiKey: string = process.env.NODE_ENV === "production"
