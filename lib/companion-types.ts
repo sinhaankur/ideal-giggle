@@ -219,6 +219,7 @@ export interface CompanionSettings {
   name: string
   personality: Personality
   toneMode: ToneMode
+  accessibilityMode: boolean
   provider: AIProvider
   temperature: number
   topP: number
@@ -240,6 +241,7 @@ export const DEFAULT_SETTINGS: CompanionSettings = {
   name: "Samantha",
   personality: "warm",
   toneMode: "balanced",
+  accessibilityMode: false,
   provider: defaultProvider,
   temperature: 0.7,
   topP: 0.95,

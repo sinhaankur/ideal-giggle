@@ -11,6 +11,7 @@ interface AIOrbProps {
   intensity?: number
   phase?: OrbPhase
   activityLevel?: number
+  reducedMotionEnabled?: boolean
 }
 
 export function AIOrb({
@@ -20,6 +21,7 @@ export function AIOrb({
   intensity = 0.5,
   phase,
   activityLevel,
+  reducedMotionEnabled = false,
 }: AIOrbProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const animationRef = useRef<number>(0)
@@ -79,7 +81,7 @@ export function AIOrb({
     window.addEventListener("resize", resize)
 
     const draw = () => {
-      if (!prefersReducedMotion) {
+      if (!(reducedMotionEnabled && prefersReducedMotion)) {
         timeRef.current += 0.016
       }
       const t = timeRef.current
@@ -225,7 +227,7 @@ export function AIOrb({
         ctx.setLineDash([])
       }
 
-      if (!prefersReducedMotion) {
+      if (!(reducedMotionEnabled && prefersReducedMotion)) {
         animationRef.current = requestAnimationFrame(draw)
       }
     }
@@ -236,7 +238,7 @@ export function AIOrb({
       window.removeEventListener("resize", resize)
       cancelAnimationFrame(animationRef.current)
     }
-  }, [emotion, emotionConfig, normalizedActivity, prefersReducedMotion, resolvedPhase])
+  }, [emotion, emotionConfig, normalizedActivity, prefersReducedMotion, reducedMotionEnabled, resolvedPhase])
 
   return (
     <div className="relative flex flex-col items-center justify-center">
