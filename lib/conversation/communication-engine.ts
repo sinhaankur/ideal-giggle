@@ -3,6 +3,17 @@ import type { CompanionSettings, Emotion, EmpathyProfile, Personality, ToneMode 
 const NEGATIVE_OR_DISAGREEMENT_PATTERN = /\b(no|nope|nah|not really|don't|dont|can't|cant|wrong|not true|incorrect|doesn't|doesnt)\b/i
 const LOW_CONFIDENCE_PATTERN = /\b(idk|i don't know|i dont know|dont know|not sure|unsure|maybe)\b/i
 const DISTRESS_PATTERN = /\b(overwhelmed|panic|panicking|anxious|anxiety|spiraling|spiralling|unsafe|can't breathe|cant breathe|stressed out|freaking out)\b/i
+const RUNTIME_QUERY_PATTERN = /\b(ai|model|ollama|webllm|openrouter|api|connection|server)\b/i
+const RUNTIME_STATUS_PATTERN = /\b(run|running|work|working|online|up|alive|status|connected|connect|ready)\b/i
+
+export type RuntimeFallbackContext = {
+  provider?: CompanionSettings["provider"]
+  llmConnectionError?: string
+  webLlmStatus?: string
+  systemHealth?: "ready" | "busy" | "fallback" | "initializing"
+  ollamaBaseUrl?: string
+  ollamaModel?: string
+}
 
 export type UserUnderstanding = {
   primaryIntent: "check-in" | "venting" | "reflection" | "problem-solving" | "connection"
@@ -136,9 +147,33 @@ export function buildHumanCheckInReply(name: string, personality: CompanionSetti
   return `I'm here with you, calm and listening. I appreciate you asking how I'm doing. ${signature}`.trim()
 }
 
-export function buildLocalCompanionReply(input: string, sentimentScore: number, suggestedQuestion: string) {
+export function buildLocalCompanionReply(
+  input: string,
+  sentimentScore: number,
+  suggestedQuestion: string,
+  context?: RuntimeFallbackContext
+) {
   const lower = input.toLowerCase()
   const tokenCount = lower.trim().split(/\s+/).filter(Boolean).length
+
+  if (
+    /\bis ai running\b/.test(lower) ||
+    (RUNTIME_QUERY_PATTERN.test(lower) && RUNTIME_STATUS_PATTERN.test(lower))
+  ) {
+    if (context?.llmConnectionError) {
+      return `Right now the full AI model connection is down, so I'm responding in local fallback mode. Provider: ${(context.provider || "unknown").toUpperCase()}. Error: ${context.llmConnectionError}. You can keep chatting while we reconnect the model in Settings.`
+    }
+
+    if (context?.provider === "webllm" && context?.webLlmStatus && context.webLlmStatus !== "ready") {
+      return `WebLLM is currently ${context.webLlmStatus}, so I am using local fallback right now. Initialize the model or switch provider in Settings, then I can resume full AI replies.`
+    }
+
+    if (context?.provider === "ollama") {
+      return `Ollama mode is active. If replies still feel fallback-only, verify ${context.ollamaBaseUrl || "http://127.0.0.1:11434"} and make sure model ${context.ollamaModel || "llama3.2"} is installed.`
+    }
+
+    return "Core chat AI looks available right now. If anything still feels off, run Verify Ollama in Setup Checklist or switch provider once in Settings."
+  }
 
   if (tokenCount <= 4 && NEGATIVE_OR_DISAGREEMENT_PATTERN.test(lower)) {
     return `Thanks for correcting me. I may have misunderstood. ${articulateOpenPrompt(

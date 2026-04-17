@@ -2,8 +2,9 @@
 
 import { useState, useCallback, useMemo, useEffect, useRef, type Dispatch, type SetStateAction } from "react"
 import dynamic from "next/dynamic"
+import Link from "next/link"
 import { useChat } from "@ai-sdk/react"
-import { Settings } from "lucide-react"
+import { Settings, Download } from "lucide-react"
 import { ChatPanel } from "@/components/chat-panel"
 import {
   DEFAULT_SETTINGS,
@@ -32,6 +33,7 @@ import {
   ensureNonRepeatingFallback as ensureNonRepeatingFallbackFromEngine,
   getToneModeInstruction as getToneModeInstructionFromEngine,
   needsClarificationForAnswer,
+  type RuntimeFallbackContext,
 } from "@/lib/conversation/communication-engine"
 
 const CameraPanel = dynamic(() => import("@/components/camera-panel").then((mod) => mod.CameraPanel), {
@@ -270,8 +272,13 @@ function buildHumanCheckInReply(name: string, personality: CompanionSettings["pe
   return buildHumanCheckInReplyFromEngine(name, personality)
 }
 
-function buildLocalCompanionReply(input: string, sentimentScore: number, suggestedQuestion: string) {
-  return buildLocalCompanionReplyFromEngine(input, sentimentScore, suggestedQuestion)
+function buildLocalCompanionReply(
+  input: string,
+  sentimentScore: number,
+  suggestedQuestion: string,
+  context?: RuntimeFallbackContext
+) {
+  return buildLocalCompanionReplyFromEngine(input, sentimentScore, suggestedQuestion, context)
 }
 
 function ensureNonRepeatingFallback(nextText: string, previousText: string, suggestedQuestion: string) {
@@ -1396,7 +1403,14 @@ export default function CompanionApp() {
             return
           }
 
-          const baseFallback = buildLocalCompanionReply(text, analysis.sentimentScore, suggestedNext.question)
+          const baseFallback = buildLocalCompanionReply(text, analysis.sentimentScore, suggestedNext.question, {
+            provider: settings.provider,
+            llmConnectionError,
+            webLlmStatus,
+            systemHealth,
+            ollamaBaseUrl: settings.ollamaBaseUrl,
+            ollamaModel: settings.ollamaModel,
+          })
           const fallbackText = ensureNonRepeatingFallback(
             baseFallback,
             lastFallbackReplyRef.current,
@@ -1511,7 +1525,14 @@ export default function CompanionApp() {
             return
           }
 
-          const baseFallback = buildLocalCompanionReply(text, analysis.sentimentScore, suggestedNext.question)
+          const baseFallback = buildLocalCompanionReply(text, analysis.sentimentScore, suggestedNext.question, {
+            provider: settings.provider,
+            llmConnectionError,
+            webLlmStatus,
+            systemHealth,
+            ollamaBaseUrl: settings.ollamaBaseUrl,
+            ollamaModel: settings.ollamaModel,
+          })
           const fallbackText = ensureNonRepeatingFallback(
             baseFallback,
             lastFallbackReplyRef.current,
@@ -1543,7 +1564,14 @@ export default function CompanionApp() {
         const message = error instanceof Error ? error.message : "LLM request failed"
         setLlmConnectionError(message)
 
-        const baseFallback = buildLocalCompanionReply(text, analysis.sentimentScore, suggestedNext.question)
+        const baseFallback = buildLocalCompanionReply(text, analysis.sentimentScore, suggestedNext.question, {
+          provider: settings.provider,
+          llmConnectionError,
+          webLlmStatus,
+          systemHealth,
+          ollamaBaseUrl: settings.ollamaBaseUrl,
+          ollamaModel: settings.ollamaModel,
+        })
         const fallbackText = ensureNonRepeatingFallback(
           baseFallback,
           lastFallbackReplyRef.current,
@@ -1593,6 +1621,8 @@ export default function CompanionApp() {
       introQuestionCount,
       handleIntroAnswerChange,
       requestMcpFallbackReply,
+      llmConnectionError,
+      systemHealth,
       webLlmStatus,
     ]
   )
@@ -1815,6 +1845,13 @@ export default function CompanionApp() {
             <p className="mt-2 text-sm text-muted-foreground">
               Pick one option and start chatting immediately. You can change this later in Settings.
             </p>
+            <Link
+              href="/ollama-install"
+              className="mt-3 inline-flex items-center gap-2 rounded border border-foreground bg-foreground px-3 py-1.5 text-xs font-semibold text-background transition-colors hover:bg-foreground/90"
+            >
+              <Download className="h-3.5 w-3.5" />
+              First time here? Install + Run Guide
+            </Link>
 
             <div className="mt-4 grid gap-3">
               <button
@@ -1902,6 +1939,14 @@ export default function CompanionApp() {
                     : "System Ready"}
             </span>
           </div>
+          <Link
+            href="/ollama-install"
+            className="flex items-center gap-2 rounded border border-foreground bg-foreground px-3 py-2 text-sm font-medium text-background transition-colors hover:bg-foreground/90"
+            aria-label="Open install and run guide"
+          >
+            <Download className="h-4 w-4" />
+            <span className="hidden md:inline">Install + Run</span>
+          </Link>
           <button
             onClick={() => setShowSettings(true)}
             className="flex items-center gap-2 rounded border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
@@ -2073,6 +2118,11 @@ export default function CompanionApp() {
             isLoading={isLoading}
             emotion={currentEmotion}
             settings={settings}
+            connectionError={llmConnectionError || webLlmError}
+            systemHealth={systemHealth}
+            webLlmStatus={webLlmStatus}
+            introProgress={{ answered: answeredIntroCount, total: introQuestionCount }}
+            onOpenSettings={() => setShowSettings(true)}
           />
         </section>
 

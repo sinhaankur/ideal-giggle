@@ -23,6 +23,9 @@ const defaultProvider: AIProvider =
     ? envDefaultProvider
     : "webllm"
 
+const envDefaultOllamaBaseUrl =
+  process.env.NEXT_PUBLIC_OLLAMA_BASE_URL || "http://127.0.0.1:11434"
+
 export interface FacialExpression {
   neutral: number
   happy: number
@@ -244,7 +247,7 @@ export const DEFAULT_SETTINGS: CompanionSettings = {
   contextMessages: 12,
   cameraDeviceId: "",
   webllmModel: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC",
-  ollamaBaseUrl: "http://127.0.0.1:11434",
+  ollamaBaseUrl: envDefaultOllamaBaseUrl,
   ollamaModel: "llama3.2",
   mcpBaseUrl: "http://127.0.0.1:8787",
   mcpModel: "gpt-4o-mini",

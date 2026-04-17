@@ -1,7 +1,7 @@
 "use client"
 
-import { useRef, useState, useEffect, useCallback } from "react"
-import { Send, Mic, MicOff, Volume2, VolumeX, BellOff } from "lucide-react"
+import { useRef, useState, useEffect, useCallback, useMemo } from "react"
+import { Send, Mic, MicOff, Volume2, VolumeX, BellOff, AlertTriangle, Wrench } from "lucide-react"
 import { AIOrb } from "@/components/ai-orb"
 import type { Message, Emotion, CompanionSettings } from "@/lib/companion-types"
 
@@ -11,9 +11,25 @@ interface ChatPanelProps {
   isLoading: boolean
   emotion: Emotion
   settings: CompanionSettings
+  connectionError?: string
+  systemHealth?: "ready" | "busy" | "fallback" | "initializing"
+  webLlmStatus?: string
+  introProgress?: { answered: number; total: number }
+  onOpenSettings?: () => void
 }
 
-export function ChatPanel({ messages, onSendMessage, isLoading, emotion, settings }: ChatPanelProps) {
+export function ChatPanel({
+  messages,
+  onSendMessage,
+  isLoading,
+  emotion,
+  settings,
+  connectionError,
+  systemHealth,
+  webLlmStatus,
+  introProgress,
+  onOpenSettings,
+}: ChatPanelProps) {
   const [input, setInput] = useState("")
   const [isListening, setIsListening] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
@@ -24,6 +40,13 @@ export function ChatPanel({ messages, onSendMessage, isLoading, emotion, setting
   const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
   const activeSpeechTextRef = useRef("")
   const lastSpeechRequestRef = useRef<{ text: string; at: number }>({ text: "", at: 0 })
+  const [uiNow, setUiNow] = useState(Date.now())
+  const [showShortcutHelp, setShowShortcutHelp] = useState(false)
+
+  useEffect(() => {
+    const id = window.setInterval(() => setUiNow(Date.now()), 1000)
+    return () => window.clearInterval(id)
+  }, [])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -178,19 +201,6 @@ export function ChatPanel({ messages, onSendMessage, isLoading, emotion, setting
   }, [stopSpeaking])
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        emergencyMute()
-      }
-    }
-
-    document.addEventListener("keydown", handleKeyDown)
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown)
-    }
-  }, [emergencyMute])
-
-  useEffect(() => {
     return () => {
       stopSpeaking()
     }
@@ -249,6 +259,112 @@ export function ChatPanel({ messages, onSendMessage, isLoading, emotion, setting
         ? "OLLAMA LOCAL"
         : settings.provider.toUpperCase()
 
+  const introTotal = introProgress?.total || 0
+  const introAnswered = introProgress?.answered || 0
+  const isOnboardingActive = introTotal > 0 && introAnswered < introTotal
+  const onboardingPercent = introTotal > 0 ? Math.round((introAnswered / introTotal) * 100) : 0
+
+  const fallbackActive = systemHealth === "fallback" || Boolean(connectionError)
+  const statusBannerText = fallbackActive
+    ? connectionError || "Model connection is unstable. Local fallback responses are active."
+    : systemHealth === "initializing"
+      ? settings.provider === "webllm"
+        ? `Initializing WebLLM (${webLlmStatus || "starting"})...`
+        : "Preparing provider runtime..."
+      : ""
+
+  const quickPrompts = useMemo(
+    () =>
+      isOnboardingActive
+        ? [
+            "I feel anxious because I am overloaded.",
+            "The trigger was a conflict at work.",
+            "My body feels tight in my chest.",
+          ]
+        : ["Is AI running?", "Help me calm down in 2 steps.", "Summarize what you understood about me."],
+    [isOnboardingActive]
+  )
+
+  const applyQuickPrompt = useCallback((index: number) => {
+    const prompt = quickPrompts[index]
+    if (!prompt) return
+    setInput(prompt)
+    inputRef.current?.focus()
+  }, [quickPrompts])
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setShowShortcutHelp(false)
+        emergencyMute()
+        return
+      }
+
+      const activeElement = document.activeElement as HTMLElement | null
+      const isTypingField =
+        activeElement?.tagName === "INPUT" ||
+        activeElement?.tagName === "TEXTAREA" ||
+        activeElement?.getAttribute("contenteditable") === "true"
+
+      if (event.altKey && ["1", "2", "3"].includes(event.key)) {
+        event.preventDefault()
+        applyQuickPrompt(Number(event.key) - 1)
+        return
+      }
+
+      if (!isTypingField && event.key === "/") {
+        event.preventDefault()
+        inputRef.current?.focus()
+        return
+      }
+
+      if (!isTypingField && event.key === "?") {
+        event.preventDefault()
+        setShowShortcutHelp((prev) => !prev)
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown)
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown)
+    }
+  }, [applyQuickPrompt, emergencyMute])
+
+  const lastMessageAt = messages.length
+    ? (messages[messages.length - 1].timestamp instanceof Date
+        ? messages[messages.length - 1].timestamp.getTime()
+        : new Date(messages[messages.length - 1].timestamp).getTime())
+    : 0
+  const secondsSinceLastMessage = lastMessageAt ? Math.max(0, (uiNow - lastMessageAt) / 1000) : Number.POSITIVE_INFINITY
+  const hasRecentExchange = secondsSinceLastMessage <= 24
+  const typingWeight = Math.min(1, input.trim().length / 40)
+
+  const orbPhase: "idle" | "composing" | "engaged" | "thinking" | "listening" | "speaking" =
+    isSpeaking
+      ? "speaking"
+      : isListening
+        ? "listening"
+        : isLoading
+          ? "thinking"
+          : typingWeight > 0
+            ? "composing"
+            : hasRecentExchange
+              ? "engaged"
+              : "idle"
+
+  const orbActivity =
+    orbPhase === "speaking"
+      ? 0.95
+      : orbPhase === "listening"
+        ? 0.85
+        : orbPhase === "thinking"
+          ? 0.82
+          : orbPhase === "composing"
+            ? 0.45 + typingWeight * 0.35
+            : orbPhase === "engaged"
+              ? 0.42 + Math.max(0, (24 - secondsSinceLastMessage) / 24) * 0.28
+              : 0.28
+
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
@@ -257,14 +373,14 @@ export function ChatPanel({ messages, onSendMessage, isLoading, emotion, setting
           <span className="text-xs uppercase tracking-[0.2em] text-foreground">
             {settings.name}
           </span>
-          <span className="text-[9px] uppercase tracking-[0.15em] text-muted-foreground">
+          <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
             {settings.personality} -- {providerLabel}
           </span>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={emergencyMute}
-            className="flex h-6 items-center gap-1 border border-destructive/50 bg-destructive/10 px-2 text-[9px] uppercase tracking-[0.12em] text-destructive transition-colors hover:bg-destructive/20"
+            className="flex h-6 items-center gap-1 border border-destructive/50 bg-destructive/10 px-2 text-[10px] uppercase tracking-[0.12em] text-destructive transition-colors hover:bg-destructive/20"
             aria-label="Silence all audio"
             title="Emergency mute: stop voice output and disable audio"
           >
@@ -284,7 +400,7 @@ export function ChatPanel({ messages, onSendMessage, isLoading, emotion, setting
             {isVoiceEnabled ? <Volume2 className="h-3 w-3" /> : <VolumeX className="h-3 w-3" />}
           </button>
           <span className={`h-1.5 w-1.5 rounded-full ${isLoading ? "animate-pulse bg-muted-foreground" : "bg-foreground"}`} />
-          <span className="text-[9px] uppercase tracking-[0.15em] text-muted-foreground">
+          <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
             {isLoading ? "THINKING" : "ONLINE"}
           </span>
         </div>
@@ -296,9 +412,51 @@ export function ChatPanel({ messages, onSendMessage, isLoading, emotion, setting
           isListening={isListening}
           isSpeaking={isSpeaking}
           emotion={emotion}
-          intensity={isLoading ? 0.8 : isSpeaking ? 0.9 : isListening ? 0.7 : 0.4}
+          phase={orbPhase}
+          activityLevel={orbActivity}
+          intensity={orbActivity}
         />
       </div>
+
+      {statusBannerText && (
+        <div className={`border-b px-4 py-2 text-xs ${fallbackActive ? "border-amber-500/30 bg-amber-500/10" : "border-border bg-card"}`}>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <AlertTriangle className={`h-3.5 w-3.5 ${fallbackActive ? "text-amber-300" : "text-muted-foreground"}`} />
+              <span className="leading-relaxed">{statusBannerText}</span>
+            </div>
+            {onOpenSettings && (
+              <button
+                onClick={onOpenSettings}
+                className="inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground transition-colors hover:bg-accent"
+              >
+                <Wrench className="h-3 w-3" />
+                Fix
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {isOnboardingActive && (
+        <div className="border-b border-border bg-card px-4 py-3">
+          <div className="mb-2 flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+            <span>Onboarding Progress</span>
+            <span>
+              {introAnswered}/{introTotal}
+            </span>
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded bg-muted/30">
+            <div
+              className="h-full bg-foreground transition-all duration-300"
+              style={{ width: `${Math.max(8, onboardingPercent)}%` }}
+            />
+          </div>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Share concrete details for each intro step. After onboarding, responses switch to full conversation mode.
+          </p>
+        </div>
+      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-3">
@@ -309,6 +467,17 @@ export function ChatPanel({ messages, onSendMessage, isLoading, emotion, setting
             </div>
             <div className="max-w-[240px] text-[11px] leading-relaxed text-muted-foreground/40">
               Share your thoughts, feelings, or whatever is on your mind. I am here to listen and understand.
+            </div>
+            <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
+              {quickPrompts.map((prompt, index) => (
+                <button
+                  key={prompt}
+                  onClick={() => applyQuickPrompt(index)}
+                  className="rounded border border-border bg-card px-2.5 py-1 text-[11px] text-muted-foreground transition-colors hover:border-muted-foreground/50 hover:text-foreground"
+                >
+                  {prompt}
+                </button>
+              ))}
             </div>
           </div>
         )}
@@ -327,21 +496,21 @@ export function ChatPanel({ messages, onSendMessage, isLoading, emotion, setting
             >
               {msg.sender === "ai" && (
                 <div className="mb-1 flex items-center gap-2">
-                  <span className="text-[8px] uppercase tracking-[0.2em] text-muted-foreground">
+                  <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
                     {settings.name}
                   </span>
                   {msg.mode === "fallback" && (
-                    <span className="rounded border border-amber-500/50 bg-amber-500/10 px-1.5 py-0.5 text-[8px] uppercase tracking-[0.12em] text-amber-300">
+                    <span className="rounded border border-amber-500/50 bg-amber-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-amber-300">
                       local fallback
                     </span>
                   )}
                   {msg.mode === "mcp-fallback" && (
-                    <span className="rounded border border-cyan-500/50 bg-cyan-500/10 px-1.5 py-0.5 text-[8px] uppercase tracking-[0.12em] text-cyan-300">
+                    <span className="rounded border border-cyan-500/50 bg-cyan-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-cyan-300">
                       mcp fallback
                     </span>
                   )}
                   {msg.emotion && (
-                    <span className="text-[8px] uppercase tracking-[0.15em] text-muted-foreground/60">
+                    <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground/60">
                       [{msg.emotion}]
                     </span>
                   )}
@@ -349,7 +518,7 @@ export function ChatPanel({ messages, onSendMessage, isLoading, emotion, setting
               )}
               <p className="text-[12px] leading-relaxed">{msg.text}</p>
               <div className={`mt-1 flex items-center gap-2 ${msg.sender === "user" ? "justify-end" : "justify-start"}`}>
-                <span className="text-[8px] text-muted-foreground/40">
+                <span className="text-[10px] text-muted-foreground/50">
                   {msg.timestamp.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
                 </span>
                 {msg.sender === "ai" && (
@@ -386,7 +555,7 @@ export function ChatPanel({ messages, onSendMessage, isLoading, emotion, setting
           <div className="mb-3 flex justify-start">
             <div className="border border-border bg-card px-3 py-2">
               <div className="flex items-center gap-1">
-                <span className="text-[8px] uppercase tracking-[0.2em] text-muted-foreground">
+                <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
                   {settings.name} is thinking
                 </span>
                 <span className="inline-flex gap-0.5">
@@ -408,7 +577,7 @@ export function ChatPanel({ messages, onSendMessage, isLoading, emotion, setting
       </div>
 
       {/* Input Area */}
-      <div className="border-t border-border px-4 py-3">
+      <div className="relative border-t border-border px-4 py-3">
         <div className="flex items-center gap-2">
           <button
             onClick={toggleListening}
@@ -443,7 +612,32 @@ export function ChatPanel({ messages, onSendMessage, isLoading, emotion, setting
           >
             <Send className="h-3.5 w-3.5" />
           </button>
+
+          <button
+            onClick={() => setShowShortcutHelp((prev) => !prev)}
+            className="flex h-8 w-8 items-center justify-center border border-border bg-card text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            aria-label="Show keyboard shortcuts"
+            title="Keyboard shortcuts"
+          >
+            ?
+          </button>
         </div>
+
+        <div className="mt-2 text-[10px] text-muted-foreground/70">
+          Shortcuts: <span className="text-foreground">Alt+1/2/3</span> quick prompts, <span className="text-foreground">/</span> focus input, <span className="text-foreground">?</span> help.
+        </div>
+
+        {showShortcutHelp && (
+          <div className="absolute bottom-14 right-4 z-20 w-72 rounded border border-border bg-card p-3 text-[11px] text-muted-foreground shadow-lg">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-foreground">Keyboard Shortcuts</div>
+            <div className="space-y-1">
+              <div><span className="text-foreground">Alt+1 / Alt+2 / Alt+3</span> - Insert quick prompt</div>
+              <div><span className="text-foreground">/</span> - Focus message input</div>
+              <div><span className="text-foreground">?</span> - Toggle this help</div>
+              <div><span className="text-foreground">Esc</span> - Emergency mute and close help</div>
+            </div>
+          </div>
+        )}
 
         {isListening && (
           <div className="mt-2 flex items-center justify-center gap-1">
