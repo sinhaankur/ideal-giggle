@@ -9,6 +9,10 @@ An empathetic AI companion built with Next.js, React, and AI SDK.
 - Multiple providers: OpenAI, Anthropic, Google, OpenRouter (open-source hosted models), WebLLM (browser local), Ollama (local runtime)
 - Hybrid intelligence fallback: if model runtime fails, empathy-map quadrants still update using sentiment + keyword heuristics
 
+## Empathy Engine Docs
+
+- Full conceptual model and tree of understanding: [docs/empathy-engine.md](docs/empathy-engine.md)
+
 ## Run Locally
 
 1. Install dependencies:
@@ -29,6 +33,34 @@ OPENROUTER_API_KEY=your_openrouter_key
 You can also copy `.env.example` to `.env.local` and only fill the keys you need.
 
 You can provide one or more keys depending on which provider you want to use.
+
+### API Rate Limiting (Middleware)
+
+The app now includes middleware-level per-IP throttling for all `POST /api/*` calls, with tighter defaults for chat endpoints.
+
+Environment knobs (optional):
+
+```bash
+API_RATE_LIMIT_WINDOW_MS=60000
+API_RATE_LIMIT_MAX=90
+API_RATE_LIMIT_CHAT_MAX=60
+API_RATE_LIMIT_FALLBACK_MAX=40
+# Optional distributed limiter backend (multi-instance safe)
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
+```
+
+Notes:
+
+- Middleware throttling runs before route logic.
+- Route-level guards still exist as a second layer.
+- If `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are set, middleware uses a distributed sliding-window limiter via Upstash.
+- Without Upstash env vars, middleware falls back to in-memory limits (good for single-instance deployments).
+
+Diagnostics endpoint:
+
+- `GET /api/limiter-status` returns active limiter mode and route thresholds.
+- If `LIMITER_STATUS_TOKEN` is set, include request header `x-admin-token: <LIMITER_STATUS_TOKEN>`.
 
 ### Optional for local-only providers
 
@@ -173,6 +205,118 @@ Some Chrome Dev/Canary environments may expose built-in local LLM capabilities (
 pnpm build
 pnpm start
 ```
+
+## End-to-End Testing
+
+Run Playwright setup once:
+
+```bash
+pnpm exec playwright install chromium
+```
+
+Run the fallback-status regression flow:
+
+```bash
+pnpm playwright test tests/e2e/chat-fallback-status.spec.ts --project=chromium
+```
+
+Or run all E2E tests:
+
+```bash
+pnpm test:e2e
+```
+
+## Docker
+
+This repo includes container support for EMpathia with three modes:
+
+- App only: connect to an existing/local Ollama or cloud provider.
+- App + Ollama: run Ollama in Docker and auto-pull/update a model (for example `llama3.2`).
+- All-in-one image: Ollama is preinstalled inside the EMpathia container.
+
+### One-command launcher (recommended)
+
+Use the auto launcher to start the right mode with zero compose flags:
+
+```bash
+./scripts/launch-empathia.sh
+```
+
+Auto behavior:
+
+- If host Ollama is reachable, it starts `empathia` (host mode).
+- If host Ollama is not reachable, it starts `allinone` mode automatically.
+
+Optional mode override:
+
+```bash
+EMPATHIA_MODE=host ./scripts/launch-empathia.sh
+EMPATHIA_MODE=allinone ./scripts/launch-empathia.sh
+EMPATHIA_MODE=sidecar ./scripts/launch-empathia.sh
+```
+
+Optional host endpoint override:
+
+```bash
+EMPATHIA_HOST_OLLAMA_URL=http://host.docker.internal:11434 ./scripts/launch-empathia.sh
+```
+
+### 1) Build and run app only
+
+```bash
+docker compose up --build empathia
+```
+
+Open `http://localhost:3000`.
+
+In this mode, EMpathia connects to host Ollama by default using:
+
+- `http://host.docker.internal:11434` (Docker Desktop on macOS/Windows)
+- Linux users are covered via `extra_hosts: host.docker.internal:host-gateway` in compose
+
+If you want a custom host endpoint, set:
+
+```bash
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+NEXT_PUBLIC_OLLAMA_BASE_URL=http://host.docker.internal:11434
+```
+
+### 2) Run app with bundled Ollama and model preinstall/update
+
+```bash
+OLLAMA_MODEL=llama3.2 \
+OLLAMA_BASE_URL=http://ollama:11434 \
+NEXT_PUBLIC_OLLAMA_BASE_URL=http://ollama:11434 \
+docker compose --profile ollama up --build
+```
+
+What happens:
+
+- `ollama` service starts the runtime on port `11434`.
+- `ollama-init` waits for Ollama, then runs `ollama pull $OLLAMA_MODEL`.
+- `empathia` uses `http://ollama:11434` internally by default in compose.
+
+This gives you repeatable local LLM startup and easy model updates by changing `OLLAMA_MODEL`.
+
+### 3) One-container mode with preinstalled Ollama (product-like)
+
+```bash
+OLLAMA_MODEL=llama3.2 OLLAMA_AUTO_PULL=true docker compose --profile allinone up --build
+```
+
+What happens:
+
+- The Docker image installs Ollama during build.
+- Container startup launches Ollama and EMpathia together.
+- If `OLLAMA_AUTO_PULL=true`, startup runs `ollama pull $OLLAMA_MODEL` so model updates feel like software updates.
+- Models persist in a Docker volume (`ollama-data-allinone`) so users do not re-download every run.
+
+Set `OLLAMA_AUTO_PULL=false` if you want faster startup without update checks.
+
+Compatibility note:
+
+- Docker images are multi-architecture and should run on both `amd64` and `arm64` hosts.
+- GPU acceleration availability depends on host drivers/runtime; CPU mode still works.
 
 ## GitHub Pages
 
