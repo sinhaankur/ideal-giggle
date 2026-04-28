@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest"
-import { encryptVault, decryptVault, isEncryptedEnvelope, type VaultPayload } from "./encrypted-profile"
+import {
+  encryptVault,
+  decryptVault,
+  isEncryptedEnvelope,
+  unlockVault,
+  type VaultPayload,
+} from "./encrypted-profile"
 import { DEFAULT_EMPATHY_PROFILE } from "../companion-types"
 
 const samplePayload: VaultPayload = {
@@ -45,6 +51,32 @@ describe("vault round-trip", () => {
 
   it("rejects passphrases shorter than 8 characters at encrypt time", async () => {
     await expect(encryptVault(samplePayload, "short")).rejects.toThrow(/at least 8/i)
+  })
+})
+
+describe("unlockVault iteration bounds", () => {
+  it("rejects an envelope with iter above the maximum without running PBKDF2", async () => {
+    const envelopeJson = await encryptVault(samplePayload, "valid-passphrase-1")
+    const envelope = JSON.parse(envelopeJson)
+    envelope.iter = 100_000_000_000
+
+    await expect(unlockVault(envelope, "valid-passphrase-1")).rejects.toThrow(/iteration count|out of accepted range/i)
+  })
+
+  it("rejects an envelope with iter below the minimum", async () => {
+    const envelopeJson = await encryptVault(samplePayload, "valid-passphrase-1")
+    const envelope = JSON.parse(envelopeJson)
+    envelope.iter = 100
+
+    await expect(unlockVault(envelope, "valid-passphrase-1")).rejects.toThrow(/iteration count|out of accepted range/i)
+  })
+
+  it("rejects an envelope with non-numeric iter", async () => {
+    const envelopeJson = await encryptVault(samplePayload, "valid-passphrase-1")
+    const envelope = JSON.parse(envelopeJson)
+    envelope.iter = "lots"
+
+    await expect(unlockVault(envelope, "valid-passphrase-1")).rejects.toThrow(/iteration count|out of accepted range/i)
   })
 })
 
