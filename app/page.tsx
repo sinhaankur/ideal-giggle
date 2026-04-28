@@ -50,17 +50,11 @@ const CameraPanel = dynamic(() => import("@/components/camera-panel").then((mod)
   ssr: false,
 })
 
-const EmpathyPanel = dynamic(() => import("@/components/empathy-panel").then((mod) => mod.EmpathyPanel), {
-  ssr: false,
-})
+const EmpathyPanel = dynamic(() => import("@/components/empathy-panel").then((mod) => mod.EmpathyPanel))
 
-const SettingsPanel = dynamic(() => import("@/components/settings-panel").then((mod) => mod.SettingsPanel), {
-  ssr: false,
-})
+const SettingsPanel = dynamic(() => import("@/components/settings-panel").then((mod) => mod.SettingsPanel))
 
-const SetupChecklist = dynamic(() => import("@/components/setup-checklist").then((mod) => mod.SetupChecklist), {
-  ssr: false,
-})
+const SetupChecklist = dynamic(() => import("@/components/setup-checklist").then((mod) => mod.SetupChecklist))
 
 function applyDataUpdateBlock(existing: EmpathyData, update: Partial<Record<keyof EmpathyData, string>>): EmpathyData {
   const next: EmpathyData = {
