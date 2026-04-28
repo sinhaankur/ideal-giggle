@@ -7,7 +7,6 @@ import {
 import { createOpenAI, openai } from "@ai-sdk/openai"
 import { anthropic } from "@ai-sdk/anthropic"
 import { google } from "@ai-sdk/google"
-import { createOllama } from "ollama-ai-provider"
 import { PROVIDER_DEFAULT_MODELS } from "@/lib/companion-types"
 import { buildEmpathySystemPrompt, buildUserUnderstandingGuidance } from "@/lib/conversation/communication-engine"
 import {
@@ -105,13 +104,13 @@ export async function POST(req: Request) {
     : bodyOpenRouterApiKey || envOpenRouterApiKey
   const openRouterModel: string = body.openRouterModel || "meta-llama/llama-3.3-70b-instruct:free"
 
-  const normalizedOllamaBaseUrl =
-    ollamaBaseUrl.endsWith("/api") || ollamaBaseUrl.endsWith("/api/")
-      ? ollamaBaseUrl.replace(/\/$/, "")
-      : `${ollamaBaseUrl.replace(/\/$/, "")}/api`
-
-  const ollama = createOllama({
-    baseURL: normalizedOllamaBaseUrl,
+  // Ollama exposes an OpenAI-compatible endpoint at /v1, which returns
+  // AI SDK v6 spec-v2 models. The legacy /api endpoint via ollama-ai-provider
+  // only emits spec-v1 models and crashes streamText on AI SDK >= 5.
+  const trimmedOllamaBase = ollamaBaseUrl.replace(/\/(api\/?|v1\/?)?$/, "").replace(/\/$/, "")
+  const ollamaCompat = createOpenAI({
+    apiKey: "ollama-local",
+    baseURL: `${trimmedOllamaBase}/v1`,
   })
 
   const openRouter = createOpenAI({
@@ -133,14 +132,18 @@ export async function POST(req: Request) {
   })
 
   // Use direct model providers.
-  const model = (() => {
+  let model
+  try {
     switch (provider) {
       case "anthropic":
-        return anthropic(PROVIDER_DEFAULT_MODELS.anthropic)
+        model = anthropic(PROVIDER_DEFAULT_MODELS.anthropic)
+        break
       case "google":
-        return google(PROVIDER_DEFAULT_MODELS.google)
+        model = google(PROVIDER_DEFAULT_MODELS.google)
+        break
       case "ollama":
-        return ollama(ollamaModel)
+        model = ollamaCompat.chat(ollamaModel)
+        break
       case "openrouter":
         if (!openRouterApiKey) {
           throw new Error(
@@ -149,22 +152,39 @@ export async function POST(req: Request) {
               : "OpenRouter API key is missing. Add it in Settings or set OPENROUTER_API_KEY."
           )
         }
-        return openRouter.chat(openRouterModel)
+        model = openRouter.chat(openRouterModel)
+        break
       case "openai":
       default:
-        return openai(PROVIDER_DEFAULT_MODELS.openai)
+        model = openai(PROVIDER_DEFAULT_MODELS.openai)
+        break
     }
-  })()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to create model"
+    return Response.json(
+      { error: "Provider configuration error", detail: message, provider },
+      { status: 400 }
+    )
+  }
 
-  const result = streamText({
-    model: model as any,
-    system: systemPrompt,
-    messages: await convertToModelMessages(messages.slice(-contextMessages)),
-    temperature,
-    topP,
-    maxOutputTokens,
-    abortSignal: req.signal,
-  })
+  let result
+  try {
+    result = streamText({
+      model: model as any,
+      system: systemPrompt,
+      messages: await convertToModelMessages(messages.slice(-contextMessages)),
+      temperature,
+      topP,
+      maxOutputTokens,
+      abortSignal: req.signal,
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "streamText failed"
+    return Response.json(
+      { error: "Model invocation failed", detail: message, provider },
+      { status: 502 }
+    )
+  }
 
   return result.toUIMessageStreamResponse({
     originalMessages: messages,
