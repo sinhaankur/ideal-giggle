@@ -1,9 +1,61 @@
 "use client"
 
 import { useRef, useState, useEffect, useCallback, useMemo } from "react"
-import { Send, Mic, MicOff, Volume2, VolumeX, BellOff, AlertTriangle, Wrench } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
+import { Send, Mic, MicOff, Volume2, VolumeX, BellOff, AlertTriangle, Wrench, RefreshCw, HeartHandshake, ShieldCheck } from "lucide-react"
 import { AIOrb } from "@/components/ai-orb"
 import type { Message, Emotion, CompanionSettings } from "@/lib/companion-types"
+import { detectHarshLanguage } from "@/lib/conversation/language-tone"
+
+const ONBOARDING_PROMPT_POOL = [
+  "I feel anxious because I am overloaded.",
+  "The trigger was a conflict at work.",
+  "My body feels tight in my chest.",
+  "I notice I am holding my breath.",
+  "I keep replaying a conversation in my head.",
+  "I felt dismissed earlier today.",
+  "There is a sadness I cannot name.",
+  "I am tired in a way sleep does not fix.",
+  "I felt small when they spoke.",
+  "I want to be honest about what hurt.",
+]
+
+const OPEN_PROMPT_POOL = [
+  "Help me calm down in 2 steps.",
+  "Summarize what you understood about me.",
+  "Ask me a deeper question.",
+  "What do you notice about my pattern?",
+  "Help me reframe this.",
+  "Walk me through grounding.",
+  "What would a kind friend say?",
+  "What is one small step I can take?",
+  "Tell me where my map is empty.",
+  "Mirror back what I said in your own words.",
+  "Where am I being too hard on myself?",
+  "What feeling am I avoiding right now?",
+]
+
+const MOOD_OVERLAY_POOL: Record<Emotion, string[]> = {
+  neutral: [],
+  happy: ["Something good happened — let me share.", "I want to anchor this moment."],
+  sad: ["It feels heavy right now.", "I want to be gentle with myself."],
+  angry: ["I am frustrated and I want to vent.", "Help me channel this somewhere useful."],
+  fear: ["I am scared and not sure why.", "Help me name the worst-case I am imagining."],
+  surprise: ["Something unexpected just shifted.", "I am still processing this."],
+  thinking: ["Help me think this through.", "I want to talk out loud."],
+}
+
+function pickThree<T>(pool: T[], seed: number): T[] {
+  if (pool.length <= 3) return pool.slice(0, 3)
+  const arr = [...pool]
+  let rnd = seed >>> 0
+  for (let i = arr.length - 1; i > 0; i--) {
+    rnd = (rnd * 1103515245 + 12345) >>> 0
+    const j = rnd % (i + 1)
+    ;[arr[i], arr[j]] = [arr[j], arr[i]]
+  }
+  return arr.slice(0, 3)
+}
 
 interface ChatPanelProps {
   messages: Message[]
@@ -243,6 +295,7 @@ export function ChatPanel({
     onSendMessage(text)
     setInput("")
     inputRef.current?.focus()
+    setPromptSeed((seed) => seed + 1)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -273,17 +326,19 @@ export function ChatPanel({
         : "Preparing provider runtime..."
       : ""
 
-  const quickPrompts = useMemo(
-    () =>
-      isOnboardingActive
-        ? [
-            "I feel anxious because I am overloaded.",
-            "The trigger was a conflict at work.",
-            "My body feels tight in my chest.",
-          ]
-        : ["Is AI running?", "Help me calm down in 2 steps.", "Summarize what you understood about me."],
-    [isOnboardingActive]
-  )
+  const [promptSeed, setPromptSeed] = useState(() => Math.floor(Math.random() * 1_000_000))
+
+  const quickPrompts = useMemo(() => {
+    const base = isOnboardingActive ? ONBOARDING_PROMPT_POOL : OPEN_PROMPT_POOL
+    const overlay = isOnboardingActive ? [] : MOOD_OVERLAY_POOL[emotion] || []
+    return pickThree([...base, ...overlay], promptSeed)
+  }, [isOnboardingActive, emotion, promptSeed])
+
+  const refreshPrompts = useCallback(() => {
+    setPromptSeed((seed) => seed + 1)
+  }, [])
+
+  const harshSignal = useMemo(() => detectHarshLanguage(input), [input])
 
   const applyQuickPrompt = useCallback((index: number) => {
     const prompt = quickPrompts[index]
@@ -375,17 +430,38 @@ export function ChatPanel({
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <div className="flex flex-col">
-          <span className="text-xs uppercase tracking-[0.2em] text-foreground">
+          <span className="text-xs uppercase tracking-wide text-foreground">
             {settings.name}
           </span>
-          <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
+          <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
             {settings.personality} -- {providerLabel}
           </span>
         </div>
         <div className="flex items-center gap-2">
+          {(() => {
+            const isLocalProvider = settings.provider === "webllm" || settings.provider === "ollama"
+            const label = isLocalProvider ? "PRIVATE" : "NOT STORED"
+            const tooltip = isLocalProvider
+              ? `This conversation runs entirely on your device via ${settings.provider.toUpperCase()}. Nothing is sent to a server. Nothing is saved by EMPATHEIA.`
+              : `EMPATHEIA does not store this conversation. Messages are sent to ${settings.provider.toUpperCase()} for inference and discarded after the response.`
+            return (
+              <span
+                className={`flex h-6 items-center gap-1 border px-2 text-[11px] uppercase tracking-wide ${
+                  isLocalProvider
+                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
+                    : "border-sky-500/40 bg-sky-500/10 text-sky-300"
+                }`}
+                title={tooltip}
+                aria-label={tooltip}
+              >
+                <ShieldCheck className="h-3 w-3" />
+                {label}
+              </span>
+            )
+          })()}
           <button
             onClick={emergencyMute}
-            className="flex h-6 items-center gap-1 border border-destructive/50 bg-destructive/10 px-2 text-[10px] uppercase tracking-[0.12em] text-destructive transition-colors hover:bg-destructive/20"
+            className="flex h-6 items-center gap-1 border border-destructive/50 bg-destructive/10 px-2 text-[11px] uppercase tracking-wide text-destructive transition-colors hover:bg-destructive/20"
             aria-label="Silence all audio"
             title="Emergency mute: stop voice output and disable audio"
           >
@@ -404,10 +480,6 @@ export function ChatPanel({
           >
             {isVoiceEnabled ? <Volume2 className="h-3 w-3" /> : <VolumeX className="h-3 w-3" />}
           </button>
-          <span className={`h-1.5 w-1.5 rounded-full ${isLoading ? "animate-pulse bg-muted-foreground" : "bg-foreground"}`} />
-          <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
-            {isLoading ? "THINKING" : "ONLINE"}
-          </span>
         </div>
       </div>
 
@@ -434,7 +506,7 @@ export function ChatPanel({
             {onOpenSettings && (
               <button
                 onClick={onOpenSettings}
-                className="inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground transition-colors hover:bg-accent"
+                className="inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-foreground transition-colors hover:bg-accent"
               >
                 <Wrench className="h-3 w-3" />
                 Fix
@@ -446,7 +518,7 @@ export function ChatPanel({
 
       {isOnboardingActive && (
         <div className="border-b border-border bg-card px-4 py-3">
-          <div className="mb-2 flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+          <div className="mb-2 flex items-center justify-between text-[11px] uppercase tracking-wide text-muted-foreground">
             <span>Onboarding Progress</span>
             <span>
               {introAnswered}/{introTotal}
@@ -468,29 +540,65 @@ export function ChatPanel({
       <div className="flex-1 overflow-y-auto px-4 py-3">
         {messages.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-            <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground/60">
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground/60">
               Begin Conversation
             </div>
             <div className="max-w-[240px] text-[11px] leading-relaxed text-muted-foreground/40">
               Share your thoughts, feelings, or whatever is on your mind. I am here to listen and understand.
             </div>
+            <div className="mt-1 hidden max-w-[320px] text-[11px] leading-relaxed text-muted-foreground/50 md:block">
+              <span className="text-muted-foreground/70">←</span> Camera (left) for mood-aware replies. Empathy map (right) <span className="text-muted-foreground/70">→</span> updates as you talk.
+            </div>
             <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
-              {quickPrompts.map((prompt, index) => (
-                <button
-                  key={prompt}
-                  onClick={() => applyQuickPrompt(index)}
-                  className="rounded border border-border bg-card px-2.5 py-1 text-[11px] text-muted-foreground transition-colors hover:border-muted-foreground/50 hover:text-foreground"
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                  key={promptSeed}
+                  initial={settings.accessibilityMode ? { opacity: 0 } : { opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={settings.accessibilityMode ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                  transition={{ duration: 0.2 }}
+                  className="flex flex-wrap items-center justify-center gap-2"
                 >
-                  {prompt}
-                </button>
-              ))}
+                  {quickPrompts.map((prompt, index) => (
+                    <button
+                      key={prompt}
+                      onClick={() => applyQuickPrompt(index)}
+                      className="rounded border border-border bg-card px-2.5 py-1 text-[11px] text-muted-foreground transition-colors hover:border-muted-foreground/50 hover:text-foreground"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </motion.div>
+              </AnimatePresence>
+              <button
+                onClick={refreshPrompts}
+                aria-label="Refresh prompt suggestions"
+                title="Try different suggestions"
+                className="flex h-6 w-6 items-center justify-center rounded border border-border bg-card text-muted-foreground transition-colors hover:border-muted-foreground/50 hover:text-foreground"
+              >
+                <RefreshCw className="h-3 w-3" />
+              </button>
             </div>
           </div>
         )}
 
+        <AnimatePresence initial={false}>
         {messages.map((msg) => (
-          <div
+          <motion.div
             key={msg.id}
+            layout
+            initial={
+              settings.accessibilityMode
+                ? { opacity: 0 }
+                : { opacity: 0, y: 12, x: msg.sender === "user" ? 16 : -16, scale: 0.96 }
+            }
+            animate={{ opacity: 1, y: 0, x: 0, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.18 } }}
+            transition={
+              settings.accessibilityMode
+                ? { duration: 0.15 }
+                : { type: "spring", stiffness: 320, damping: 28, mass: 0.6 }
+            }
             className={`mb-3 flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
           >
             <div
@@ -502,21 +610,21 @@ export function ChatPanel({
             >
               {msg.sender === "ai" && (
                 <div className="mb-1 flex items-center gap-2">
-                  <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                  <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
                     {settings.name}
                   </span>
                   {msg.mode === "fallback" && (
-                    <span className="rounded border border-amber-500/50 bg-amber-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-amber-300">
+                    <span className="rounded border border-amber-500/50 bg-amber-500/10 px-1.5 py-0.5 text-[11px] uppercase tracking-wide text-amber-300">
                       local fallback
                     </span>
                   )}
                   {msg.mode === "mcp-fallback" && (
-                    <span className="rounded border border-cyan-500/50 bg-cyan-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-cyan-300">
+                    <span className="rounded border border-cyan-500/50 bg-cyan-500/10 px-1.5 py-0.5 text-[11px] uppercase tracking-wide text-cyan-300">
                       mcp fallback
                     </span>
                   )}
                   {msg.emotion && (
-                    <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground/60">
+                    <span className="text-[11px] uppercase tracking-wide text-muted-foreground/60">
                       [{msg.emotion}]
                     </span>
                   )}
@@ -524,7 +632,7 @@ export function ChatPanel({
               )}
               <p className="text-[12px] leading-relaxed">{msg.text}</p>
               <div className={`mt-1 flex items-center gap-2 ${msg.sender === "user" ? "justify-end" : "justify-start"}`}>
-                <span className="text-[10px] text-muted-foreground/50">
+                <span className="text-[11px] text-muted-foreground/50">
                   {msg.timestamp.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
                 </span>
                 {msg.sender === "ai" && (
@@ -554,36 +662,81 @@ export function ChatPanel({
                 )}
               </div>
             </div>
-          </div>
+          </motion.div>
         ))}
+        </AnimatePresence>
 
-        {isLoading && (
-          <div className="mb-3 flex justify-start">
-            <div className="border border-border bg-card px-3 py-2">
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                  {settings.name} is thinking
-                </span>
-                <span className="inline-flex gap-0.5">
-                  {[0, 1, 2].map((i) => (
-                    <span
-                      key={i}
-                      className="inline-block h-1 w-1 rounded-full bg-muted-foreground"
-                      style={{
-                        animation: `typing-dots 1.2s ${i * 0.2}s ease-in-out infinite`,
-                      }}
-                    />
-                  ))}
-                </span>
+        <AnimatePresence>
+          {isLoading && (
+            <motion.div
+              key="thinking-indicator"
+              layout
+              initial={settings.accessibilityMode ? { opacity: 0 } : { opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, transition: { duration: 0.15 } }}
+              transition={settings.accessibilityMode ? { duration: 0.15 } : { type: "spring", stiffness: 300, damping: 26 }}
+              className="mb-3 flex justify-start"
+            >
+              <div className="border border-border bg-card px-3 py-2">
+                <div className="flex items-center gap-1">
+                  <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                    {settings.name} is thinking
+                  </span>
+                  <span className="inline-flex gap-0.5">
+                    {[0, 1, 2].map((i) => (
+                      <motion.span
+                        key={i}
+                        className="inline-block h-1 w-1 rounded-full bg-muted-foreground"
+                        animate={
+                          settings.accessibilityMode
+                            ? { opacity: 1 }
+                            : { opacity: [0.3, 1, 0.3], y: [0, -2, 0] }
+                        }
+                        transition={
+                          settings.accessibilityMode
+                            ? { duration: 0 }
+                            : { duration: 1.1, repeat: Infinity, delay: i * 0.18, ease: "easeInOut" }
+                        }
+                      />
+                    ))}
+                  </span>
+                </div>
               </div>
-            </div>
-          </div>
-        )}
+            </motion.div>
+          )}
+        </AnimatePresence>
         <div ref={messagesEndRef} />
       </div>
 
       {/* Input Area */}
       <div className="relative border-t border-border px-4 py-3">
+        <AnimatePresence>
+          {harshSignal.flagged && (
+            <motion.div
+              key={harshSignal.kind}
+              initial={settings.accessibilityMode ? { opacity: 0 } : { opacity: 0, y: 6, height: 0 }}
+              animate={settings.accessibilityMode ? { opacity: 1 } : { opacity: 1, y: 0, height: "auto" }}
+              exit={settings.accessibilityMode ? { opacity: 0 } : { opacity: 0, y: 6, height: 0 }}
+              transition={{ duration: 0.18 }}
+              className="mb-2 overflow-hidden"
+            >
+              <div
+                role="status"
+                aria-live="polite"
+                className={`flex items-start gap-2 rounded border px-2.5 py-1.5 text-[11px] leading-snug ${
+                  harshSignal.kind === "violent-ideation"
+                    ? "border-rose-500/40 bg-rose-500/10 text-rose-200"
+                    : harshSignal.kind === "self-directed"
+                      ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
+                      : "border-sky-500/30 bg-sky-500/10 text-sky-200"
+                }`}
+              >
+                <HeartHandshake className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                <span>{harshSignal.message}</span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <div className="flex items-center gap-2">
           <button
             onClick={toggleListening}
@@ -632,14 +785,14 @@ export function ChatPanel({
         </div>
 
         {settings.accessibilityMode && (
-          <div className="mt-2 text-[10px] text-muted-foreground/70">
+          <div className="mt-2 text-[11px] text-muted-foreground/70">
             Shortcuts: <span className="text-foreground">Alt+1/2/3</span> quick prompts, <span className="text-foreground">/</span> focus input, <span className="text-foreground">?</span> help.
           </div>
         )}
 
         {settings.accessibilityMode && showShortcutHelp && (
           <div className="absolute bottom-14 right-4 z-20 w-72 rounded border border-border bg-card p-3 text-[11px] text-muted-foreground shadow-lg">
-            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-foreground">Keyboard Shortcuts</div>
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-foreground">Keyboard Shortcuts</div>
             <div className="space-y-1">
               <div><span className="text-foreground">Alt+1 / Alt+2 / Alt+3</span> - Insert quick prompt</div>
               <div><span className="text-foreground">/</span> - Focus message input</div>

@@ -1,7 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { CheckCircle2, CircleAlert, Loader2, RefreshCw } from "lucide-react"
+import Link from "next/link"
+import { CheckCircle2, CircleAlert, Copy, Download, Loader2, RefreshCw } from "lucide-react"
 import type { CompanionSettings } from "@/lib/companion-types"
 
 type CheckState = "ok" | "warning" | "pending"
@@ -38,7 +39,7 @@ function StatusLine({ label, state, detail }: { label: string; state: CheckState
   return (
     <div className="flex items-start justify-between gap-3 border-b border-border/60 py-2 last:border-b-0">
       <div className="flex-1">
-        <div className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">{label}</div>
+        <div className="text-xs font-semibold uppercase tracking-wide text-foreground">{label}</div>
         <div className="mt-1 text-[11px] text-muted-foreground">{detail}</div>
       </div>
       <div className="pt-0.5">
@@ -54,13 +55,54 @@ function StatusLine({ label, state, detail }: { label: string; state: CheckState
   )
 }
 
+function CommandRow({
+  label,
+  command,
+  onCopy,
+  copied,
+}: {
+  label: string
+  command: string
+  onCopy: () => void
+  copied: boolean
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="flex items-center gap-2">
+        <code className="flex-1 truncate rounded border border-border bg-background px-2 py-1 text-[11px] text-foreground">
+          {command}
+        </code>
+        <button
+          onClick={onCopy}
+          className="inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-foreground transition-colors hover:bg-accent"
+        >
+          <Copy className="h-3 w-3" />
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function SetupChecklist({ settings, runtime }: SetupChecklistProps) {
   const [checkingOllama, setCheckingOllama] = useState(false)
   const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus | null>(null)
   const [storageAvailableGb, setStorageAvailableGb] = useState<number | null>(null)
   const [checkingWebGpu, setCheckingWebGpu] = useState(false)
   const [webGpuDiagnostic, setWebGpuDiagnostic] = useState<WebGpuDiagnostic | null>(null)
+  const [copiedCommand, setCopiedCommand] = useState("")
   const isStaticExport = process.env.NEXT_PUBLIC_STATIC_EXPORT === "true"
+
+  const copyCommand = useCallback(async (command: string) => {
+    try {
+      await navigator.clipboard.writeText(command)
+      setCopiedCommand(command)
+      window.setTimeout(() => setCopiedCommand(""), 1400)
+    } catch {
+      setCopiedCommand("")
+    }
+  }, [])
 
   const browserChecks = useMemo(() => {
     if (typeof window === "undefined") {
@@ -334,7 +376,7 @@ export function SetupChecklist({ settings, runtime }: SetupChecklistProps) {
 
           {!browserChecks.webGpu && (
             <div className="mt-2 rounded border border-border bg-background p-3 text-[11px] text-muted-foreground">
-              <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-foreground">
                 WebGPU Quick Fix
               </div>
               <div>1. Chrome/Edge: open chrome://settings/system and enable graphics acceleration.</div>
@@ -366,7 +408,7 @@ export function SetupChecklist({ settings, runtime }: SetupChecklistProps) {
           />
 
           <div className="mt-2 rounded border border-border bg-background p-3 text-[11px] text-muted-foreground">
-            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-foreground">
               No-Install Browser LLM Sites
             </div>
             <div>
@@ -392,7 +434,7 @@ export function SetupChecklist({ settings, runtime }: SetupChecklistProps) {
           </div>
 
           <div className="mt-2 rounded border border-border bg-background p-3 text-[11px] text-muted-foreground">
-            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-foreground">
               Official WebLLM Model Repositories
             </div>
             <div>
@@ -463,7 +505,7 @@ export function SetupChecklist({ settings, runtime }: SetupChecklistProps) {
 
           {webGpuDiagnostic && (
             <div className="mt-3 rounded border border-border bg-background p-3 text-[11px] text-muted-foreground">
-              <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-foreground">
                 WebGPU Diagnostic Result
               </div>
               <div>API Exposed: {webGpuDiagnostic.hasNavigatorGpu ? "Yes" : "No"}</div>
@@ -517,6 +559,93 @@ export function SetupChecklist({ settings, runtime }: SetupChecklistProps) {
             }
           />
 
+          {(() => {
+            const phase: "stopped" | "no-model" | "ready" = ollamaStatus?.reachable === false || ollamaStatus === null
+              ? "stopped"
+              : ollamaStatus?.modelAvailable
+                ? "ready"
+                : "no-model"
+            const pullCmd = `ollama pull ${settings.ollamaModel}`
+            const runCmd = `ollama run ${settings.ollamaModel}`
+            const startCmd = "ollama serve"
+
+            return (
+              <div className="mt-3 space-y-3 rounded border border-border bg-background p-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-foreground">
+                    {phase === "stopped" && "Daemon not reachable"}
+                    {phase === "no-model" && "Model not installed"}
+                    {phase === "ready" && "Lifecycle commands"}
+                  </div>
+                  <span
+                    className={`text-[11px] uppercase tracking-wide ${
+                      phase === "ready"
+                        ? "text-emerald-500"
+                        : phase === "no-model"
+                          ? "text-amber-500"
+                          : "text-rose-400"
+                    }`}
+                  >
+                    {phase === "ready" ? "ready" : phase === "no-model" ? "needs pull" : "needs start"}
+                  </span>
+                </div>
+
+                {phase === "stopped" && (
+                  <>
+                    <p className="text-[11px] text-muted-foreground">
+                      Browsers cannot start the Ollama daemon directly. Run this in your terminal once, then click Verify.
+                    </p>
+                    <CommandRow
+                      label="Start daemon"
+                      command={startCmd}
+                      copied={copiedCommand === startCmd}
+                      onCopy={() => copyCommand(startCmd)}
+                    />
+                  </>
+                )}
+
+                {phase === "no-model" && (
+                  <CommandRow
+                    label={`Install ${settings.ollamaModel}`}
+                    command={pullCmd}
+                    copied={copiedCommand === pullCmd}
+                    onCopy={() => copyCommand(pullCmd)}
+                  />
+                )}
+
+                {phase === "ready" && (
+                  <>
+                    <CommandRow
+                      label="Run interactively"
+                      command={runCmd}
+                      copied={copiedCommand === runCmd}
+                      onCopy={() => copyCommand(runCmd)}
+                    />
+                    <CommandRow
+                      label={`Update / refresh weights for ${settings.ollamaModel}`}
+                      command={pullCmd}
+                      copied={copiedCommand === pullCmd}
+                      onCopy={() => copyCommand(pullCmd)}
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Re-running pull periodically pulls the latest tag if the model has been updated upstream.
+                    </p>
+                  </>
+                )}
+
+                {(phase === "stopped" || phase === "no-model") && (
+                  <Link
+                    href="/ollama-install"
+                    className="inline-flex items-center gap-2 rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-semibold text-emerald-400 transition-colors hover:bg-emerald-500/20"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Install your own private LLM
+                  </Link>
+                )}
+              </div>
+            )
+          })()}
+
           <button
             onClick={checkOllama}
             disabled={checkingOllama}
@@ -526,6 +655,16 @@ export function SetupChecklist({ settings, runtime }: SetupChecklistProps) {
             Verify Ollama
           </button>
         </>
+      )}
+
+      {settings.provider === "webllm" && !browserChecks.webGpu && (
+        <Link
+          href="/ollama-install"
+          className="mt-3 inline-flex items-center gap-2 rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-semibold text-emerald-400 transition-colors hover:bg-emerald-500/20"
+        >
+          <Download className="h-3.5 w-3.5" />
+          WebGPU unavailable — install Ollama instead
+        </Link>
       )}
     </div>
   )

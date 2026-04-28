@@ -1,4 +1,6 @@
-import type { CompanionSettings, Emotion, EmpathyProfile, Personality, ToneMode } from "@/lib/companion-types"
+import { detectEmotion } from "../companion-types"
+import type { CompanionSettings, Emotion, EmpathyProfile, Personality, ToneMode } from "../companion-types"
+import { selectFromQABank } from "./qa-bank"
 
 const NEGATIVE_OR_DISAGREEMENT_PATTERN = /\b(no|nope|nah|not really|don't|dont|can't|cant|wrong|not true|incorrect|doesn't|doesnt)\b/i
 const LOW_CONFIDENCE_PATTERN = /\b(idk|i don't know|i dont know|dont know|not sure|unsure|maybe)\b/i
@@ -197,36 +199,24 @@ export function buildLocalCompanionReply(
     return "That sounds exhausting. Let's make this simple: what failed first for you right now - model startup, message quality, camera, or audio?"
   }
 
-  const reflective =
-    sentimentScore < -0.3
-      ? [
-          "That sounds heavy, and I appreciate you staying with it.",
-          "I can feel the weight in what you just said.",
-          "There's a lot underneath that, and you're not alone with it.",
-        ]
-      : sentimentScore > 0.3
-        ? [
-            "I can hear a little momentum in that.",
-            "There is energy in the way you are naming this.",
-            "That sounds like an important shift.",
-          ]
-        : [
-            "I hear you.",
-            "That makes sense, and I'm with you in it.",
-            "I am with you.",
-          ]
+  const understanding = inferUserUnderstanding(input)
+  const emotion = detectEmotion(input)
+  const seed =
+    Math.abs(input.length) * 31 +
+    Math.abs(Math.round(sentimentScore * 100)) * 7 +
+    understanding.needs.length
 
-  const bridges = [
-    "Let's stay with this one layer deeper.",
-    "We can explore this gently from here.",
-    "You don't have to rush this - we can unpack it step by step.",
-  ]
+  const picked = selectFromQABank(
+    { emotion, understanding, sentimentScore },
+    seed
+  )
 
-  const prompt = articulateOpenPrompt(suggestedQuestion || "What part of this feels most true right now")
-  const idx = Math.abs(input.trim().length || 1) % reflective.length
-  const bridgeIdx = Math.abs((input.trim().length || 1) + 1) % bridges.length
+  if (suggestedQuestion && suggestedQuestion.trim()) {
+    const tailored = articulateOpenPrompt(suggestedQuestion)
+    return `${picked.reflection} ${tailored}`
+  }
 
-  return `${reflective[idx]} ${bridges[bridgeIdx]} ${prompt}`
+  return `${picked.reflection} ${picked.question}`
 }
 
 export function ensureNonRepeatingFallback(nextText: string, previousText: string, suggestedQuestion: string) {

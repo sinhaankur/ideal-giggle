@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useMemo, useState } from "react"
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion"
 
 type OrbPhase = "idle" | "composing" | "engaged" | "thinking" | "listening" | "speaking"
 
@@ -27,6 +28,7 @@ export function AIOrb({
   const animationRef = useRef<number>(0)
   const timeRef = useRef(0)
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false)
+  const systemReducedMotion = useReducedMotion()
 
   const resolvedPhase: OrbPhase =
     phase || (isSpeaking ? "speaking" : isListening ? "listening" : "idle")
@@ -240,22 +242,81 @@ export function AIOrb({
     }
   }, [emotion, emotionConfig, normalizedActivity, prefersReducedMotion, reducedMotionEnabled, resolvedPhase])
 
+  const motionDisabled = (reducedMotionEnabled && prefersReducedMotion) || systemReducedMotion === true
+
+  const wrapperPulse = motionDisabled
+    ? { scale: 1 }
+    : {
+        scale:
+          resolvedPhase === "speaking"
+            ? [1, 1.035, 1]
+            : resolvedPhase === "listening"
+              ? [1, 1.025, 1]
+              : resolvedPhase === "thinking"
+                ? [1, 1.018, 1]
+                : resolvedPhase === "engaged"
+                  ? [1, 1.012, 1]
+                  : 1,
+      }
+
+  const pulseDuration =
+    resolvedPhase === "speaking"
+      ? 1.6
+      : resolvedPhase === "listening"
+        ? 2.2
+        : resolvedPhase === "thinking"
+          ? 2.6
+          : 3.4
+
   return (
-    <div className="relative flex flex-col items-center justify-center">
-      <canvas
-        ref={canvasRef}
-        className="w-full aspect-square max-w-[280px]"
-        style={{ imageRendering: "auto" }}
-        aria-label={`AI companion visualization showing ${emotion} emotion`}
-      />
+    <motion.div
+      className="relative flex flex-col items-center justify-center"
+      initial={motionDisabled ? false : { opacity: 0, scale: 0.92 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.6, ease: [0.22, 0.9, 0.32, 1] }}
+    >
+      <motion.div
+        className="w-full max-w-[280px]"
+        animate={wrapperPulse}
+        transition={{
+          duration: pulseDuration,
+          repeat: motionDisabled ? 0 : Infinity,
+          ease: "easeInOut",
+        }}
+      >
+        <canvas
+          ref={canvasRef}
+          className="w-full aspect-square"
+          style={{ imageRendering: "auto" }}
+          aria-label={`AI companion visualization showing ${emotion} emotion`}
+        />
+      </motion.div>
       <div className="absolute bottom-4 flex flex-col items-center gap-1">
-        <span className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">
-          {resolvedPhase.toUpperCase()}
-        </span>
-        <span className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground/60">
-          {emotion}
-        </span>
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.span
+            key={resolvedPhase}
+            className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground"
+            initial={motionDisabled ? false : { opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={motionDisabled ? { opacity: 0 } : { opacity: 0, y: -4 }}
+            transition={{ duration: 0.25 }}
+          >
+            {resolvedPhase.toUpperCase()}
+          </motion.span>
+        </AnimatePresence>
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.span
+            key={emotion}
+            className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground/60"
+            initial={motionDisabled ? false : { opacity: 0, y: 3 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={motionDisabled ? { opacity: 0 } : { opacity: 0, y: -3 }}
+            transition={{ duration: 0.25, delay: 0.05 }}
+          >
+            {emotion}
+          </motion.span>
+        </AnimatePresence>
       </div>
-    </div>
+    </motion.div>
   )
 }

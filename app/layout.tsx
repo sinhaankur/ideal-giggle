@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 
 import './globals.css'
+import { ServiceWorkerRegister } from '@/components/sw-register'
 
 const interFont = Inter({
   subsets: ['latin'],
@@ -12,6 +13,7 @@ const interFont = Inter({
 export const metadata: Metadata = {
   title: 'EMPATHEIA -- AI Companion',
   description: 'An empathetic AI companion that sees, listens, and understands.',
+  manifest: '/manifest.webmanifest',
 }
 
 export const viewport: Viewport = {
@@ -25,7 +27,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={interFont.variable}>
-      <body className="font-sans antialiased">{children}</body>
+      <body className="font-sans antialiased">
+        <ServiceWorkerRegister />
+        {children}
+      </body>
     </html>
   )
 }
