@@ -6,6 +6,16 @@ import Link from "next/link"
 import { useChat } from "@ai-sdk/react"
 import { Settings, Download } from "lucide-react"
 import { ChatPanel } from "@/components/chat-panel"
+import { VaultModal, type VaultModalMode } from "@/components/vault-modal"
+import {
+  deriveVaultKey,
+  encryptWithKey,
+  unlockVault,
+  type VaultEnvelope,
+  type VaultKeyHandle,
+  type VaultPayload,
+} from "@/lib/vault/encrypted-profile"
+import { clearStoredVault, loadStoredVault, saveStoredVault } from "@/lib/vault/vault-store"
 import {
   DEFAULT_SETTINGS,
   DEFAULT_EMPATHY_PROFILE,
@@ -40,17 +50,11 @@ const CameraPanel = dynamic(() => import("@/components/camera-panel").then((mod)
   ssr: false,
 })
 
-const EmpathyPanel = dynamic(() => import("@/components/empathy-panel").then((mod) => mod.EmpathyPanel), {
-  ssr: false,
-})
+const EmpathyPanel = dynamic(() => import("@/components/empathy-panel").then((mod) => mod.EmpathyPanel))
 
-const SettingsPanel = dynamic(() => import("@/components/settings-panel").then((mod) => mod.SettingsPanel), {
-  ssr: false,
-})
+const SettingsPanel = dynamic(() => import("@/components/settings-panel").then((mod) => mod.SettingsPanel))
 
-const SetupChecklist = dynamic(() => import("@/components/setup-checklist").then((mod) => mod.SetupChecklist), {
-  ssr: false,
-})
+const SetupChecklist = dynamic(() => import("@/components/setup-checklist").then((mod) => mod.SetupChecklist))
 
 function applyDataUpdateBlock(existing: EmpathyData, update: Partial<Record<keyof EmpathyData, string>>): EmpathyData {
   const next: EmpathyData = {
@@ -512,6 +516,8 @@ function buildSystemPrompt(
 export default function CompanionApp() {
   const agreementStorageKey = "empatheia_user_agreement_v1"
   const quickPresetStorageKey = "empatheia_quick_preset_v1"
+  const providerExplicitStorageKey = "empatheia_provider_explicit_v1"
+  const ollamaAutoDetectDismissedKey = "empatheia_ollama_autodetect_dismissed_v1"
   const chatApi = process.env.NEXT_PUBLIC_CHAT_API_URL || "/api/chat"
 
   const [settings, setSettings] = useState<CompanionSettings>(DEFAULT_SETTINGS)
@@ -552,6 +558,16 @@ export default function CompanionApp() {
   const [webLlmXpStage, setWebLlmXpStage] = useState<"idle" | "echo-sync" | "shadow-prefetch" | "shadow-unlocked">("idle")
   const [shadowPrefetchProgress, setShadowPrefetchProgress] = useState("")
   const [llmConnectionError, setLlmConnectionError] = useState("")
+  const [autoDetectedOllamaModel, setAutoDetectedOllamaModel] = useState<string | null>(null)
+  const ollamaProbeRanRef = useRef(false)
+  const [vaultStatus, setVaultStatus] = useState<"no-vault" | "locked" | "unlocked">("no-vault")
+  const [vaultModalMode, setVaultModalMode] = useState<VaultModalMode | null>(null)
+  const [vaultModalError, setVaultModalError] = useState("")
+  const [vaultModalBusy, setVaultModalBusy] = useState(false)
+  const [vaultLastSavedAt, setVaultLastSavedAt] = useState<number | null>(null)
+  const vaultKeyHandleRef = useRef<VaultKeyHandle | null>(null)
+  const pendingVaultEnvelopeRef = useRef<VaultEnvelope | null>(null)
+  const vaultAutoSaveTimerRef = useRef<number | null>(null)
 
   const webLlmMessagesRef = useRef<Message[]>([])
   const empathyDataRef = useRef<EmpathyData>({
@@ -590,6 +606,252 @@ export default function CompanionApp() {
 
     setShowQuickStartModal(true)
   }, [agreementStorageKey, quickPresetStorageKey])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if (!hasAgreed) return
+    if (ollamaProbeRanRef.current) return
+    ollamaProbeRanRef.current = true
+
+    const explicit = window.localStorage.getItem(providerExplicitStorageKey) === "true"
+    const dismissed = window.localStorage.getItem(ollamaAutoDetectDismissedKey) === "true"
+    if (explicit && dismissed) return
+
+    const controller = new AbortController()
+    const timeout = window.setTimeout(() => controller.abort(), 2500)
+
+    const probe = async () => {
+      let reachable = false
+      let pickedModel: string | null = null
+
+      const tryEndpoint = async () => {
+        try {
+          const response = await fetch(
+            `/api/ollama-status?baseUrl=${encodeURIComponent(settings.ollamaBaseUrl)}&model=${encodeURIComponent(settings.ollamaModel)}`,
+            { signal: controller.signal, cache: "no-store" }
+          )
+          if (!response.ok) return false
+          const data = await response.json()
+          if (data?.reachable) {
+            reachable = true
+            if (data.modelAvailable) {
+              pickedModel = settings.ollamaModel
+            }
+            return true
+          }
+          return false
+        } catch {
+          return false
+        }
+      }
+
+      const tryDirect = async () => {
+        try {
+          const base = settings.ollamaBaseUrl.replace(/\/$/, "")
+          const tagsUrl = base.endsWith("/api") ? `${base}/tags` : `${base}/api/tags`
+          const response = await fetch(tagsUrl, { signal: controller.signal, cache: "no-store" })
+          if (!response.ok) return false
+          const data = await response.json()
+          const models: Array<{ model?: string; name?: string }> = Array.isArray(data?.models) ? data.models : []
+          if (models.length === 0) return false
+          reachable = true
+          const exact = models.find((m) => (m.model || m.name || "").toLowerCase().includes(settings.ollamaModel.toLowerCase()))
+          pickedModel = (exact?.model || exact?.name) ?? (models[0].model || models[0].name) ?? null
+          return true
+        } catch {
+          return false
+        }
+      }
+
+      const ok = (await tryEndpoint()) || (await tryDirect())
+      window.clearTimeout(timeout)
+      if (!ok || !reachable) return
+
+      setAutoDetectedOllamaModel(pickedModel || settings.ollamaModel)
+
+      if (!explicit) {
+        setSettings((prev) => ({
+          ...prev,
+          provider: "ollama",
+          ollamaModel: pickedModel || prev.ollamaModel,
+        }))
+      }
+    }
+
+    probe()
+
+    return () => {
+      controller.abort()
+      window.clearTimeout(timeout)
+    }
+  }, [hasAgreed, providerExplicitStorageKey, ollamaAutoDetectDismissedKey, settings.ollamaBaseUrl, settings.ollamaModel])
+
+  // Vault: detect a stored vault on first load and prompt to unlock.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if (!hasAgreed) return
+    const stored = loadStoredVault()
+    if (!stored) {
+      setVaultStatus("no-vault")
+      return
+    }
+    setVaultStatus("locked")
+    pendingVaultEnvelopeRef.current = stored
+    setVaultModalError("")
+    setVaultModalBusy(false)
+    setVaultModalMode("unlock")
+  }, [hasAgreed])
+
+  const closeVaultModal = useCallback(() => {
+    setVaultModalMode(null)
+    setVaultModalError("")
+    setVaultModalBusy(false)
+  }, [])
+
+  const handleVaultUploadEnvelope = useCallback((envelope: VaultEnvelope) => {
+    pendingVaultEnvelopeRef.current = envelope
+    setVaultStatus("locked")
+    setVaultModalError("")
+    setVaultModalBusy(false)
+    setVaultModalMode("unlock")
+  }, [])
+
+  const writeVaultEnvelopeToStorage = useCallback((envelopeJson: string) => {
+    saveStoredVault(envelopeJson)
+    setVaultLastSavedAt(Date.now())
+  }, [])
+
+  const downloadEnvelope = useCallback((envelopeJson: string) => {
+    const blob = new Blob([envelopeJson], { type: "application/json" })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = `empatheia-vault-${new Date().toISOString().slice(0, 10)}.json`
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }, [])
+
+  const handleVaultModalSubmit = useCallback(
+    async (passphrase: string) => {
+      if (!vaultModalMode) return
+      setVaultModalBusy(true)
+      setVaultModalError("")
+
+      try {
+        if (vaultModalMode === "unlock") {
+          const envelope = pendingVaultEnvelopeRef.current
+          if (!envelope) {
+            throw new Error("No vault to unlock")
+          }
+          const { payload, handle } = await unlockVault(envelope, passphrase)
+          vaultKeyHandleRef.current = handle
+          setEmpathyProfile(payload.profile)
+          setEmpathyData(payload.empathyData)
+          // Persist the same envelope to localStorage in case it came from an uploaded file.
+          writeVaultEnvelopeToStorage(JSON.stringify(envelope, null, 2))
+          setVaultStatus("unlocked")
+          pendingVaultEnvelopeRef.current = null
+          closeVaultModal()
+        } else if (vaultModalMode === "create") {
+          const handle = await deriveVaultKey(passphrase)
+          vaultKeyHandleRef.current = handle
+          const bundle: VaultPayload = {
+            profile: empathyProfile,
+            empathyData,
+            exportedAt: new Date().toISOString(),
+          }
+          const envelopeJson = await encryptWithKey(bundle, handle)
+          writeVaultEnvelopeToStorage(envelopeJson)
+          downloadEnvelope(envelopeJson)
+          setVaultStatus("unlocked")
+          closeVaultModal()
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Operation failed"
+        setVaultModalError(message)
+        setVaultModalBusy(false)
+      }
+    },
+    [vaultModalMode, empathyProfile, empathyData, closeVaultModal, downloadEnvelope, writeVaultEnvelopeToStorage]
+  )
+
+  const handleVaultModalConfirm = useCallback(() => {
+    if (vaultModalMode === "confirm-clear") {
+      clearStoredVault()
+      vaultKeyHandleRef.current = null
+      pendingVaultEnvelopeRef.current = null
+      setVaultStatus("no-vault")
+      setVaultLastSavedAt(null)
+    } else if (vaultModalMode === "confirm-lock") {
+      vaultKeyHandleRef.current = null
+      setVaultStatus("locked")
+    }
+    closeVaultModal()
+  }, [vaultModalMode, closeVaultModal])
+
+  const requestVaultLock = useCallback(() => {
+    setVaultModalError("")
+    setVaultModalBusy(false)
+    setVaultModalMode("confirm-lock")
+  }, [])
+
+  const requestVaultClear = useCallback(() => {
+    setVaultModalError("")
+    setVaultModalBusy(false)
+    setVaultModalMode("confirm-clear")
+  }, [])
+
+  // Auto-save: when unlocked, encrypt + persist any change to profile or empathy map.
+  useEffect(() => {
+    if (vaultStatus !== "unlocked") return
+    const handle = vaultKeyHandleRef.current
+    if (!handle) return
+
+    if (vaultAutoSaveTimerRef.current !== null) {
+      window.clearTimeout(vaultAutoSaveTimerRef.current)
+    }
+
+    vaultAutoSaveTimerRef.current = window.setTimeout(async () => {
+      try {
+        const bundle: VaultPayload = {
+          profile: empathyProfile,
+          empathyData,
+          exportedAt: new Date().toISOString(),
+        }
+        const envelopeJson = await encryptWithKey(bundle, handle)
+        writeVaultEnvelopeToStorage(envelopeJson)
+      } catch {
+        // Auto-save failures are silent (key may have been cleared mid-flight).
+      }
+    }, 1000)
+
+    return () => {
+      if (vaultAutoSaveTimerRef.current !== null) {
+        window.clearTimeout(vaultAutoSaveTimerRef.current)
+        vaultAutoSaveTimerRef.current = null
+      }
+    }
+  }, [vaultStatus, empathyProfile, empathyData, writeVaultEnvelopeToStorage])
+
+  const dismissOllamaBanner = useCallback(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(ollamaAutoDetectDismissedKey, "true")
+    }
+    setAutoDetectedOllamaModel(null)
+  }, [ollamaAutoDetectDismissedKey])
+
+  const handleSettingsChange = useCallback<Dispatch<SetStateAction<CompanionSettings>>>(
+    (update) => {
+      setSettings((prev) => {
+        const next = typeof update === "function" ? (update as (s: CompanionSettings) => CompanionSettings)(prev) : update
+        if (typeof window !== "undefined" && next.provider !== prev.provider) {
+          window.localStorage.setItem(providerExplicitStorageKey, "true")
+        }
+        return next
+      })
+    },
+    [providerExplicitStorageKey]
+  )
 
   const handleChooseQuickPreset = useCallback(
     (preset: QuickPresetId | "default") => {
@@ -1627,27 +1889,38 @@ export default function CompanionApp() {
     ]
   )
 
-  const handleProfileImport = useCallback((profile: EmpathyProfile) => {
-    setEmpathyProfile(profile)
-  }, [])
+  const handleProfileImport = useCallback(
+    (profile: EmpathyProfile, importedEmpathyData?: EmpathyData) => {
+      setEmpathyProfile(profile)
+      if (importedEmpathyData) {
+        setEmpathyData(importedEmpathyData)
+      }
+    },
+    []
+  )
 
-  const handleProfileExport = useCallback(() => {
-    const bundle = {
-      profile: empathyProfile,
-      empathyData,
-      exportedAt: new Date().toISOString(),
+  const handleProfileExport = useCallback(async () => {
+    // If vault is already unlocked, re-encrypt with cached key and download — no prompt.
+    const handle = vaultKeyHandleRef.current
+    if (handle && vaultStatus === "unlocked") {
+      try {
+        const bundle: VaultPayload = {
+          profile: empathyProfile,
+          empathyData,
+          exportedAt: new Date().toISOString(),
+        }
+        const envelopeJson = await encryptWithKey(bundle, handle)
+        writeVaultEnvelopeToStorage(envelopeJson)
+        downloadEnvelope(envelopeJson)
+        return
+      } catch {
+        // fall through to create flow
+      }
     }
-
-    const blob = new Blob([JSON.stringify(bundle, null, 2)], {
-      type: "application/json",
-    })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement("a")
-    anchor.href = url
-    anchor.download = `empathy-profile-${new Date().toISOString().slice(0, 10)}.json`
-    anchor.click()
-    URL.revokeObjectURL(url)
-  }, [empathyProfile, empathyData])
+    setVaultModalError("")
+    setVaultModalBusy(false)
+    setVaultModalMode("create")
+  }, [empathyProfile, empathyData, vaultStatus, downloadEnvelope, writeVaultEnvelopeToStorage])
 
   const hasDownloadableError =
     Boolean(webLlmError) || Boolean(llmConnectionError) || (settings.provider === "webllm" && webLlmStatus === "error")
@@ -1895,9 +2168,6 @@ export default function CompanionApp() {
             <span className="text-lg font-bold text-foreground">
               EMPATHEIA
             </span>
-            <span className="text-xs text-muted-foreground">
-              AI Companion System v1.0
-            </span>
           </div>
         </div>
 
@@ -1941,11 +2211,12 @@ export default function CompanionApp() {
           </div>
           <Link
             href="/ollama-install"
-            className="flex items-center gap-2 rounded border border-foreground bg-foreground px-3 py-2 text-sm font-medium text-background transition-colors hover:bg-foreground/90"
+            className="flex items-center gap-2 rounded border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
             aria-label="Open install and run guide"
+            title="Install your own private LLM"
           >
             <Download className="h-4 w-4" />
-            <span className="hidden md:inline">Install + Run</span>
+            <span className="hidden md:inline">Install</span>
           </Link>
           <button
             onClick={() => setShowSettings(true)}
@@ -2007,15 +2278,15 @@ export default function CompanionApp() {
                     <span className="text-foreground uppercase">{webLlmStatus}</span>
                   </div>
                   {webLlmProgress && (
-                    <div className="text-[10px] text-muted-foreground">{webLlmProgress}</div>
+                    <div className="text-[11px] text-muted-foreground">{webLlmProgress}</div>
                   )}
                   {webLlmError && (
-                    <div className="text-[10px] text-destructive">{webLlmError}</div>
+                    <div className="text-[11px] text-destructive">{webLlmError}</div>
                   )}
                   <button
                     onClick={handleInitializeWebLlm}
                     disabled={isInitializingWebLlm}
-                    className="mt-1 rounded border border-border bg-background px-2 py-1 text-[10px] font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
+                    className="mt-1 rounded border border-border bg-background px-2 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
                   >
                     {isInitializingWebLlm ? "Initializing..." : "Initialize Model"}
                   </button>
@@ -2023,10 +2294,10 @@ export default function CompanionApp() {
               )}
               {llmConnectionError && (
                 <>
-                  <div className="text-[10px] text-destructive">{llmConnectionError}</div>
+                  <div className="text-[11px] text-destructive">{llmConnectionError}</div>
                   <button
                     onClick={handleConnectLlmApi}
-                    className="mt-1 rounded border border-border bg-background px-2 py-1 text-[10px] font-medium text-foreground transition-colors hover:bg-accent"
+                    className="mt-1 rounded border border-border bg-background px-2 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent"
                   >
                     Connect LLM API
                   </button>
@@ -2036,38 +2307,18 @@ export default function CompanionApp() {
                 <div className="mt-1 flex flex-wrap gap-1">
                   <button
                     onClick={handleDownloadErrorLog}
-                    className="rounded border border-border bg-background px-2 py-1 text-[10px] font-medium text-foreground transition-colors hover:bg-accent"
+                    className="rounded border border-border bg-background px-2 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent"
                   >
                     Download Error Log
                   </button>
                   <button
                     onClick={handleCopyErrorSummary}
-                    className="rounded border border-border bg-background px-2 py-1 text-[10px] font-medium text-foreground transition-colors hover:bg-accent"
+                    className="rounded border border-border bg-background px-2 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent"
                   >
                     {errorSummaryCopiedAt ? "Copied" : "Copy Error Summary"}
                   </button>
                 </div>
               )}
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Personality</span>
-                <span className="text-foreground uppercase">{settings.personality}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Tone</span>
-                <span className="text-foreground uppercase">{settings.toneMode}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Temp</span>
-                <span className="text-foreground">{settings.temperature}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Top P</span>
-                <span className="text-foreground">{settings.topP.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Max Tokens</span>
-                <span className="text-foreground">{settings.maxOutputTokens}</span>
-              </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Emotion</span>
                 <span className="text-foreground uppercase">{currentEmotion}</span>
@@ -2087,23 +2338,6 @@ export default function CompanionApp() {
             }}
           />
 
-          {/* Decorative retro element */}
-          <div className="mt-4 border-t border-border pt-3">
-            <div className="flex items-center gap-2">
-              {[...Array(8)].map((_, i) => (
-                <div
-                  key={i}
-                  className="h-1 flex-1 bg-muted-foreground/10"
-                  style={{
-                    opacity: i < Math.ceil(8 * (currentEmotion === "neutral" ? 0.3 : 0.7)) ? 1 : 0.25,
-                  }}
-                />
-              ))}
-            </div>
-            <div className="mt-1.5 text-center text-[8px] uppercase tracking-[0.2em] text-muted-foreground/40">
-              Emotional Intensity
-            </div>
-          </div>
         </aside>
 
         {/* Center Panel - Chat */}
@@ -2112,6 +2346,19 @@ export default function CompanionApp() {
             mobilePanel === "chat" ? "block" : "hidden md:flex"
           }`}
         >
+          {autoDetectedOllamaModel && (
+            <div className="flex items-center justify-between gap-3 border-b border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-[11px] text-emerald-200">
+              <span>
+                Local Ollama detected ({autoDetectedOllamaModel}). Chat is now running on your machine.
+              </span>
+              <button
+                onClick={dismissOllamaBanner}
+                className="rounded border border-emerald-400/40 px-2 py-0.5 text-[11px] uppercase tracking-[0.12em] transition-colors hover:bg-emerald-400/20"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
           <ChatPanel
             messages={messages}
             onSendMessage={handleSendMessage}
@@ -2157,6 +2404,11 @@ export default function CompanionApp() {
             suggestedQuestion={suggestedNext.question}
             fallbackPhase={fallbackPhase}
             userUnderstanding={userUnderstandingSnapshot}
+            vaultStatus={vaultStatus}
+            vaultLastSavedAt={vaultLastSavedAt}
+            onVaultEnvelopeUpload={handleVaultUploadEnvelope}
+            onVaultLock={requestVaultLock}
+            onVaultClear={requestVaultClear}
           />
         </aside>
       </div>
@@ -2187,11 +2439,21 @@ export default function CompanionApp() {
         </span>
       </footer>
 
+      <VaultModal
+        open={vaultModalMode !== null}
+        mode={vaultModalMode || "unlock"}
+        errorMessage={vaultModalError}
+        busy={vaultModalBusy}
+        onCancel={closeVaultModal}
+        onSubmit={handleVaultModalSubmit}
+        onConfirm={handleVaultModalConfirm}
+      />
+
       {/* Settings Modal */}
       {showSettings && (
         <SettingsPanel
           settings={settings}
-          onSettingsChange={setSettings}
+          onSettingsChange={handleSettingsChange}
           onClose={() => setShowSettings(false)}
         />
       )}

@@ -58,6 +58,7 @@
     "date-fns": "4.1.0",
     "embla-carousel-react": "8.5.1",
     "face-api.js": "^0.22.2",
+    "framer-motion": "^12.38.0",
     "input-otp": "1.4.1",
     "lucide-react": "^0.544.0",
     "next": "16.1.6",
@@ -78,7 +79,6 @@
   "devDependencies": {
     "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4.1.13",
-    "@playwright/test": "^1.59.1",
     "@types/node": "^22",
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
