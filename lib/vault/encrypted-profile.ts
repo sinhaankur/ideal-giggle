@@ -2,7 +2,9 @@ import type { EmpathyProfile, EmpathyData } from "@/lib/companion-types"
 
 export const VAULT_VERSION = 1
 const KDF = "pbkdf2-sha256"
-const ITERATIONS = 250_000
+const ITERATIONS = 600_000
+const MIN_ACCEPTED_ITERATIONS = 1_000
+const MAX_ACCEPTED_ITERATIONS = 10_000_000
 const SALT_BYTES = 16
 const IV_BYTES = 12
 const KEY_BITS = 256
@@ -138,6 +140,14 @@ export async function unlockVault(
   }
   if (envelope.kdf !== KDF) {
     throw new Error(`Unsupported key derivation: ${envelope.kdf}`)
+  }
+  if (
+    typeof envelope.iter !== "number" ||
+    !Number.isFinite(envelope.iter) ||
+    envelope.iter < MIN_ACCEPTED_ITERATIONS ||
+    envelope.iter > MAX_ACCEPTED_ITERATIONS
+  ) {
+    throw new Error("Vault iteration count is out of accepted range")
   }
 
   const subtle = getSubtle()

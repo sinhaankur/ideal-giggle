@@ -1,4 +1,4 @@
-const VERSION = "v1"
+const VERSION = "v2"
 const RUNTIME_CACHE = `empatheia-runtime-${VERSION}`
 const SHELL_CACHE = `empatheia-shell-${VERSION}`
 const SHELL_URLS = ["/", "/manifest.webmanifest"]
@@ -51,8 +51,10 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          const copy = response.clone()
-          caches.open(SHELL_CACHE).then((cache) => cache.put("/", copy)).catch(() => undefined)
+          if (response && response.ok) {
+            const copy = response.clone()
+            caches.open(SHELL_CACHE).then((cache) => cache.put("/", copy)).catch(() => undefined)
+          }
           return response
         })
         .catch(() =>
