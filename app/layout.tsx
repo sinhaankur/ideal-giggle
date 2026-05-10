@@ -12,12 +12,33 @@ const interFont = Inter({
 
 export const metadata: Metadata = {
   title: 'EMPATHEIA -- AI Companion',
-  description: 'An empathetic AI companion that sees, listens, and understands.',
+  description:
+    'An empathetic AI companion that sees, listens, and understands. Runs offline with a local LLM.',
   manifest: '/manifest.webmanifest',
+  applicationName: 'EMPATHEIA',
+  appleWebApp: {
+    capable: true,
+    title: 'EMPATHEIA',
+    statusBarStyle: 'black-translucent',
+  },
+  icons: {
+    icon: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180' }],
+  },
+  formatDetection: {
+    telephone: false,
+  },
 }
 
 export const viewport: Viewport = {
   themeColor: '#0a0a0a',
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
 }
 
 export default function RootLayout({

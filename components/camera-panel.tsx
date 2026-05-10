@@ -4,6 +4,11 @@ import { useRef, useState, useEffect, useCallback } from "react"
 import { Camera, CameraOff, Video, MonitorSmartphone, MapPin } from "lucide-react"
 import * as faceapi from "face-api.js"
 import type { Emotion, FacialExpression, LocationData } from "@/lib/companion-types"
+import {
+  FaceDepthEngine,
+  type FaceReading,
+  type RawFaceDetection,
+} from "@/lib/face/depth-engine"
 
 interface CameraPanelProps {
   onEmotionDetected: (emotion: Emotion) => void
@@ -41,17 +46,21 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
   const [modelsLoaded, setModelsLoaded] = useState(false)
   const streamRef = useRef<MediaStream | null>(null)
   const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const depthEngineRef = useRef<FaceDepthEngine>(new FaceDepthEngine())
+  const [depthReading, setDepthReading] = useState<FaceReading | null>(null)
 
-  // Load face-api models
+  // Load face-api models. Served from /face-models/ in /public so emotion
+  // detection works offline and on first paint without a CDN round-trip.
   useEffect(() => {
     const loadModels = async () => {
       try {
-        const MODEL_URL = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/"
+        const basePath =
+          process.env.NEXT_PUBLIC_BASE_PATH || ""
+        const MODEL_URL = `${basePath}/face-models`
         await Promise.all([
           faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
           faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
           faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
-          faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
         ])
         setModelsLoaded(true)
       } catch (err) {
@@ -162,12 +171,11 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
 
       if (detections.length > 0) {
         const detection = detections[0]
-        const expressions = detection.expressions
+        const box = detection.detection.box
 
         // Face-centered framing: move viewport center toward detected face center.
         const videoWidth = video.videoWidth || 640
         const videoHeight = video.videoHeight || 480
-        const box = detection.detection.box
         const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
         const nextX = clamp(((box.x + box.width / 2) / videoWidth) * 100, 20, 80)
         const nextY = clamp(((box.y + box.height / 2) / videoHeight) * 100, 20, 80)
@@ -180,42 +188,43 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
           zoom: prev.zoom * 0.7 + nextZoom * 0.3,
         }))
 
-        // Get the dominant expression
-        const expressionScores = {
-          neutral: expressions.neutral,
-          happy: expressions.happy,
-          sad: expressions.sad,
-          angry: expressions.angry,
-          fearful: expressions.fearful,
-          disgusted: expressions.disgusted,
-          surprised: expressions.surprised,
+        // Translate face-api detection into the depth engine's structural
+        // shape, then ingest. The engine handles smoothing, lighting,
+        // head pose, blink rate, and engagement.
+        const landmarks = detection.landmarks
+        const rawDetection: RawFaceDetection = {
+          expressions: {
+            neutral: detection.expressions.neutral,
+            happy: detection.expressions.happy,
+            sad: detection.expressions.sad,
+            angry: detection.expressions.angry,
+            fearful: detection.expressions.fearful,
+            disgusted: detection.expressions.disgusted,
+            surprised: detection.expressions.surprised,
+          },
+          box: { x: box.x, y: box.y, width: box.width, height: box.height },
+          landmarks: {
+            leftEye: landmarks.getLeftEye().map((p: { x: number; y: number }) => ({ x: p.x, y: p.y })),
+            rightEye: landmarks
+              .getRightEye()
+              .map((p: { x: number; y: number }) => ({ x: p.x, y: p.y })),
+            nose: landmarks.getNose().map((p: { x: number; y: number }) => ({ x: p.x, y: p.y })),
+            mouth: landmarks.getMouth().map((p: { x: number; y: number }) => ({ x: p.x, y: p.y })),
+          },
         }
 
-        setFacialExpression({
-          ...expressionScores,
-          detection: true,
-        })
-
-        // Map to emotion type
-        const emotionEntries = Object.entries(expressionScores)
-        const dominantEmotion = emotionEntries.reduce((prev, curr) =>
-          curr[1] > prev[1] ? curr : prev
-        )[0]
-
-        const emotionMap: Record<string, Emotion> = {
-          neutral: "neutral",
-          happy: "happy",
-          sad: "sad",
-          angry: "angry",
-          fearful: "fear",
-          disgusted: "sad",
-          surprised: "surprise",
+        const reading = depthEngineRef.current.ingest(rawDetection, video)
+        setDepthReading(reading)
+        setFacialExpression(reading.expressions)
+        setCurrentEmotion(reading.emotion)
+        // Only emit upstream when the frame quality is good enough — this
+        // is what was making the chat see flickery emotion changes.
+        if (reading.frameQuality !== "poor") {
+          onEmotionDetected(reading.emotion)
         }
-
-        const detectedEmotion = emotionMap[dominantEmotion] || "neutral"
-        setCurrentEmotion(detectedEmotion)
-        onEmotionDetected(detectedEmotion)
       } else {
+        const reading = depthEngineRef.current.ingest(null, video)
+        setDepthReading(reading)
         setFacialExpression((prev) => ({ ...prev, detection: false }))
         setFaceTarget((prev) => ({
           x: prev.x * 0.8 + 50 * 0.2,
@@ -237,10 +246,15 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
         return
       }
 
+      // Constrain to a frontal selfie window with a stable framerate so
+      // face-api gets clean, well-exposed frames. The depth engine
+      // surfaces a low-light warning if the room is still too dim.
       const constraints: MediaStreamConstraints = {
         video: {
           width: { ideal: 640, max: 1280 },
           height: { ideal: 480, max: 720 },
+          frameRate: { ideal: 24, max: 30 },
+          facingMode: "user",
         },
         audio: true,
       }
@@ -304,6 +318,8 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
 
     // Reset state
     setIsActive(false)
+    depthEngineRef.current.reset()
+    setDepthReading(null)
     setFacialExpression({
       neutral: 0,
       happy: 0,
@@ -439,6 +455,59 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
           </div>
         )}
       </div>
+
+      {/* Frame quality / lighting hint surfaced from the depth engine */}
+      {isActive && depthReading && depthReading.lighting.recommendation && (
+        <div
+          className={`rounded border px-3 py-2 text-[11px] ${
+            depthReading.lighting.level === "dark"
+              ? "border-rose-500/40 bg-rose-500/10 text-rose-200"
+              : "border-amber-500/40 bg-amber-500/10 text-amber-200"
+          }`}
+          role="status"
+        >
+          <div className="font-semibold uppercase tracking-wide text-[10px] mb-0.5">
+            Lighting · {depthReading.lighting.level}
+          </div>
+          {depthReading.lighting.recommendation}
+        </div>
+      )}
+
+      {isActive && depthReading?.detection && (
+        <div className="grid grid-cols-2 gap-2 rounded border border-border bg-card p-3 text-[11px]">
+          <div>
+            <div className="text-muted-foreground/70 uppercase tracking-wide text-[10px]">
+              Engagement
+            </div>
+            <div className="mt-0.5 text-foreground">
+              {depthReading.engagement.facing ? "facing the camera" : "looking away"}
+              {" · "}
+              <span className="text-muted-foreground">
+                {(depthReading.engagement.score * 100).toFixed(0)}%
+              </span>
+            </div>
+          </div>
+          <div>
+            <div className="text-muted-foreground/70 uppercase tracking-wide text-[10px]">
+              Read confidence
+            </div>
+            <div className="mt-0.5 text-foreground">
+              {depthReading.frameQuality}
+              {depthReading.confidence > 0
+                ? ` · ${(depthReading.confidence * 100).toFixed(0)}%`
+                : ""}
+            </div>
+          </div>
+          {depthReading.headPose && (
+            <div className="col-span-2 text-muted-foreground/80">
+              <span className="uppercase tracking-wide text-[10px]">Head pose:</span>{" "}
+              yaw {depthReading.headPose.yaw.toFixed(0)}° · pitch{" "}
+              {depthReading.headPose.pitch.toFixed(0)}° · roll{" "}
+              {depthReading.headPose.roll.toFixed(0)}°
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Facial Expression Analysis */}
       {isActive && facialExpression.detection && (

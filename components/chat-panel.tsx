@@ -2,10 +2,21 @@
 
 import { useRef, useState, useEffect, useCallback, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Send, Mic, MicOff, Volume2, VolumeX, BellOff, AlertTriangle, Wrench, RefreshCw, HeartHandshake, ShieldCheck } from "lucide-react"
+import { Send, Mic, MicOff, Volume2, VolumeX, BellOff, AlertTriangle, Wrench, RefreshCw, HeartHandshake, ShieldCheck, WifiOff, Wind, BookOpen } from "lucide-react"
 import { AIOrb } from "@/components/ai-orb"
+import { MirrorStrip } from "@/components/mirror-strip"
+import { BreathCoach } from "@/components/breath-coach"
+import { SummaryCard } from "@/components/summary-card"
+import { WebLLMPreflight } from "@/components/webllm-preflight"
+import { ResumeSessionCard } from "@/components/resume-session-card"
+import type { SessionMemoryRecord } from "@/lib/vault/encrypted-profile"
 import type { Message, Emotion, CompanionSettings } from "@/lib/companion-types"
 import { detectHarshLanguage } from "@/lib/conversation/language-tone"
+import {
+  suggestPromptsFromFeltState,
+  type ConversationSummary,
+  type FeltState,
+} from "@/lib/conversation/communication-engine"
 
 const ONBOARDING_PROMPT_POOL = [
   "I feel anxious because I am overloaded.",
@@ -68,6 +79,22 @@ interface ChatPanelProps {
   webLlmStatus?: string
   introProgress?: { answered: number; total: number }
   onOpenSettings?: () => void
+  isOffline?: boolean
+  onUseLocalProvider?: () => void
+  feltState?: FeltState | null
+  onMirrorCorrection?: (correction: string) => void
+  summaryCard?: ConversationSummary | null
+  onGenerateSummary?: () => void
+  onDismissSummary?: () => void
+  onSaveSummaryToVault?: () => void | Promise<void>
+  vaultUnlocked?: boolean
+  canSummarize?: boolean
+  showWebllmPreflight?: boolean
+  onConfirmWebllmDownload?: () => void
+  onDismissWebllmPreflight?: () => void
+  resumeMemory?: SessionMemoryRecord | null
+  onResumeSession?: () => void
+  onStartFreshSession?: () => void
 }
 
 export function ChatPanel({
@@ -81,6 +108,22 @@ export function ChatPanel({
   webLlmStatus,
   introProgress,
   onOpenSettings,
+  isOffline,
+  onUseLocalProvider,
+  feltState,
+  onMirrorCorrection,
+  summaryCard,
+  onGenerateSummary,
+  onDismissSummary,
+  onSaveSummaryToVault,
+  vaultUnlocked,
+  canSummarize,
+  showWebllmPreflight,
+  onConfirmWebllmDownload,
+  onDismissWebllmPreflight,
+  resumeMemory,
+  onResumeSession,
+  onStartFreshSession,
 }: ChatPanelProps) {
   const [input, setInput] = useState("")
   const [isListening, setIsListening] = useState(false)
@@ -94,6 +137,24 @@ export function ChatPanel({
   const lastSpeechRequestRef = useRef<{ text: string; at: number }>({ text: "", at: 0 })
   const [uiNow, setUiNow] = useState(Date.now())
   const [showShortcutHelp, setShowShortcutHelp] = useState(false)
+  const [breathCoachOpen, setBreathCoachOpen] = useState(false)
+  const breathDismissedRef = useRef(false)
+
+  // Auto-close the breath coach if the load drops back down (so it doesn't
+  // linger on the screen after the user has settled).
+  useEffect(() => {
+    if (feltState && feltState.load !== "high" && breathCoachOpen) {
+      setBreathCoachOpen(false)
+    }
+  }, [feltState, breathCoachOpen])
+
+  // Reset the "you already dismissed this once" guard if the user calms down
+  // and then heats back up — re-offer the coach in the new flare.
+  useEffect(() => {
+    if (feltState && feltState.load !== "high") {
+      breathDismissedRef.current = false
+    }
+  }, [feltState])
 
   useEffect(() => {
     const id = window.setInterval(() => setUiNow(Date.now()), 1000)
@@ -204,8 +265,22 @@ export function ChatPanel({
     const utterance = new SpeechSynthesisUtterance(normalizedText)
     activeUtteranceRef.current = utterance
     activeSpeechTextRef.current = normalizedText
-    utterance.rate = 0.9
-    utterance.pitch = 1.1
+    // Pace and pitch follow the user's current emotional load. A heavier
+    // mood gets a slower, lower voice; a lit-up mood gets a brighter one.
+    // Falling back to the prior 0.9/1.1 for neutral/unknown so existing
+    // installs don't suddenly sound different on resting state.
+    const voiceProfile: Record<string, { rate: number; pitch: number }> = {
+      sad: { rate: 0.82, pitch: 0.95 },
+      fear: { rate: 0.85, pitch: 1.0 },
+      angry: { rate: 0.88, pitch: 1.0 },
+      thinking: { rate: 0.88, pitch: 1.05 },
+      surprise: { rate: 0.95, pitch: 1.15 },
+      happy: { rate: 0.95, pitch: 1.15 },
+      neutral: { rate: 0.9, pitch: 1.1 },
+    }
+    const profile = voiceProfile[emotion] ?? voiceProfile.neutral
+    utterance.rate = profile.rate
+    utterance.pitch = profile.pitch
     utterance.onstart = () => {
       if (activeUtteranceRef.current === utterance) {
         setIsSpeaking(true)
@@ -227,7 +302,7 @@ export function ChatPanel({
     }
 
     window.speechSynthesis.speak(utterance)
-  }, [isSpeaking, isVoiceEnabled, stopSpeaking])
+  }, [isSpeaking, isVoiceEnabled, stopSpeaking, emotion])
 
   const toggleVoice = useCallback(() => {
     setIsVoiceEnabled((prev) => {
@@ -329,10 +404,26 @@ export function ChatPanel({
   const [promptSeed, setPromptSeed] = useState(() => Math.floor(Math.random() * 1_000_000))
 
   const quickPrompts = useMemo(() => {
-    const base = isOnboardingActive ? ONBOARDING_PROMPT_POOL : OPEN_PROMPT_POOL
-    const overlay = isOnboardingActive ? [] : MOOD_OVERLAY_POOL[emotion] || []
-    return pickThree([...base, ...overlay], promptSeed)
-  }, [isOnboardingActive, emotion, promptSeed])
+    if (isOnboardingActive) {
+      return pickThree(ONBOARDING_PROMPT_POOL, promptSeed)
+    }
+
+    // Once the Mirror has read a felt state, prefer prompts that match it
+    // exactly. The user just sees options that fit how they actually arrived,
+    // not generic mood scaffolding. Refreshing the seed reshuffles within
+    // the felt pool so they aren't stuck with the same three.
+    if (feltState) {
+      const tailored = suggestPromptsFromFeltState(feltState)
+      if (tailored.length >= 3) return tailored
+      if (tailored.length > 0) {
+        const filler = OPEN_PROMPT_POOL.filter((p) => !tailored.includes(p))
+        return [...tailored, ...pickThree(filler, promptSeed)].slice(0, 3)
+      }
+    }
+
+    const overlay = MOOD_OVERLAY_POOL[emotion] || []
+    return pickThree([...OPEN_PROMPT_POOL, ...overlay], promptSeed)
+  }, [isOnboardingActive, emotion, promptSeed, feltState])
 
   const refreshPrompts = useCallback(() => {
     setPromptSeed((seed) => seed + 1)
@@ -459,6 +550,17 @@ export function ChatPanel({
               </span>
             )
           })()}
+          {onGenerateSummary && canSummarize && (
+            <button
+              onClick={onGenerateSummary}
+              className="flex h-6 items-center gap-1 border border-sky-500/40 bg-sky-500/10 px-2 text-[11px] uppercase tracking-wide text-sky-200 transition-colors hover:bg-sky-500/20"
+              aria-label="Generate a reflection summary of this conversation"
+              title="Reflection summary"
+            >
+              <BookOpen className="h-3 w-3" />
+              summary
+            </button>
+          )}
           <button
             onClick={emergencyMute}
             className="flex h-6 items-center gap-1 border border-destructive/50 bg-destructive/10 px-2 text-[11px] uppercase tracking-wide text-destructive transition-colors hover:bg-destructive/20"
@@ -493,8 +595,75 @@ export function ChatPanel({
           activityLevel={orbActivity}
           intensity={orbActivity}
           reducedMotionEnabled={settings.accessibilityMode}
+          confidence={feltState?.confidence ?? null}
         />
       </div>
+
+      {feltState && (
+        <MirrorStrip
+          state={feltState}
+          onCorrect={onMirrorCorrection}
+          reducedMotion={settings.accessibilityMode}
+        />
+      )}
+
+      {feltState?.load === "high" && !breathCoachOpen && !breathDismissedRef.current && (
+        <div className="flex items-center justify-between gap-3 border-b border-emerald-500/30 bg-emerald-500/5 px-4 py-2 text-[11px]">
+          <div className="flex items-center gap-2 text-emerald-200">
+            <Wind className="h-3.5 w-3.5" />
+            <span>That sounds heavy. Want a 30-second breath together first?</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setBreathCoachOpen(true)}
+              className="rounded border border-emerald-400/40 bg-background/40 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-200 transition-colors hover:bg-emerald-500/20"
+            >
+              Take a breath
+            </button>
+            <button
+              onClick={() => {
+                breathDismissedRef.current = true
+                setBreathCoachOpen(false)
+              }}
+              className="rounded border border-border bg-card px-2 py-1 text-[11px] uppercase tracking-wide text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              aria-label="Dismiss breath suggestion"
+            >
+              Not now
+            </button>
+          </div>
+        </div>
+      )}
+
+      {breathCoachOpen && (
+        <BreathCoach
+          onClose={() => {
+            breathDismissedRef.current = true
+            setBreathCoachOpen(false)
+          }}
+          reducedMotion={settings.accessibilityMode}
+        />
+      )}
+
+      {isOffline && (
+        <div className="flex items-center justify-between gap-3 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs">
+          <div className="flex items-center gap-2 text-amber-200">
+            <WifiOff className="h-3.5 w-3.5" />
+            <span className="leading-relaxed">
+              {settings.provider === "webllm" || settings.provider === "ollama"
+                ? "You are offline. Local provider keeps the conversation running."
+                : "You are offline. Switch to a local provider (WebLLM or Ollama) to keep chatting."}
+            </span>
+          </div>
+          {settings.provider !== "webllm" && settings.provider !== "ollama" && onUseLocalProvider && (
+            <button
+              onClick={onUseLocalProvider}
+              className="inline-flex items-center gap-1 rounded border border-amber-500/40 bg-background/40 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-200 transition-colors hover:bg-amber-500/20"
+            >
+              Use local
+            </button>
+          )}
+        </div>
+      )}
 
       {statusBannerText && (
         <div className={`border-b px-4 py-2 text-xs ${fallbackActive ? "border-amber-500/30 bg-amber-500/10" : "border-border bg-card"}`}>
@@ -534,6 +703,35 @@ export function ChatPanel({
             Share concrete details for each intro step. After onboarding, responses switch to full conversation mode.
           </p>
         </div>
+      )}
+
+      {resumeMemory && onResumeSession && onStartFreshSession && (
+        <ResumeSessionCard
+          memory={resumeMemory}
+          onResume={onResumeSession}
+          onStartFresh={onStartFreshSession}
+        />
+      )}
+
+      {showWebllmPreflight &&
+        settings.provider === "webllm" &&
+        onConfirmWebllmDownload &&
+        onDismissWebllmPreflight && (
+          <WebLLMPreflight
+            modelId={settings.webllmModel}
+            onConfirm={onConfirmWebllmDownload}
+            onDismiss={onDismissWebllmPreflight}
+            onPickSmaller={onOpenSettings}
+          />
+        )}
+
+      {summaryCard && onDismissSummary && (
+        <SummaryCard
+          summary={summaryCard}
+          onDismiss={onDismissSummary}
+          onSaveToVault={onSaveSummaryToVault}
+          vaultUnlocked={vaultUnlocked}
+        />
       )}
 
       {/* Messages */}
@@ -710,6 +908,23 @@ export function ChatPanel({
 
       {/* Input Area */}
       <div className="relative border-t border-border px-4 py-3">
+        {messages.length > 0 && feltState && input.trim().length === 0 && !isOnboardingActive && (
+          <div className="mb-2 flex flex-wrap items-center gap-1.5" data-testid="felt-prompt-strip">
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground/60">
+              Try
+            </span>
+            {quickPrompts.map((prompt, index) => (
+              <button
+                key={prompt}
+                onClick={() => applyQuickPrompt(index)}
+                className="rounded border border-border bg-card px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-muted-foreground/50 hover:text-foreground"
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+        )}
+
         <AnimatePresence>
           {harshSignal.flagged && (
             <motion.div

@@ -12,6 +12,12 @@ const nextConfig = {
   turbopack: {
     root: projectRoot,
   },
+  // Surface basePath to client code so /public assets fetched directly
+  // (face-api weights, etc.) resolve correctly under GitHub Pages.
+  env: {
+    NEXT_PUBLIC_BASE_PATH: basePath,
+    NEXT_PUBLIC_STATIC_EXPORT: isStaticExport ? "true" : "false",
+  },
   ...(isStaticExport
     ? {
         output: "export",

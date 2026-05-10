@@ -1,13 +1,15 @@
 # EMPATHEIA
 
-An empathetic AI companion built with Next.js, React, and AI SDK.
+An empathetic AI companion built with Next.js, React, and AI SDK. Runs fully offline once installed — local face detection, in-browser LLM, and an installable PWA on any OS.
 
 ## Core Features
 
-- Camera-based facial expression detection (face-api.js)
+- Camera-based facial expression detection (face-api.js, weights bundled locally)
 - Mood-aware tone adaptation in responses
 - Multiple providers: OpenAI, Anthropic, Google, OpenRouter (open-source hosted models), WebLLM (browser local), Ollama (local runtime)
 - Hybrid intelligence fallback: if model runtime fails, empathy-map quadrants still update using sentiment + keyword heuristics
+- Offline mode: Service Worker caches the app shell + face-detection weights; chat continues via WebLLM (in-browser) or Ollama (called directly from the browser)
+- Installable PWA on macOS, Windows, Linux, iOS, and Android
 
 ## Empathy Engine Docs
 
@@ -107,19 +109,40 @@ Open settings in the app and choose provider:
 	- Set model id (for example `llama3.2`)
 	- Ensure Ollama daemon/model is running locally
 
-## Fastest User Onboarding (Recommended)
+## Recommended Provider by Form Factor
 
-Use Settings -> Quick Start Presets:
+EMPATHEIA is local-LLM-first. Pick the path that matches how you're running it:
 
-- Fast & Local: zero API setup, stable first-run experience.
-- Balanced Cloud: recommended for most users, smoother quality with low latency.
-- Deep Empathy: stronger reflective depth for longer conversations.
+| You are running EMPATHEIA on... | Recommended provider | Why |
+| --- | --- | --- |
+| **A desktop / laptop you control (installed PWA, dev, or self-hosted)** | **Ollama** | Real local LLM, no GPU constraints, private, fast on CPU + GPU. The app auto-detects Ollama at startup and switches to it. |
+| A browser without Ollama (visitor on GitHub Pages / hosted demo) | WebLLM | Runs entirely in-browser via WebGPU, no install, weights cached in IndexedDB. |
+| Mobile / iPad | WebLLM (small model) or hosted API via `NEXT_PUBLIC_CHAT_API_URL` | iOS/iPadOS 18+ can run WebLLM with a 0.5B–1B model. |
+| Constrained hardware / no WebGPU | OpenRouter (free open-source models) | Browser-direct, low setup, free tier available. |
 
-For least user friction in production:
+### Quick Start Presets
 
-1. Keep default provider as WebLLM.
-2. Set `OPENROUTER_API_KEY` on the server for automatic cloud path when needed.
-3. Let users switch presets instead of manual provider/model tuning.
+Open Settings → Quick Start Presets:
+
+- **Fast & Local** — zero API setup. Auto-detects Ollama; falls back to WebLLM in-browser if Ollama isn't running.
+- **Balanced Cloud** — OpenRouter free tier, smoother quality.
+- **Deep Empathy** — stronger reflective depth for longer conversations.
+
+### One-time Ollama setup (recommended for desktop)
+
+```bash
+# install Ollama from https://ollama.com or via your package manager
+brew install ollama          # macOS
+# or: curl -fsSL https://ollama.com/install.sh | sh   (Linux)
+
+# pull a small empathic model
+ollama pull llama3.2
+
+# start the daemon (allow your installed PWA / dev origin to talk to it)
+OLLAMA_ORIGINS="http://localhost:3000,https://yourname.github.io" ollama serve
+```
+
+Then open EMPATHEIA. The app probes `http://127.0.0.1:11434` on startup and auto-switches to Ollama when reachable. From then on every conversation runs locally with no network round-trips.
 
 ## Setup Checklist Panel
 
@@ -318,28 +341,94 @@ Compatibility note:
 - Docker images are multi-architecture and should run on both `amd64` and `arm64` hosts.
 - GPU acceleration availability depends on host drivers/runtime; CPU mode still works.
 
-## GitHub Pages
+## Offline Mode
 
-This repository includes a workflow to deploy a static build to GitHub Pages.
+Once you've loaded the app at least once, EMPATHEIA continues to work without an internet connection. The pieces that make this real:
 
-The Pages build defaults provider to WebLLM so users can chat immediately in browser without server keys.
+- **Service Worker** ([public/sw.js](public/sw.js)) pre-caches the app shell, JS/CSS bundles, and face-detection weights on install.
+- **Face detection** loads from [public/face-models/](public/face-models/) (~860KB total). No CDN dependency, no first-launch downloads.
+- **WebLLM** runs the entire LLM in your browser via WebGPU — fully offline after the model has been cached once in IndexedDB.
+- **Ollama (browser-direct)** — when the Next.js `/api/chat` proxy is unavailable (static export builds, or you're offline), the app calls `http://127.0.0.1:11434/v1/chat/completions` directly from the browser. Start Ollama with the appropriate origin:
 
-### What the workflow does
+  ```bash
+  OLLAMA_ORIGINS="https://yourname.github.io,http://localhost:3000" ollama serve
+  ```
+
+  Use `OLLAMA_ORIGINS=*` for unrestricted local development.
+
+- **Offline indicator** appears in the chat panel header when `navigator.onLine === false` and offers a one-click switch to WebLLM if you were on a cloud provider.
+- **Fallback ladder**: WebLLM error → MCP fallback → keyword/sentiment empathy heuristics. Conversation never hits a dead end, even with no network and no model.
+
+## Install as a Native App
+
+EMPATHEIA is a Progressive Web App and installs on every major OS without an app store. Once installed, it launches in its own window with the app icon, runs offline, and is indistinguishable from a native app.
+
+| OS | How to install |
+| --- | --- |
+| macOS (Chrome / Edge / Brave) | Open the site → click the install icon in the address bar → **Install** |
+| macOS (Safari 17+) | File menu → **Add to Dock…** |
+| Windows / Linux (Chrome / Edge) | Address bar install icon, or menu → **Install EMPATHEIA…** |
+| Android (Chrome) | Menu → **Install app** (or auto "Add to Home screen" prompt) |
+| iOS / iPadOS (Safari) | Share sheet → **Add to Home Screen** |
+
+### Sideloadable .apk / .ipa builds (no App Store)
+
+For exploration / private distribution there is also tooling to produce
+real installable mobile files in [`mobile/`](mobile/README.md):
+
+- **Android** — [`scripts/build-android.sh`](scripts/build-android.sh)
+  uses Bubblewrap to wrap the deployed PWA in a Trusted Web Activity and
+  produce a signed `.apk` you can `adb install`.
+- **iOS** — [`scripts/build-ios.sh`](scripts/build-ios.sh) uses Capacitor
+  to wrap the static export in a WKWebView shell and produce an Xcode
+  project. Build to `.ipa` from Xcode and sideload via Xcode direct,
+  AltStore, or Sideloadly. Requires macOS + an Apple ID (free for
+  7-day signing, paid for stable signing).
+
+See [mobile/README.md](mobile/README.md) for full step-by-step instructions, signing notes, and known limitations.
+
+After install:
+
+- App opens in a standalone window with the EMPATHEIA icon (see [public/icon.svg](public/icon.svg)).
+- The Service Worker stays active across launches — no re-download of bundles or face-models on subsequent runs.
+- Pick **Settings → Quick Start Presets → Fast & Local** for a fully offline-capable runtime (WebLLM + WebGPU).
+
+## GitHub Pages — Download & Usage
+
+This repository deploys to GitHub Pages on every push to `main` via [.github/workflows/deploy-pages.yml](.github/workflows/deploy-pages.yml). The Pages build defaults to WebLLM so users can chat in-browser with no server keys.
+
+### Use the hosted build
+
+1. Open the deployed Pages URL on any device with WebGPU (Chrome 113+, Edge 113+, Safari 18+ on macOS 15+).
+2. Accept the user agreement.
+3. The browser downloads a small WebLLM model on first chat (Qwen2.5-0.5B by default; cached in IndexedDB).
+4. Click the install icon (see table above) to install as a desktop / mobile app.
+
+### Run your own copy
+
+```bash
+git clone https://github.com/<your-fork>/ideal-giggle
+cd ideal-giggle
+pnpm install
+pnpm dev   # http://localhost:3000
+```
+
+### What the Pages workflow does
 
 - Installs dependencies with pnpm
 - Removes server API routes (`app/api`) because GitHub Pages is static-only
 - Runs a static export build (`STATIC_EXPORT=true pnpm build`)
 - Deploys the generated `out` folder to GitHub Pages
 
-### Important Note
+### Provider behaviour on Pages (no server)
 
-The chat endpoint (`/api/chat`) is server-side and will not run on GitHub Pages.
+| Provider | Works on Pages? | How |
+| --- | --- | --- |
+| WebLLM | ✅ default | runs entirely in browser |
+| Ollama | ✅ if running locally | app calls `http://127.0.0.1:11434/v1` directly; set `OLLAMA_ORIGINS` to your Pages origin |
+| OpenAI / Anthropic / Google / OpenRouter | ❌ unless you provide a proxy | set `NEXT_PUBLIC_CHAT_API_URL` repo variable to a hosted Next.js or compatible chat API |
 
-If you want chat to work on your GitHub Page, provide an external API URL as a repository variable or secret and map it to:
-
-- `NEXT_PUBLIC_CHAT_API_URL`
-
-The app already supports this environment variable and falls back to `/api/chat` for local development.
+The app already reads `NEXT_PUBLIC_CHAT_API_URL` and falls back to `/api/chat` for local development.
 
 ## Deploy Targets
 

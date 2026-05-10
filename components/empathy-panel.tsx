@@ -2,10 +2,17 @@
 
 import { useRef, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { MessageSquare, Brain, HandMetal, Heart, Upload, Download, Copy, Link2, Lock, Unlock, Trash2 } from "lucide-react"
+import { MessageSquare, Brain, HandMetal, Heart, Upload, Download, Copy, Link2, Lock, Unlock, Trash2, Activity } from "lucide-react"
 import type { EmpathyData, EmpathyProfile } from "@/lib/companion-types"
 import type { UserUnderstanding } from "@/lib/conversation/communication-engine"
 import { isEncryptedEnvelope, type VaultEnvelope } from "@/lib/vault/encrypted-profile"
+
+export interface EmpathyTimelineEntry {
+  id: string
+  at: number
+  quadrant: keyof EmpathyData
+  entry: string
+}
 
 interface EmpathyPanelProps {
   data: EmpathyData
@@ -27,6 +34,7 @@ interface EmpathyPanelProps {
   onVaultEnvelopeUpload?: (envelope: VaultEnvelope) => void
   onVaultLock?: () => void
   onVaultClear?: () => void
+  timeline?: EmpathyTimelineEntry[]
 }
 
 const NOTE_ROTATIONS = ["-rotate-2", "rotate-1", "-rotate-1", "rotate-2", "-rotate-1"]
@@ -71,6 +79,7 @@ export function EmpathyPanel({
   onVaultEnvelopeUpload,
   onVaultLock,
   onVaultClear,
+  timeline,
 }: EmpathyPanelProps) {
   const [jsonStatus, setJsonStatus] = useState<string>("No profile JSON imported yet.")
   const [copyStatus, setCopyStatus] = useState<string>("")
@@ -329,6 +338,49 @@ export function EmpathyPanel({
           {profile.preferredName}
         </div>
       </div>
+
+      {timeline && timeline.length > 0 && (
+        <div className="border border-border bg-card p-3">
+          <div className="mb-2 flex items-center gap-1.5">
+            <Activity className="h-3 w-3 text-muted-foreground" />
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              What I am tracking
+            </div>
+            <div className="ml-auto text-[10px] text-muted-foreground/60">
+              {timeline.length} update{timeline.length === 1 ? "" : "s"}
+            </div>
+          </div>
+          <ol className="max-h-44 space-y-1 overflow-y-auto pr-1">
+            {[...timeline]
+              .slice(-20)
+              .reverse()
+              .map((item) => (
+                <li
+                  key={item.id}
+                  className="flex items-start gap-2 border-b border-border/40 pb-1 text-[11px] last:border-b-0"
+                >
+                  <span
+                    className={`mt-0.5 flex-shrink-0 rounded border px-1 text-[9px] font-semibold uppercase tracking-wide ${
+                      item.quadrant === "says"
+                        ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
+                        : item.quadrant === "thinks"
+                          ? "border-violet-500/40 bg-violet-500/10 text-violet-200"
+                          : item.quadrant === "does"
+                            ? "border-sky-500/40 bg-sky-500/10 text-sky-200"
+                            : "border-rose-500/40 bg-rose-500/10 text-rose-200"
+                    }`}
+                  >
+                    {item.quadrant}
+                  </span>
+                  <span className="flex-1 leading-snug text-foreground">{item.entry}</span>
+                  <span className="flex-shrink-0 text-[10px] text-muted-foreground/60">
+                    {new Date(item.at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </li>
+              ))}
+          </ol>
+        </div>
+      )}
 
       <div className="border border-border bg-card p-3">
         <div className="mb-2 flex items-center justify-between">

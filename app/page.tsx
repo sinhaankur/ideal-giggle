@@ -14,6 +14,8 @@ import {
   type VaultEnvelope,
   type VaultKeyHandle,
   type VaultPayload,
+  type SessionMemoryRecord,
+  type SessionMemoryTurn,
 } from "@/lib/vault/encrypted-profile"
 import { clearStoredVault, loadStoredVault, saveStoredVault } from "@/lib/vault/vault-store"
 import {
@@ -25,6 +27,7 @@ import {
   estimateSentimentScore,
   sentimentIntensity,
   generateEmpathyCode,
+  type AIProvider,
   type Emotion,
   type EmpathyData,
   type EmpathyMetaRecord,
@@ -43,8 +46,15 @@ import {
   ensureNonRepeatingFallback as ensureNonRepeatingFallbackFromEngine,
   getToneModeInstruction as getToneModeInstructionFromEngine,
   needsClarificationForAnswer,
+  describeFeltState,
+  summarizeFeltState,
+  composeConversationSummary,
+  type ConversationSummary,
   type RuntimeFallbackContext,
 } from "@/lib/conversation/communication-engine"
+import { sendOllamaDirect, probeOllama } from "@/lib/api/ollama-direct"
+import { OnboardingModal } from "@/components/onboarding-modal"
+import { useOnlineStatus } from "@/hooks/use-online-status"
 
 const CameraPanel = dynamic(() => import("@/components/camera-panel").then((mod) => mod.CameraPanel), {
   ssr: false,
@@ -316,14 +326,19 @@ type QuickPresetId = "fast-local" | "balanced-cloud" | "deep-empathy"
 
 function withQuickPreset(base: CompanionSettings, presetId: QuickPresetId): CompanionSettings {
   if (presetId === "fast-local") {
+    // Provider is intentionally NOT pinned here. WebLLM is the safe fallback;
+    // the periodic Ollama probe will promote to "ollama" within a few seconds
+    // if a local daemon is running, otherwise this preset stays on WebLLM.
     return {
       ...base,
       provider: "webllm",
-      webllmModel: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC",
+      // 1B is the floor for usefully empathic in-browser replies. The 0.5B
+      // is still selectable in Settings for hardware that can't fit 1B.
+      webllmModel: "Llama-3.2-1B-Instruct-q4f16_1-MLC",
       toneMode: "casual",
       personality: "warm",
       temperature: 0.7,
-      maxOutputTokens: 220,
+      maxOutputTokens: 260,
       mcpAutoFallback: true,
     }
   }
@@ -517,6 +532,7 @@ export default function CompanionApp() {
   const agreementStorageKey = "empatheia_user_agreement_v1"
   const quickPresetStorageKey = "empatheia_quick_preset_v1"
   const providerExplicitStorageKey = "empatheia_provider_explicit_v1"
+  const rememberSessionsStorageKey = "empatheia_remember_sessions_v1"
   const ollamaAutoDetectDismissedKey = "empatheia_ollama_autodetect_dismissed_v1"
   const chatApi = process.env.NEXT_PUBLIC_CHAT_API_URL || "/api/chat"
 
@@ -546,6 +562,7 @@ export default function CompanionApp() {
   const [rightPanelWidth, setRightPanelWidth] = useState(320)
   const [isResizingRightPanel, setIsResizingRightPanel] = useState(false)
   const [hasAgreed, setHasAgreed] = useState(false)
+  const isOnline = useOnlineStatus()
   const [showQuickStartModal, setShowQuickStartModal] = useState(false)
   const [agreementChecked, setAgreementChecked] = useState(false)
   const [errorSummaryCopiedAt, setErrorSummaryCopiedAt] = useState<number | null>(null)
@@ -558,8 +575,13 @@ export default function CompanionApp() {
   const [webLlmXpStage, setWebLlmXpStage] = useState<"idle" | "echo-sync" | "shadow-prefetch" | "shadow-unlocked">("idle")
   const [shadowPrefetchProgress, setShadowPrefetchProgress] = useState("")
   const [llmConnectionError, setLlmConnectionError] = useState("")
-  const [autoDetectedOllamaModel, setAutoDetectedOllamaModel] = useState<string | null>(null)
-  const ollamaProbeRanRef = useRef(false)
+  const [ollamaTransition, setOllamaTransition] = useState<{
+    kind: "online" | "offline"
+    model: string | null
+    at: number
+  } | null>(null)
+  const ollamaReachableRef = useRef<boolean | null>(null)
+  const autoSelectedOllamaRef = useRef(false)
   const [vaultStatus, setVaultStatus] = useState<"no-vault" | "locked" | "unlocked">("no-vault")
   const [vaultModalMode, setVaultModalMode] = useState<VaultModalMode | null>(null)
   const [vaultModalError, setVaultModalError] = useState("")
@@ -568,6 +590,12 @@ export default function CompanionApp() {
   const vaultKeyHandleRef = useRef<VaultKeyHandle | null>(null)
   const pendingVaultEnvelopeRef = useRef<VaultEnvelope | null>(null)
   const vaultAutoSaveTimerRef = useRef<number | null>(null)
+  // Session memory loaded from the vault on unlock — null when none was
+  // stored or the user has never opted in. Drives the resume card.
+  const [storedSessionMemory, setStoredSessionMemory] = useState<SessionMemoryRecord | null>(null)
+  // The user has acted on the resume card (chose "Pick up" or "Start fresh"),
+  // so don't show it again this session even if memory is still in the vault.
+  const [resumeCardHandled, setResumeCardHandled] = useState(false)
 
   const webLlmMessagesRef = useRef<Message[]>([])
   const empathyDataRef = useRef<EmpathyData>({
@@ -585,10 +613,56 @@ export default function CompanionApp() {
   const fallbackPhase2InjectedRef = useRef(false)
   const lastFallbackReplyRef = useRef("")
 
+  // Embed mode: when EMPATHEIA is iframed into another site or visited
+  // with ?embed=1, render onboarding inline at the top of the page rather
+  // than as a full-screen backdrop modal — modals on third-party origins
+  // are user-hostile and tank conversion in shared/embed contexts.
+  const [embedMode, setEmbedMode] = useState(false)
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    const explicit = params.get("embed") === "1"
+    let isFramed = false
+    try {
+      isFramed = window.self !== window.top
+    } catch {
+      // cross-origin frame access throws — that itself implies we are framed
+      isFramed = true
+    }
+    setEmbedMode(explicit || isFramed)
+  }, [])
+
+  // Honor PWA dock-menu shortcuts: ?panel=settings or ?panel=vault opens the
+  // right surface immediately on launch. We strip the param from the URL after
+  // applying it so it does not stick to the address bar.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    const panel = params.get("panel")
+    if (!panel) return
+
+    if (panel === "settings") {
+      setShowSettings(true)
+    } else if (panel === "vault") {
+      const stored = loadStoredVault()
+      setVaultModalMode(stored ? "unlock" : "create")
+    }
+
+    params.delete("panel")
+    const next = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}${window.location.hash}`
+    window.history.replaceState({}, "", next)
+  }, [])
+
   useEffect(() => {
     if (typeof window === "undefined") return
     const agreed = window.localStorage.getItem(agreementStorageKey) === "accepted"
     setHasAgreed(agreed)
+
+    // Hydrate the cross-session memory toggle independently of the agreement
+    // gate so refresh-then-re-agree still respects the prior choice.
+    if (window.localStorage.getItem(rememberSessionsStorageKey) === "true") {
+      setSettings((prev) => ({ ...prev, rememberSessions: true }))
+    }
 
     if (!agreed) return
 
@@ -605,86 +679,128 @@ export default function CompanionApp() {
     }
 
     setShowQuickStartModal(true)
-  }, [agreementStorageKey, quickPresetStorageKey])
+  }, [agreementStorageKey, quickPresetStorageKey, rememberSessionsStorageKey])
 
+  // Periodic Ollama reachability probe.
+  //
+  // Goals:
+  // - First run a few hundred ms after mount so the agreement modal has time to settle.
+  // - Re-probe every 30s while the document is visible.
+  // - Re-probe immediately when the tab returns to foreground.
+  // - Auto-switch the provider only when reachability *changes*, never silently every poll.
+  // - Two-way switching: when Ollama appears we promote it; when it disappears (and we
+  //   were the ones who promoted it) we revert to WebLLM so chat keeps working.
   useEffect(() => {
     if (typeof window === "undefined") return
     if (!hasAgreed) return
-    if (ollamaProbeRanRef.current) return
-    ollamaProbeRanRef.current = true
 
-    const explicit = window.localStorage.getItem(providerExplicitStorageKey) === "true"
-    const dismissed = window.localStorage.getItem(ollamaAutoDetectDismissedKey) === "true"
-    if (explicit && dismissed) return
+    const PROBE_INTERVAL_MS = 30_000
 
-    const controller = new AbortController()
-    const timeout = window.setTimeout(() => controller.abort(), 2500)
+    let cancelled = false
+    let intervalId: number | null = null
+    let inFlight = false
+    // One controller for the whole effect lifetime. We never abort mid-probe
+    // for "let's start a fresher one" reasons — we just skip the tick if a
+    // probe is still running. The controller only fires on effect cleanup.
+    const lifecycleController = new AbortController()
 
-    const probe = async () => {
-      let reachable = false
-      let pickedModel: string | null = null
+    const isUserExplicitProvider = (provider: AIProvider) =>
+      provider === "openai" ||
+      provider === "anthropic" ||
+      provider === "google" ||
+      provider === "openrouter"
 
-      const tryEndpoint = async () => {
-        try {
-          const response = await fetch(
-            `/api/ollama-status?baseUrl=${encodeURIComponent(settings.ollamaBaseUrl)}&model=${encodeURIComponent(settings.ollamaModel)}`,
-            { signal: controller.signal, cache: "no-store" }
+    const runProbe = async () => {
+      if (cancelled || inFlight) return
+      inFlight = true
+
+      const explicit = window.localStorage.getItem(providerExplicitStorageKey) === "true"
+      const dismissed = window.localStorage.getItem(ollamaAutoDetectDismissedKey) === "true"
+
+      // Per-request 2.5s deadline that aborts only this probe's fetch, not
+      // the lifecycle controller.
+      const requestController = new AbortController()
+      const onLifecycleAbort = () => requestController.abort()
+      lifecycleController.signal.addEventListener("abort", onLifecycleAbort, { once: true })
+      const timeoutId = window.setTimeout(() => requestController.abort(), 2500)
+
+      let result
+      try {
+        result = await probeOllama(
+          settings.ollamaBaseUrl,
+          settings.ollamaModel,
+          requestController.signal
+        )
+      } finally {
+        window.clearTimeout(timeoutId)
+        lifecycleController.signal.removeEventListener("abort", onLifecycleAbort)
+        inFlight = false
+      }
+      if (cancelled) return
+
+      const wasReachable = ollamaReachableRef.current
+      ollamaReachableRef.current = result.reachable
+
+      // Online transition: Ollama just appeared.
+      if (result.reachable && wasReachable !== true) {
+        const detectedModel = result.pickedModel || settings.ollamaModel
+        if (!explicit && !dismissed && !isUserExplicitProvider(settings.provider)) {
+          autoSelectedOllamaRef.current = true
+          setSettings((prev) =>
+            prev.provider === "ollama"
+              ? prev
+              : { ...prev, provider: "ollama", ollamaModel: detectedModel }
           )
-          if (!response.ok) return false
-          const data = await response.json()
-          if (data?.reachable) {
-            reachable = true
-            if (data.modelAvailable) {
-              pickedModel = settings.ollamaModel
-            }
-            return true
+          if (wasReachable === false) {
+            setOllamaTransition({ kind: "online", model: detectedModel, at: Date.now() })
           }
-          return false
-        } catch {
-          return false
         }
+        return
       }
 
-      const tryDirect = async () => {
-        try {
-          const base = settings.ollamaBaseUrl.replace(/\/$/, "")
-          const tagsUrl = base.endsWith("/api") ? `${base}/tags` : `${base}/api/tags`
-          const response = await fetch(tagsUrl, { signal: controller.signal, cache: "no-store" })
-          if (!response.ok) return false
-          const data = await response.json()
-          const models: Array<{ model?: string; name?: string }> = Array.isArray(data?.models) ? data.models : []
-          if (models.length === 0) return false
-          reachable = true
-          const exact = models.find((m) => (m.model || m.name || "").toLowerCase().includes(settings.ollamaModel.toLowerCase()))
-          pickedModel = (exact?.model || exact?.name) ?? (models[0].model || models[0].name) ?? null
-          return true
-        } catch {
-          return false
+      // Offline transition: Ollama just went away.
+      if (!result.reachable && wasReachable === true) {
+        if (autoSelectedOllamaRef.current && settings.provider === "ollama") {
+          autoSelectedOllamaRef.current = false
+          setSettings((prev) =>
+            prev.provider === "ollama" ? { ...prev, provider: "webllm" } : prev
+          )
+          setOllamaTransition({ kind: "offline", model: null, at: Date.now() })
         }
-      }
-
-      const ok = (await tryEndpoint()) || (await tryDirect())
-      window.clearTimeout(timeout)
-      if (!ok || !reachable) return
-
-      setAutoDetectedOllamaModel(pickedModel || settings.ollamaModel)
-
-      if (!explicit) {
-        setSettings((prev) => ({
-          ...prev,
-          provider: "ollama",
-          ollamaModel: pickedModel || prev.ollamaModel,
-        }))
       }
     }
 
-    probe()
+    runProbe()
+    intervalId = window.setInterval(runProbe, PROBE_INTERVAL_MS)
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        runProbe()
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibility)
 
     return () => {
-      controller.abort()
-      window.clearTimeout(timeout)
+      cancelled = true
+      lifecycleController.abort()
+      if (intervalId !== null) window.clearInterval(intervalId)
+      document.removeEventListener("visibilitychange", handleVisibility)
     }
-  }, [hasAgreed, providerExplicitStorageKey, ollamaAutoDetectDismissedKey, settings.ollamaBaseUrl, settings.ollamaModel])
+  }, [
+    hasAgreed,
+    providerExplicitStorageKey,
+    ollamaAutoDetectDismissedKey,
+    settings.ollamaBaseUrl,
+    settings.ollamaModel,
+    settings.provider,
+  ])
+
+  // Auto-dismiss the transient online/offline transition banner after 6s.
+  useEffect(() => {
+    if (!ollamaTransition) return
+    const timer = window.setTimeout(() => setOllamaTransition(null), 6000)
+    return () => window.clearTimeout(timer)
+  }, [ollamaTransition])
 
   // Vault: detect a stored vault on first load and prompt to unlock.
   useEffect(() => {
@@ -715,6 +831,95 @@ export default function CompanionApp() {
     setVaultModalBusy(false)
     setVaultModalMode("unlock")
   }, [])
+
+  // Drag-drop a vault JSON file onto the window to import a past empathy
+  // session. Light validation against the envelope shape before accepting.
+  const [dragOverActive, setDragOverActive] = useState(false)
+  const [dragImportError, setDragImportError] = useState("")
+  const dragCounterRef = useRef(0)
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const isVaultEnvelope = (value: unknown): value is VaultEnvelope => {
+      if (!value || typeof value !== "object") return false
+      const candidate = value as Record<string, unknown>
+      return (
+        typeof candidate.v === "number" &&
+        typeof candidate.kdf === "string" &&
+        typeof candidate.iter === "number" &&
+        typeof candidate.salt === "string" &&
+        typeof candidate.iv === "string" &&
+        typeof candidate.ct === "string"
+      )
+    }
+
+    const hasFiles = (event: DragEvent) =>
+      Array.from(event.dataTransfer?.types ?? []).includes("Files")
+
+    const onEnter = (event: DragEvent) => {
+      if (!hasFiles(event)) return
+      dragCounterRef.current += 1
+      setDragOverActive(true)
+    }
+    const onOver = (event: DragEvent) => {
+      if (!hasFiles(event)) return
+      event.preventDefault()
+    }
+    const onLeave = (event: DragEvent) => {
+      if (!hasFiles(event)) return
+      dragCounterRef.current = Math.max(0, dragCounterRef.current - 1)
+      if (dragCounterRef.current === 0) setDragOverActive(false)
+    }
+    const onDrop = async (event: DragEvent) => {
+      if (!hasFiles(event)) return
+      event.preventDefault()
+      dragCounterRef.current = 0
+      setDragOverActive(false)
+      setDragImportError("")
+
+      const file = event.dataTransfer?.files?.[0]
+      if (!file) return
+      if (!file.name.toLowerCase().endsWith(".json") && file.type !== "application/json") {
+        setDragImportError("Drop a .json vault file exported from EMPATHEIA.")
+        return
+      }
+      if (file.size > 256 * 1024) {
+        setDragImportError("File is too large to be a vault envelope.")
+        return
+      }
+
+      try {
+        const text = await file.text()
+        const parsed = JSON.parse(text)
+        if (!isVaultEnvelope(parsed)) {
+          setDragImportError("That file does not look like a vault envelope.")
+          return
+        }
+        handleVaultUploadEnvelope(parsed)
+      } catch {
+        setDragImportError("Could not read that file as JSON.")
+      }
+    }
+
+    window.addEventListener("dragenter", onEnter)
+    window.addEventListener("dragover", onOver)
+    window.addEventListener("dragleave", onLeave)
+    window.addEventListener("drop", onDrop)
+    return () => {
+      window.removeEventListener("dragenter", onEnter)
+      window.removeEventListener("dragover", onOver)
+      window.removeEventListener("dragleave", onLeave)
+      window.removeEventListener("drop", onDrop)
+    }
+  }, [handleVaultUploadEnvelope])
+
+  // Auto-clear the drag-import error toast after 6s.
+  useEffect(() => {
+    if (!dragImportError) return
+    const timer = window.setTimeout(() => setDragImportError(""), 6000)
+    return () => window.clearTimeout(timer)
+  }, [dragImportError])
 
   const writeVaultEnvelopeToStorage = useCallback((envelopeJson: string) => {
     saveStoredVault(envelopeJson)
@@ -747,6 +952,8 @@ export default function CompanionApp() {
           vaultKeyHandleRef.current = handle
           setEmpathyProfile(payload.profile)
           setEmpathyData(payload.empathyData)
+          setStoredSessionMemory(payload.sessionMemory ?? null)
+          setResumeCardHandled(false)
           // Persist the same envelope to localStorage in case it came from an uploaded file.
           writeVaultEnvelopeToStorage(JSON.stringify(envelope, null, 2))
           setVaultStatus("unlocked")
@@ -782,9 +989,17 @@ export default function CompanionApp() {
       pendingVaultEnvelopeRef.current = null
       setVaultStatus("no-vault")
       setVaultLastSavedAt(null)
+      // Clearing the vault also wipes any in-memory session memory the
+      // resume card was waiting to surface.
+      setStoredSessionMemory(null)
+      setResumeCardHandled(false)
     } else if (vaultModalMode === "confirm-lock") {
       vaultKeyHandleRef.current = null
       setVaultStatus("locked")
+      // Lock the memory along with the rest of the vault. It still lives
+      // encrypted in localStorage; next unlock re-reads it.
+      setStoredSessionMemory(null)
+      setResumeCardHandled(false)
     }
     closeVaultModal()
   }, [vaultModalMode, closeVaultModal])
@@ -801,7 +1016,10 @@ export default function CompanionApp() {
     setVaultModalMode("confirm-clear")
   }, [])
 
-  // Auto-save: when unlocked, encrypt + persist any change to profile or empathy map.
+  // Auto-save: when unlocked, encrypt + persist any change to profile or
+  // empathy map. The session-memory branch lives in a separate effect
+  // further down because `messages`/`summaryCard`/`feltState` are derived
+  // later in the component.
   useEffect(() => {
     if (vaultStatus !== "unlocked") return
     const handle = vaultKeyHandleRef.current
@@ -833,30 +1051,42 @@ export default function CompanionApp() {
     }
   }, [vaultStatus, empathyProfile, empathyData, writeVaultEnvelopeToStorage])
 
-  const dismissOllamaBanner = useCallback(() => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(ollamaAutoDetectDismissedKey, "true")
-    }
-    setAutoDetectedOllamaModel(null)
-  }, [ollamaAutoDetectDismissedKey])
-
   const handleSettingsChange = useCallback<Dispatch<SetStateAction<CompanionSettings>>>(
     (update) => {
       setSettings((prev) => {
         const next = typeof update === "function" ? (update as (s: CompanionSettings) => CompanionSettings)(prev) : update
-        if (typeof window !== "undefined" && next.provider !== prev.provider) {
-          window.localStorage.setItem(providerExplicitStorageKey, "true")
+        if (typeof window !== "undefined") {
+          if (next.provider !== prev.provider) {
+            window.localStorage.setItem(providerExplicitStorageKey, "true")
+          }
+          if (next.rememberSessions !== prev.rememberSessions) {
+            if (next.rememberSessions) {
+              window.localStorage.setItem(rememberSessionsStorageKey, "true")
+            } else {
+              window.localStorage.removeItem(rememberSessionsStorageKey)
+            }
+          }
         }
         return next
       })
     },
-    [providerExplicitStorageKey]
+    [providerExplicitStorageKey, rememberSessionsStorageKey]
   )
 
   const handleChooseQuickPreset = useCallback(
     (preset: QuickPresetId | "default") => {
       if (typeof window !== "undefined") {
         window.localStorage.setItem(quickPresetStorageKey, preset)
+
+        // Choosing "fast-local" opts in to runtime provider negotiation:
+        // clear any prior explicit/dismiss flags so the Ollama probe can
+        // promote the session to a local daemon when one is reachable.
+        if (preset === "fast-local") {
+          window.localStorage.removeItem(providerExplicitStorageKey)
+          window.localStorage.removeItem(ollamaAutoDetectDismissedKey)
+          autoSelectedOllamaRef.current = false
+          ollamaReachableRef.current = null
+        }
       }
 
       if (preset !== "default") {
@@ -865,7 +1095,7 @@ export default function CompanionApp() {
 
       setShowQuickStartModal(false)
     },
-    [quickPresetStorageKey]
+    [quickPresetStorageKey, providerExplicitStorageKey, ollamaAutoDetectDismissedKey]
   )
 
   useEffect(() => {
@@ -1411,7 +1641,292 @@ export default function CompanionApp() {
     [messages]
   )
   const userUnderstandingSnapshot = useMemo(() => inferUserUnderstanding(latestUserText), [latestUserText])
-  const samanthaGuidance = `${getDeepPrompt(currentSummary, sessionDepth, depthState.tier, emotionalVelocity)} Next mirror question: ${suggestedNext.question}`
+  const feltState = useMemo(
+    () => (latestUserText ? describeFeltState(latestUserText, cameraEmotion) : null),
+    [latestUserText, cameraEmotion]
+  )
+  const samanthaGuidance = `${getDeepPrompt(currentSummary, sessionDepth, depthState.tier, emotionalVelocity)} Next mirror question: ${suggestedNext.question}${feltState ? ` Current felt-state read: ${summarizeFeltState(feltState)}.` : ""}`
+
+  // Live "What I'm tracking" timeline — every time the four-quadrant
+  // empathy data gains an entry, append it here with a timestamp so the
+  // empathy panel can render the engine's running thoughts as a feed.
+  // We diff against a ref of the prior snapshot so we don't have to touch
+  // each setEmpathyData call site (there are many).
+  type TimelineEntry = {
+    id: string
+    at: number
+    quadrant: keyof EmpathyData
+    entry: string
+  }
+  const [empathyTimeline, setEmpathyTimeline] = useState<TimelineEntry[]>([])
+  const previousEmpathyDataRef = useRef<EmpathyData>({
+    says: [],
+    thinks: [],
+    does: [],
+    feels: [],
+  })
+
+  useEffect(() => {
+    const previous = previousEmpathyDataRef.current
+    const additions: TimelineEntry[] = []
+    const now = Date.now()
+    ;(["says", "thinks", "does", "feels"] as const).forEach((quadrant) => {
+      const previousSet = new Set(previous[quadrant])
+      for (const entry of empathyData[quadrant]) {
+        if (!previousSet.has(entry) && entry.trim().length > 0) {
+          additions.push({
+            id: `${quadrant}-${now}-${additions.length}`,
+            at: now,
+            quadrant,
+            entry,
+          })
+        }
+      }
+    })
+    if (additions.length > 0) {
+      // Cap timeline at 80 entries so a long session does not bloat memory.
+      setEmpathyTimeline((prev) => [...prev, ...additions].slice(-80))
+    }
+    previousEmpathyDataRef.current = empathyData
+  }, [empathyData])
+
+  // Conversation summary card. Generated locally from existing empathy data
+  // so it works offline and cheap; surfaces every 10 user turns or via the
+  // manual "Summarize" button. Stays unread until the user dismisses or
+  // exports, which drives the OS app badge.
+  const userTurnCount = useMemo(
+    () => messages.filter((m) => m.sender === "user").length,
+    [messages]
+  )
+  const [summaryCard, setSummaryCard] = useState<ConversationSummary | null>(null)
+  const [summaryUnread, setSummaryUnread] = useState(false)
+  const lastSummaryAtTurnRef = useRef(0)
+
+  const buildSummaryCard = useCallback(() => {
+    return composeConversationSummary({
+      userTurnCount,
+      empathyData: empathyDataRef.current,
+      feltState,
+      empathyCode,
+      durationMinutes: elapsedMs / 60000,
+    })
+  }, [userTurnCount, feltState, empathyCode, elapsedMs])
+
+  const handleGenerateSummary = useCallback(() => {
+    const next = buildSummaryCard()
+    setSummaryCard(next)
+    setSummaryUnread(true)
+    lastSummaryAtTurnRef.current = userTurnCount
+  }, [buildSummaryCard, userTurnCount])
+
+  // Auto-generate every 10 user turns once onboarding is past.
+  useEffect(() => {
+    if (userTurnCount < 10) return
+    if (userTurnCount - lastSummaryAtTurnRef.current < 10) return
+    if (answeredIntroCount < introQuestionCount) return
+    handleGenerateSummary()
+  }, [userTurnCount, answeredIntroCount, introQuestionCount, handleGenerateSummary])
+
+  // App Badging API — light up the OS dock/icon when a summary is unread.
+  useEffect(() => {
+    if (typeof navigator === "undefined") return
+    const nav = navigator as Navigator & {
+      setAppBadge?: (n?: number) => Promise<void>
+      clearAppBadge?: () => Promise<void>
+    }
+    if (summaryUnread && summaryCard && nav.setAppBadge) {
+      nav.setAppBadge(1).catch(() => undefined)
+    } else if (nav.clearAppBadge) {
+      nav.clearAppBadge().catch(() => undefined)
+    }
+  }, [summaryUnread, summaryCard])
+
+  const dismissSummaryCard = useCallback(() => {
+    setSummaryCard(null)
+    setSummaryUnread(false)
+  }, [])
+
+  // Build a small session-memory record from the live conversation. Capped
+  // so the encrypted vault stays small; older turns drop off the back.
+  // Only saves once the intro questions are complete — the intro chat is
+  // scaffolding, not a real conversation, and we don't want a returning
+  // user to be re-greeted with their own onboarding answers.
+  const RECENT_TURN_CAP = 20
+  const sessionMemoryToPersist = useMemo<SessionMemoryRecord | null>(() => {
+    if (!settings.rememberSessions) return null
+    if (answeredIntroCount < introQuestionCount) return null
+    const turns: SessionMemoryTurn[] = messages
+      .filter((m) => m.text && m.text.trim().length > 0)
+      .slice(-RECENT_TURN_CAP)
+      .map((m) => ({
+        role: m.sender === "user" ? "user" : "assistant",
+        text: m.text,
+        at:
+          m.timestamp instanceof Date
+            ? m.timestamp.toISOString()
+            : new Date(m.timestamp).toISOString(),
+      }))
+    if (turns.length === 0) return null
+    return {
+      savedAt: new Date().toISOString(),
+      headline: summaryCard?.headline || feltState?.primary || "in motion",
+      summaryParagraphs: summaryCard?.paragraphs || [],
+      turns,
+    }
+  }, [
+    settings.rememberSessions,
+    answeredIntroCount,
+    introQuestionCount,
+    messages,
+    summaryCard,
+    feltState,
+  ])
+
+  // When session memory is enabled and changing, fold it into the next
+  // vault save. We deliberately re-encrypt the whole payload (profile +
+  // empathyData + sessionMemory) on a debounce so the file always
+  // reflects the latest state. Disabled paths leave the vault untouched.
+  const sessionMemorySaveTimerRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (vaultStatus !== "unlocked") return
+    if (!settings.rememberSessions) return
+    if (!sessionMemoryToPersist) return
+    const handle = vaultKeyHandleRef.current
+    if (!handle) return
+
+    if (sessionMemorySaveTimerRef.current !== null) {
+      window.clearTimeout(sessionMemorySaveTimerRef.current)
+    }
+
+    sessionMemorySaveTimerRef.current = window.setTimeout(async () => {
+      try {
+        const bundle: VaultPayload = {
+          profile: empathyProfile,
+          empathyData,
+          exportedAt: new Date().toISOString(),
+          sessionMemory: sessionMemoryToPersist,
+        }
+        const envelopeJson = await encryptWithKey(bundle, handle)
+        writeVaultEnvelopeToStorage(envelopeJson)
+      } catch {
+        // Silent: same rationale as the main auto-save.
+      }
+    }, 1500)
+
+    return () => {
+      if (sessionMemorySaveTimerRef.current !== null) {
+        window.clearTimeout(sessionMemorySaveTimerRef.current)
+        sessionMemorySaveTimerRef.current = null
+      }
+    }
+  }, [
+    vaultStatus,
+    settings.rememberSessions,
+    sessionMemoryToPersist,
+    empathyProfile,
+    empathyData,
+    writeVaultEnvelopeToStorage,
+  ])
+
+  // Resume / start-fresh handlers for the cross-session memory card.
+  // Resume injects the stored turns into the current provider's message
+  // bucket so they render alongside any new turn the user takes.
+  const handleResumeSession = useCallback(() => {
+    if (!storedSessionMemory) return
+    const resumed: Message[] = storedSessionMemory.turns.map((turn, index) => ({
+      id: `resumed-${index}-${turn.at}`,
+      text: turn.text,
+      sender: turn.role === "user" ? ("user" as const) : ("ai" as const),
+      timestamp: new Date(turn.at),
+    }))
+
+    if (settings.provider === "webllm") {
+      setWebLlmMessages((prev) => [...resumed, ...prev])
+    } else {
+      setRemoteFallbackMessages((prev) => [...resumed, ...prev])
+    }
+
+    // The user already poured themselves out before. Skip the hardcoded
+    // "How are you feeling today?" greeting and the intro-question gate
+    // by clearing the onboarding chat and marking intros complete.
+    // empathyData is already restored from the vault, so the empathy map
+    // continues from where it was.
+    setOnboardingChatMessages([])
+    setIntroAnswers((prev) => {
+      const next = [...prev]
+      for (let i = 0; i < INTRO_CHAT_QUESTIONS.length; i += 1) {
+        if (!next[i] || next[i].trim().length === 0) {
+          next[i] = "(resumed from previous session)"
+        }
+      }
+      return next
+    })
+
+    setResumeCardHandled(true)
+  }, [storedSessionMemory, settings.provider])
+
+  const handleStartFreshSession = useCallback(() => {
+    setResumeCardHandled(true)
+  }, [])
+
+  // Wipe stored session memory from the encrypted vault. Triggered by the
+  // Settings panel when the user disables remembering or hits "Forget all".
+  const handleForgetSessionMemory = useCallback(async () => {
+    setStoredSessionMemory(null)
+    const handle = vaultKeyHandleRef.current
+    if (!handle) return
+    try {
+      const bundle: VaultPayload = {
+        profile: empathyProfile,
+        empathyData,
+        exportedAt: new Date().toISOString(),
+      }
+      const envelopeJson = await encryptWithKey(bundle, handle)
+      writeVaultEnvelopeToStorage(envelopeJson)
+    } catch {
+      // Silent: key may have been cleared mid-flight. Memory is already
+      // dropped from in-memory state so the UI is honest either way.
+    }
+  }, [empathyProfile, empathyData, writeVaultEnvelopeToStorage])
+
+  const showResumeCard =
+    settings.rememberSessions &&
+    storedSessionMemory !== null &&
+    !resumeCardHandled &&
+    vaultStatus === "unlocked"
+
+  // WebLLM pre-flight: show a download/ETA panel exactly once per model. The
+  // user has to acknowledge before the actual download kicks off, so they
+  // never face a silent multi-hundred-MB fetch on first chat.
+  const webllmConfirmedKey = `empatheia_webllm_confirmed_${settings.webllmModel}`
+  const [webllmConfirmedForModel, setWebllmConfirmedForModel] = useState(false)
+  const [webllmPreflightDismissed, setWebllmPreflightDismissed] = useState(false)
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    setWebllmConfirmedForModel(
+      window.localStorage.getItem(webllmConfirmedKey) === "true"
+    )
+    setWebllmPreflightDismissed(false)
+  }, [webllmConfirmedKey])
+
+  const showWebllmPreflight =
+    settings.provider === "webllm" &&
+    !webllmConfirmedForModel &&
+    !webllmPreflightDismissed &&
+    webLlmStatus === "idle" &&
+    !webLlmEngineRef.current
+
+  const confirmWebllmDownload = useCallback(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(webllmConfirmedKey, "true")
+    }
+    setWebllmConfirmedForModel(true)
+    handleInitializeWebLlm()
+  }, [webllmConfirmedKey, handleInitializeWebLlm])
+
+  const dismissWebllmPreflight = useCallback(() => {
+    setWebllmPreflightDismissed(true)
+  }, [])
 
   useEffect(() => {
     if (settings.provider !== "webllm") return
@@ -1819,6 +2334,115 @@ export default function CompanionApp() {
         return
       }
 
+      // Ollama: when the Next.js /api/chat proxy is unavailable (static export
+      // or offline), call the daemon directly from the browser. Requires the
+      // user to start Ollama with OLLAMA_ORIGINS allowing this origin.
+      const isStaticExportRuntime =
+        process.env.NEXT_PUBLIC_STATIC_EXPORT === "true"
+      const shouldRouteOllamaDirect =
+        settings.provider === "ollama" && (isStaticExportRuntime || !isOnline)
+
+      if (shouldRouteOllamaDirect) {
+        const userMessage: Message = {
+          id: crypto.randomUUID(),
+          text,
+          sender: "user",
+          timestamp: new Date(),
+          emotion: sentimentEmotion,
+        }
+        setRemoteFallbackMessages((prev) => [...prev, userMessage])
+
+        const conversation = [...remoteFallbackMessages, userMessage]
+          .slice(-settings.contextMessages)
+          .map((m) => ({
+            role: m.sender === "user" ? ("user" as const) : ("assistant" as const),
+            content: m.text,
+          }))
+
+        try {
+          const result = await sendOllamaDirect({
+            baseUrl: settings.ollamaBaseUrl,
+            model: settings.ollamaModel,
+            system: buildSystemPrompt(
+              settings.name,
+              settings.personality,
+              settings.toneMode,
+              sentimentEmotion,
+              empathyProfile,
+              empathyCode,
+              samanthaGuidance,
+              text
+            ),
+            messages: conversation,
+            temperature: settings.temperature,
+            topP: settings.topP,
+            maxTokens: settings.maxOutputTokens,
+          })
+
+          const extracted = extractDataUpdate(result.text)
+          const metaExtracted = extractMetaBlock(extracted.cleanText)
+          if (extracted.update) {
+            const nextData = applyDataUpdateBlock(empathyDataRef.current, extracted.update)
+            setEmpathyData(nextData)
+            empathyDataRef.current = nextData
+          }
+          applyMetaSignal(metaExtracted.meta, setSessionDepthLevel, setCurrentStep, setConversationSentimentScore)
+          if (metaExtracted.meta) {
+            setMetaHistory((prev) => [...prev.slice(-19), metaExtracted.meta!])
+          }
+
+          setRemoteFallbackMessages((prev) => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              text:
+                metaExtracted.cleanText ||
+                "I am here with you. Could you tell me a little more?",
+              sender: "ai",
+              timestamp: new Date(),
+              emotion: sentimentEmotion,
+            },
+          ])
+          setLlmConnectionError("")
+        } catch (error) {
+          const detail =
+            error instanceof Error ? error.message : "Ollama direct call failed"
+          setLlmConnectionError(detail)
+
+          const baseFallback = buildLocalCompanionReply(
+            text,
+            analysis.sentimentScore,
+            suggestedNext.question,
+            {
+              provider: settings.provider,
+              llmConnectionError: detail,
+              webLlmStatus,
+              systemHealth,
+              ollamaBaseUrl: settings.ollamaBaseUrl,
+              ollamaModel: settings.ollamaModel,
+            }
+          )
+          const fallbackText = ensureNonRepeatingFallback(
+            baseFallback,
+            lastFallbackReplyRef.current,
+            suggestedNext.question
+          )
+          lastFallbackReplyRef.current = fallbackText
+          setRemoteFallbackMessages((prev) => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              text: fallbackText,
+              sender: "ai",
+              timestamp: new Date(),
+              emotion: sentimentEmotion,
+              mode: "fallback",
+            },
+          ])
+        }
+        return
+      }
+
       // Send via AI SDK for remote and Ollama providers
       try {
         await sendMessage({ text })
@@ -1886,6 +2510,8 @@ export default function CompanionApp() {
       llmConnectionError,
       systemHealth,
       webLlmStatus,
+      isOnline,
+      remoteFallbackMessages,
     ]
   )
 
@@ -1921,6 +2547,57 @@ export default function CompanionApp() {
     setVaultModalBusy(false)
     setVaultModalMode("create")
   }, [empathyProfile, empathyData, vaultStatus, downloadEnvelope, writeVaultEnvelopeToStorage])
+
+  // Global keyboard shortcuts. Skipped while focus is inside an input so
+  // typing real text never accidentally triggers settings/export/summary.
+  // `metaKey` covers macOS Cmd, `ctrlKey` covers Windows/Linux. Web cannot
+  // bind a true OS-level summon hotkey from a hidden window — that needs a
+  // native wrapper — so these only fire when the app already has focus.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const isTypingTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) return false
+      const tag = target.tagName
+      return (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        target.getAttribute("contenteditable") === "true"
+      )
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!event.metaKey && !event.ctrlKey) return
+      if (isTypingTarget(event.target)) return
+      const key = event.key.toLowerCase()
+
+      if (key === "k" && !event.shiftKey) {
+        event.preventDefault()
+        setShowSettings(true)
+        return
+      }
+      if (key === "j" && !event.shiftKey) {
+        event.preventDefault()
+        handleProfileExport()
+        return
+      }
+      if (key === "s" && event.shiftKey) {
+        event.preventDefault()
+        if (userTurnCount >= 4 && answeredIntroCount >= introQuestionCount) {
+          handleGenerateSummary()
+        }
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [
+    userTurnCount,
+    answeredIntroCount,
+    introQuestionCount,
+    handleGenerateSummary,
+    handleProfileExport,
+  ])
 
   const hasDownloadableError =
     Boolean(webLlmError) || Boolean(llmConnectionError) || (settings.provider === "webllm" && webLlmStatus === "error")
@@ -2076,91 +2753,33 @@ export default function CompanionApp() {
 
   return (
     <main className="relative flex h-screen flex-col overflow-hidden bg-background">
-      {!hasAgreed && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/95 px-4">
-          <div className="w-full max-w-xl rounded-lg border border-border bg-card p-6">
-            <h2 className="text-lg font-semibold text-foreground">Empathy Tool Agreement</h2>
-            <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-              This tool is designed to help you reflect, rethink, and re-evaluate negative thoughts with empathetic support.
-              It is not a substitute for clinical care, diagnosis, or emergency support.
-            </p>
-            <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-              <li>I understand this is supportive guidance, not medical advice.</li>
-              <li>I will seek professional help for urgent mental health concerns.</li>
-              <li>I consent to using my conversation context and uploaded profile JSON for personalized responses.</li>
-            </ul>
-
-            <label className="mt-4 flex items-start gap-2 text-sm text-foreground">
-              <input
-                type="checkbox"
-                checked={agreementChecked}
-                onChange={(e) => setAgreementChecked(e.target.checked)}
-                className="mt-1"
-              />
-              <span>I have read and agree to use this empathy tool responsibly.</span>
-            </label>
-
-            <button
-              onClick={handleAcceptAgreement}
-              disabled={!agreementChecked}
-              className="mt-4 w-full rounded border border-foreground bg-foreground px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-foreground/90 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              I Agree and Continue
-            </button>
-          </div>
-        </div>
-      )}
-
-      {hasAgreed && showQuickStartModal && (
-        <div className="absolute inset-0 z-40 flex items-center justify-center bg-background/90 px-4">
-          <div className="w-full max-w-xl rounded-lg border border-border bg-card p-6">
-            <h2 className="text-lg font-semibold text-foreground">Choose Your Conversation Mode</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Pick one option and start chatting immediately. You can change this later in Settings.
-            </p>
-            <Link
-              href="/ollama-install"
-              className="mt-3 inline-flex items-center gap-2 rounded border border-foreground bg-foreground px-3 py-1.5 text-xs font-semibold text-background transition-colors hover:bg-foreground/90"
-            >
-              <Download className="h-3.5 w-3.5" />
-              First time here? Install + Run Guide
-            </Link>
-
-            <div className="mt-4 grid gap-3">
-              <button
-                onClick={() => handleChooseQuickPreset("fast-local")}
-                className="rounded border border-border bg-background px-4 py-3 text-left transition-colors hover:border-muted-foreground/50"
-              >
-                <div className="text-sm font-semibold text-foreground">Fast & Local</div>
-                <div className="text-xs text-muted-foreground">No API setup. Best first-run reliability.</div>
-              </button>
-
-              <button
-                onClick={() => handleChooseQuickPreset("balanced-cloud")}
-                className="rounded border border-border bg-background px-4 py-3 text-left transition-colors hover:border-muted-foreground/50"
-              >
-                <div className="text-sm font-semibold text-foreground">Balanced Cloud</div>
-                <div className="text-xs text-muted-foreground">Recommended for most users. Smooth quality with low latency.</div>
-              </button>
-
-              <button
-                onClick={() => handleChooseQuickPreset("deep-empathy")}
-                className="rounded border border-border bg-background px-4 py-3 text-left transition-colors hover:border-muted-foreground/50"
-              >
-                <div className="text-sm font-semibold text-foreground">Deep Empathy</div>
-                <div className="text-xs text-muted-foreground">Stronger reflection quality for long-form conversations.</div>
-              </button>
+      {dragOverActive && (
+        <div className="pointer-events-none absolute inset-0 z-[60] flex items-center justify-center border-2 border-dashed border-emerald-400/60 bg-emerald-500/10 backdrop-blur-sm">
+          <div className="rounded-lg border border-emerald-400/40 bg-background/80 px-4 py-3 text-center text-sm text-emerald-200 shadow-xl">
+            <div className="text-base font-semibold">Drop vault file to import</div>
+            <div className="mt-1 text-[11px] text-muted-foreground">
+              Encrypted EMPATHEIA vault JSON. You will be asked for the passphrase next.
             </div>
-
-            <button
-              onClick={() => handleChooseQuickPreset("default")}
-              className="mt-4 w-full rounded border border-border bg-card px-4 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
-            >
-              Keep default settings for now
-            </button>
           </div>
         </div>
       )}
+
+      {dragImportError && (
+        <div className="absolute left-1/2 top-4 z-[55] -translate-x-1/2 rounded border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-200 shadow-lg">
+          {dragImportError}
+        </div>
+      )}
+
+      <OnboardingModal
+        hasAgreed={hasAgreed}
+        showQuickStartModal={showQuickStartModal}
+        agreementChecked={agreementChecked}
+        onAgreementCheckedChange={setAgreementChecked}
+        onAcceptAgreement={handleAcceptAgreement}
+        onChoosePreset={handleChooseQuickPreset}
+        embedMode={embedMode}
+        ollamaReachable={ollamaReachableRef.current}
+      />
       {/* Top Bar */}
       <header className="flex items-center justify-between border-b border-border px-4 py-3 md:px-6">
         <div className="flex items-center gap-3">
@@ -2346,19 +2965,30 @@ export default function CompanionApp() {
             mobilePanel === "chat" ? "block" : "hidden md:flex"
           }`}
         >
-          {autoDetectedOllamaModel && (
-            <div className="flex items-center justify-between gap-3 border-b border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-[11px] text-emerald-200">
+          {ollamaTransition && (
+            <div
+              className={`flex items-center justify-between gap-3 border-b px-4 py-2 text-[11px] ${
+                ollamaTransition.kind === "online"
+                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+                  : "border-amber-500/40 bg-amber-500/10 text-amber-200"
+              }`}
+              role="status"
+              aria-live="polite"
+            >
               <span>
-                Local Ollama detected ({autoDetectedOllamaModel}). Chat is now running on your machine.
+                {ollamaTransition.kind === "online"
+                  ? `Ollama just came online${ollamaTransition.model ? ` (${ollamaTransition.model})` : ""} — switched to local.`
+                  : "Ollama went offline — falling back to in-browser WebLLM. Your conversation continues."}
               </span>
               <button
-                onClick={dismissOllamaBanner}
-                className="rounded border border-emerald-400/40 px-2 py-0.5 text-[11px] uppercase tracking-[0.12em] transition-colors hover:bg-emerald-400/20"
+                onClick={() => setOllamaTransition(null)}
+                className="rounded border border-current/40 px-2 py-0.5 text-[11px] uppercase tracking-[0.12em] transition-colors hover:bg-foreground/10"
               >
                 Dismiss
               </button>
             </div>
           )}
+
           <ChatPanel
             messages={messages}
             onSendMessage={handleSendMessage}
@@ -2370,6 +3000,27 @@ export default function CompanionApp() {
             webLlmStatus={webLlmStatus}
             introProgress={{ answered: answeredIntroCount, total: introQuestionCount }}
             onOpenSettings={() => setShowSettings(true)}
+            isOffline={!isOnline}
+            onUseLocalProvider={() =>
+              setSettings((prev) => ({ ...prev, provider: "webllm" }))
+            }
+            feltState={feltState}
+            onMirrorCorrection={(correction) =>
+              handleSendMessage(`(Correcting your read of me) ${correction}`)
+            }
+            summaryCard={summaryCard}
+            onGenerateSummary={handleGenerateSummary}
+            onDismissSummary={dismissSummaryCard}
+            vaultUnlocked={vaultStatus === "unlocked"}
+            canSummarize={
+              userTurnCount >= 4 && answeredIntroCount >= introQuestionCount
+            }
+            showWebllmPreflight={showWebllmPreflight}
+            onConfirmWebllmDownload={confirmWebllmDownload}
+            onDismissWebllmPreflight={dismissWebllmPreflight}
+            resumeMemory={showResumeCard ? storedSessionMemory : null}
+            onResumeSession={handleResumeSession}
+            onStartFreshSession={handleStartFreshSession}
           />
         </section>
 
@@ -2409,6 +3060,7 @@ export default function CompanionApp() {
             onVaultEnvelopeUpload={handleVaultUploadEnvelope}
             onVaultLock={requestVaultLock}
             onVaultClear={requestVaultClear}
+            timeline={empathyTimeline}
           />
         </aside>
       </div>
@@ -2455,6 +3107,9 @@ export default function CompanionApp() {
           settings={settings}
           onSettingsChange={handleSettingsChange}
           onClose={() => setShowSettings(false)}
+          vaultStatus={vaultStatus}
+          hasSessionMemory={storedSessionMemory !== null}
+          onForgetSessionMemory={handleForgetSessionMemory}
         />
       )}
     </main>

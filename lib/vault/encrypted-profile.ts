@@ -9,10 +9,28 @@ const SALT_BYTES = 16
 const IV_BYTES = 12
 const KEY_BITS = 256
 
+export interface SessionMemoryTurn {
+  role: "user" | "assistant"
+  text: string
+  at: string
+}
+
+export interface SessionMemoryRecord {
+  savedAt: string
+  headline: string
+  summaryParagraphs: string[]
+  turns: SessionMemoryTurn[]
+}
+
 export interface VaultPayload {
   profile: EmpathyProfile
   empathyData: EmpathyData
   exportedAt: string
+  // Optional. Present only when the user has opted in to remembering
+  // conversations across sessions ("Remember conversations" toggle in
+  // Settings). Capped to a small rolling window — see RECENT_TURN_CAP in
+  // app/page.tsx — so the encrypted envelope stays small.
+  sessionMemory?: SessionMemoryRecord
 }
 
 export interface VaultEnvelope {

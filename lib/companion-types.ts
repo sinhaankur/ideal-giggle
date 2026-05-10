@@ -235,6 +235,11 @@ export interface CompanionSettings {
   mcpAutoFallback: boolean
   openRouterApiKey: string
   openRouterModel: string
+  // Opt-in: when true and the vault is unlocked, EMPATHEIA stores a small
+  // rolling window of recent turns + the latest summary inside the
+  // encrypted vault so the next session can offer "pick up where we left
+  // off". Off by default — privacy-first; existing users see no change.
+  rememberSessions: boolean
 }
 
 export const DEFAULT_SETTINGS: CompanionSettings = {
@@ -248,7 +253,10 @@ export const DEFAULT_SETTINGS: CompanionSettings = {
   maxOutputTokens: 300,
   contextMessages: 12,
   cameraDeviceId: "",
-  webllmModel: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC",
+  // 1B Llama produces noticeably more empathic, less generic responses
+  // than 0.5B Qwen — at the cost of a ~740MB one-time WebLLM download.
+  // For very low-end hardware, users can still pick the 0.5B from Settings.
+  webllmModel: "Llama-3.2-1B-Instruct-q4f16_1-MLC",
   ollamaBaseUrl: envDefaultOllamaBaseUrl,
   ollamaModel: "llama3.2",
   mcpBaseUrl: "http://127.0.0.1:8787",
@@ -257,6 +265,7 @@ export const DEFAULT_SETTINGS: CompanionSettings = {
   mcpAutoFallback: false,
   openRouterApiKey: "",
   openRouterModel: "qwen/qwen3-4b:free",
+  rememberSessions: false,
 }
 
 export function detectEmotion(text: string): Emotion {

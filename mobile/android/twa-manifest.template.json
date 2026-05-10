@@ -1,0 +1,51 @@
+{
+  "_comment": "Template for Bubblewrap. Copy to twa-manifest.json and fill in your hosted PWA URL + signing key. Kept out of bubblewrap init flow so we can version it.",
+  "packageId": "app.empatheia.twa",
+  "host": "REPLACE_WITH_YOUR_PAGES_HOST",
+  "name": "EMPATHEIA",
+  "launcherName": "EMPATHEIA",
+  "display": "standalone",
+  "themeColor": "#0a0a0a",
+  "navigationColor": "#0a0a0a",
+  "navigationColorDark": "#0a0a0a",
+  "navigationDividerColor": "#0a0a0a",
+  "navigationDividerColorDark": "#0a0a0a",
+  "backgroundColor": "#0a0a0a",
+  "enableNotifications": false,
+  "startUrl": "/REPLACE_WITH_BASE_PATH/",
+  "iconUrl": "https://REPLACE_WITH_YOUR_PAGES_HOST/REPLACE_WITH_BASE_PATH/icon-512.png",
+  "maskableIconUrl": "https://REPLACE_WITH_YOUR_PAGES_HOST/REPLACE_WITH_BASE_PATH/icon-512-maskable.png",
+  "monochromeIconUrl": "https://REPLACE_WITH_YOUR_PAGES_HOST/REPLACE_WITH_BASE_PATH/icon-512-maskable.png",
+  "shortcuts": [
+    {
+      "name": "Open Settings",
+      "shortName": "Settings",
+      "url": "/REPLACE_WITH_BASE_PATH/?panel=settings",
+      "iconUrl": "https://REPLACE_WITH_YOUR_PAGES_HOST/REPLACE_WITH_BASE_PATH/icon-192.png"
+    },
+    {
+      "name": "Open Vault",
+      "shortName": "Vault",
+      "url": "/REPLACE_WITH_BASE_PATH/?panel=vault",
+      "iconUrl": "https://REPLACE_WITH_YOUR_PAGES_HOST/REPLACE_WITH_BASE_PATH/icon-192.png"
+    }
+  ],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://REPLACE_WITH_YOUR_PAGES_HOST/REPLACE_WITH_BASE_PATH/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://REPLACE_WITH_YOUR_PAGES_HOST/REPLACE_WITH_BASE_PATH/",
+  "minSdkVersion": 21,
+  "orientation": "any",
+  "appVersionName": "1",
+  "appVersionCode": 1,
+  "shareTarget": null,
+  "fileHandlers": [],
+  "launchHandlerClientMode": "auto"
+}

@@ -60,6 +60,9 @@ interface SettingsPanelProps {
   settings: CompanionSettings
   onSettingsChange: (settings: CompanionSettings) => void
   onClose: () => void
+  vaultStatus?: "no-vault" | "locked" | "unlocked"
+  hasSessionMemory?: boolean
+  onForgetSessionMemory?: () => void
 }
 
 type LimiterStatusPayload = {
@@ -79,7 +82,14 @@ type LimiterStatusPayload = {
   serverTime: string
 }
 
-export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsPanelProps) {
+export function SettingsPanel({
+  settings,
+  onSettingsChange,
+  onClose,
+  vaultStatus = "no-vault",
+  hasSessionMemory = false,
+  onForgetSessionMemory,
+}: SettingsPanelProps) {
   const isProductionBuild = process.env.NODE_ENV === "production"
   const [limiterStatus, setLimiterStatus] = useState<LimiterStatusPayload | null>(null)
   const [limiterError, setLimiterError] = useState("")
@@ -239,6 +249,69 @@ export function SettingsPanel({ settings, onSettingsChange, onClose }: SettingsP
             <p className="text-xs text-muted-foreground">
               When enabled, reduced motion and keyboard shortcut assistance are activated.
             </p>
+          </div>
+
+          {/* Memory across sessions */}
+          <div className="mb-6 rounded border border-border bg-background p-3">
+            <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
+              <Sparkles className="h-4 w-4 text-foreground" />
+              <span className="text-sm font-semibold text-foreground">
+                Memory
+              </span>
+            </div>
+
+            <label
+              className={`mb-2 flex items-center gap-2 text-sm ${
+                vaultStatus === "unlocked" ? "text-foreground" : "text-muted-foreground/60"
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={settings.rememberSessions}
+                disabled={vaultStatus !== "unlocked"}
+                onChange={(e) => {
+                  const next = e.target.checked
+                  // Turning OFF should also delete what's already stored —
+                  // off has to mean off. Confirm before destroying.
+                  if (!next && hasSessionMemory) {
+                    const ok = window.confirm(
+                      "Disable remembering and delete the existing session memory from your vault?"
+                    )
+                    if (!ok) return
+                    onForgetSessionMemory?.()
+                  }
+                  update({ rememberSessions: next })
+                }}
+              />
+              <span>Remember conversations across sessions</span>
+            </label>
+
+            <p className="text-xs text-muted-foreground">
+              When on, the last few turns and the most recent reflection summary are stored
+              inside your encrypted vault so the next session can offer to pick up where you
+              left off. Off by default. Memory only persists while the vault is unlocked.
+            </p>
+
+            {vaultStatus !== "unlocked" && (
+              <p className="mt-2 text-xs text-amber-300">
+                Unlock or create a vault first — memory needs encryption.
+              </p>
+            )}
+
+            {settings.rememberSessions && hasSessionMemory && onForgetSessionMemory && (
+              <button
+                onClick={() => {
+                  const ok = window.confirm(
+                    "Forget all stored session memory? Your conversation will start fresh next time."
+                  )
+                  if (!ok) return
+                  onForgetSessionMemory()
+                }}
+                className="mt-3 inline-flex items-center gap-1 rounded border border-rose-500/40 bg-rose-500/10 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-rose-300 transition-colors hover:bg-rose-500/20"
+              >
+                Forget all memory now
+              </button>
+            )}
           </div>
 
           {/* Quick Start Presets */}

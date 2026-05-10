@@ -1,7 +1,16 @@
-const VERSION = "v2"
+const VERSION = "v3"
 const RUNTIME_CACHE = `empatheia-runtime-${VERSION}`
 const SHELL_CACHE = `empatheia-shell-${VERSION}`
-const SHELL_URLS = ["/", "/manifest.webmanifest"]
+const SHELL_URLS = [
+  "/",
+  "/manifest.webmanifest",
+  "/face-models/tiny_face_detector_model-weights_manifest.json",
+  "/face-models/tiny_face_detector_model.bin",
+  "/face-models/face_landmark_68_model-weights_manifest.json",
+  "/face-models/face_landmark_68_model.bin",
+  "/face-models/face_expression_model-weights_manifest.json",
+  "/face-models/face_expression_model.bin",
+]
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

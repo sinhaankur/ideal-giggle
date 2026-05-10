@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest"
-import { buildLocalCompanionReply, inferUserUnderstanding } from "./communication-engine"
+import {
+  buildLocalCompanionReply,
+  describeFeltState,
+  inferUserUnderstanding,
+  suggestPromptsFromFeltState,
+  summarizeFeltState,
+} from "./communication-engine"
 
 describe("inferUserUnderstanding", () => {
   it("detects a check-in intent", () => {
@@ -62,5 +68,73 @@ describe("buildLocalCompanionReply runtime status behavior", () => {
     expect(reply).toMatch(/WebLLM is currently downloading/i)
     expect(reply).toMatch(/Initialize the model|switch provider/i)
     expect(reply).not.toMatch(/what part feels sharpest right now/i)
+  })
+})
+
+describe("describeFeltState", () => {
+  it("surfaces primary + secondary descriptors and a body hint when present", () => {
+    const state = describeFeltState(
+      "I feel anxious and exhausted, my chest is tight and I cant breathe right",
+      "fear"
+    )
+
+    expect(state.primary).toBe("anxious")
+    expect(state.secondary).toBe("exhausted")
+    expect(state.bodyHint).toBe("tight chest")
+    expect(state.confidence).toBe("high")
+  })
+
+  it("infers venting intent and matching need", () => {
+    const state = describeFeltState(
+      "I am tired of this, I am frustrated and just done with it"
+    )
+
+    expect(state.intent).toBe("venting")
+    expect(state.need).toMatch(/heard without being fixed/i)
+  })
+
+  it("falls back gracefully when no signal text is provided", () => {
+    const state = describeFeltState("", "neutral")
+
+    expect(state.primary).toBe("settling in")
+    expect(state.confidence).toBe("low")
+    expect(summarizeFeltState(state)).toBe("settling in")
+  })
+})
+
+describe("suggestPromptsFromFeltState", () => {
+  it("returns primary-tag-tailored prompts as the first option", () => {
+    const state = describeFeltState("I am lonely and just want to feel heard")
+    const prompts = suggestPromptsFromFeltState(state)
+
+    expect(prompts.length).toBeGreaterThan(0)
+    expect(prompts[0]).toMatch(/heard|stay with me|reflect/i)
+  })
+
+  it("blends primary and secondary tags when both are present", () => {
+    const state = describeFeltState(
+      "I am overwhelmed and exhausted, everything feels like too much"
+    )
+    const prompts = suggestPromptsFromFeltState(state)
+
+    expect(prompts.length).toBeGreaterThanOrEqual(2)
+    // Should pull at least one prompt that maps to "overwhelmed" or
+    // "exhausted" rather than only generic ones.
+    expect(prompts.some((p) => /smaller|drop|attention|rest|witness/i.test(p))).toBe(true)
+  })
+
+  it("never returns more than three prompts", () => {
+    const state = describeFeltState("I am anxious and tense and stuck and tired and wistful")
+    const prompts = suggestPromptsFromFeltState(state)
+
+    expect(prompts.length).toBeLessThanOrEqual(3)
+  })
+
+  it("yields a settling-in prompt when no signal is detected", () => {
+    const state = describeFeltState("hello", "neutral")
+    const prompts = suggestPromptsFromFeltState(state)
+
+    expect(prompts.length).toBeGreaterThan(0)
+    expect(prompts[0]).toMatch(/arrive|first thing|gently/i)
   })
 })

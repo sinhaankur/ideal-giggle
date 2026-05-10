@@ -1,0 +1,27 @@
+{
+  "_comment": "Template for Capacitor. Copy to capacitor.config.json before building. webDir points at the static export output produced by `STATIC_EXPORT=true pnpm build`.",
+  "appId": "app.empatheia.ios",
+  "appName": "EMPATHEIA",
+  "webDir": "../../out",
+  "bundledWebRuntime": false,
+  "ios": {
+    "contentInset": "always",
+    "scrollEnabled": true,
+    "limitsNavigationsToAppBoundDomains": false,
+    "allowsLinkPreview": false,
+    "backgroundColor": "#0a0a0a"
+  },
+  "server": {
+    "iosScheme": "empatheia",
+    "cleartext": false,
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 800,
+      "launchAutoHide": true,
+      "backgroundColor": "#0a0a0a",
+      "showSpinner": false
+    }
+  }
+}

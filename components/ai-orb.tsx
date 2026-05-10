@@ -13,6 +13,9 @@ interface AIOrbProps {
   phase?: OrbPhase
   activityLevel?: number
   reducedMotionEnabled?: boolean
+  // Mirror's confidence in its current read of the user. Drives a soft
+  // ring around the orb so the empathic *certainty* is visible at a glance.
+  confidence?: "low" | "medium" | "high" | null
 }
 
 export function AIOrb({
@@ -23,6 +26,7 @@ export function AIOrb({
   phase,
   activityLevel,
   reducedMotionEnabled = false,
+  confidence = null,
 }: AIOrbProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const animationRef = useRef<number>(0)
@@ -284,12 +288,27 @@ export function AIOrb({
           ease: "easeInOut",
         }}
       >
-        <canvas
-          ref={canvasRef}
-          className="w-full aspect-square"
-          style={{ imageRendering: "auto" }}
-          aria-label={`AI companion visualization showing ${emotion} emotion`}
-        />
+        <div className="relative">
+          <canvas
+            ref={canvasRef}
+            className="w-full aspect-square"
+            style={{ imageRendering: "auto" }}
+            aria-label={`AI companion visualization showing ${emotion} emotion`}
+          />
+          {confidence && (
+            <div
+              className={`pointer-events-none absolute inset-2 rounded-full transition-opacity duration-500 ${
+                confidence === "high"
+                  ? "ring-2 ring-emerald-400/40 shadow-[0_0_28px_rgba(52,211,153,0.18)]"
+                  : confidence === "medium"
+                    ? "ring-2 ring-amber-300/30 shadow-[0_0_20px_rgba(252,211,77,0.12)]"
+                    : "ring ring-muted-foreground/20"
+              }`}
+              aria-hidden
+              title={`Mirror confidence: ${confidence}`}
+            />
+          )}
+        </div>
       </motion.div>
       <div className="absolute bottom-4 flex flex-col items-center gap-1">
         <AnimatePresence mode="wait" initial={false}>
