@@ -6,9 +6,9 @@ An empathetic AI companion built with Next.js, React, and AI SDK. Runs fully off
 
 - Camera-based facial expression detection (face-api.js, weights bundled locally)
 - Mood-aware tone adaptation in responses
-- Multiple providers: OpenAI, Anthropic, Google, OpenRouter (open-source hosted models), WebLLM (browser local), Ollama (local runtime)
+- Two clean provider paths: **Ollama** (a PC LLM running locally on your machine) or a **cloud API** (OpenAI, Anthropic, Google, OpenRouter)
 - Hybrid intelligence fallback: if model runtime fails, empathy-map quadrants still update using sentiment + keyword heuristics
-- Offline mode: Service Worker caches the app shell + face-detection weights; chat continues via WebLLM (in-browser) or Ollama (called directly from the browser)
+- Offline mode: Service Worker caches the app shell + face-detection weights; chat continues via Ollama called directly from the browser, or via the deterministic empathy fallback engine if no LLM is reachable
 - Installable PWA on macOS, Windows, Linux, iOS, and Android
 
 ## Empathy Engine Docs
@@ -64,17 +64,14 @@ Diagnostics endpoint:
 - `GET /api/limiter-status` returns active limiter mode and route thresholds.
 - If `LIMITER_STATUS_TOKEN` is set, include request header `x-admin-token: <LIMITER_STATUS_TOKEN>`.
 
-### Optional for local-only providers
-
-- WebLLM: no API key needed, model downloads in browser on first use
-- Ollama: install locally and run a model first
+### Optional for the local-only provider (Ollama)
 
 ```bash
-# install and run model on your machine (outside browser)
+# install Ollama from https://ollama.com (macOS / Linux / Windows)
 ollama run llama3.2
 ```
 
-The browser cannot install Ollama binaries automatically due OS security boundaries. The app includes a direct download link to Ollama in settings.
+The browser cannot install Ollama binaries automatically — install it once and the app probes `http://127.0.0.1:11434` on startup.
 
 3. Start the development server:
 
@@ -88,133 +85,64 @@ pnpm dev
 http://localhost:3000
 ```
 
-## Local AI Provider Setup
+## Provider Setup — PC LLM or API
 
-Open settings in the app and choose provider:
+There are exactly two paths:
 
-- OpenRouter (hosted open-source models):
-	- Set provider to OpenRouter
-	- In local dev: add your OpenRouter API key in settings, or set `OPENROUTER_API_KEY` in `.env.local`
-	- In production: set `OPENROUTER_API_KEY` on the server and avoid browser key entry
-	- Pick a preset open-source model or paste a custom OpenRouter model id
+### 1. PC LLM — Ollama (recommended)
 
-- WebLLM:
-	- Set provider to WebLLM
-	- Optionally set WebLLM model id
-	- First chat may take time while model downloads in browser
+Runs the model on your own machine. Free, private, fully offline once installed.
 
-- Ollama:
-	- Set provider to Ollama
-	- Keep default base URL `http://127.0.0.1:11434` or change it
-	- Set model id (for example `llama3.2`)
-	- Ensure Ollama daemon/model is running locally
+```bash
+# install Ollama (macOS / Linux / Windows): https://ollama.com
+brew install ollama          # macOS
+# or: curl -fsSL https://ollama.com/install.sh | sh   (Linux)
 
-## Recommended Provider by Form Factor
+ollama pull llama3.2
+OLLAMA_ORIGINS="http://localhost:3000,https://yourname.github.io" ollama serve
+```
 
-EMPATHEIA is local-LLM-first. Pick the path that matches how you're running it:
+Open EMPATHEIA. The app probes `http://127.0.0.1:11434` on startup and auto-switches to Ollama when reachable. From then on every conversation runs locally — nothing leaves your machine.
 
-| You are running EMPATHEIA on... | Recommended provider | Why |
-| --- | --- | --- |
-| **A desktop / laptop you control (installed PWA, dev, or self-hosted)** | **Ollama** | Real local LLM, no GPU constraints, private, fast on CPU + GPU. The app auto-detects Ollama at startup and switches to it. |
-| A browser without Ollama (visitor on GitHub Pages / hosted demo) | WebLLM | Runs entirely in-browser via WebGPU, no install, weights cached in IndexedDB. |
-| Mobile / iPad | WebLLM (small model) or hosted API via `NEXT_PUBLIC_CHAT_API_URL` | iOS/iPadOS 18+ can run WebLLM with a 0.5B–1B model. |
-| Constrained hardware / no WebGPU | OpenRouter (free open-source models) | Browser-direct, low setup, free tier available. |
+### 2. API — OpenRouter / OpenAI / Anthropic / Google
+
+For users who can't or don't want to run a local LLM. OpenRouter has a free tier with open-source models (qwen, llama, mistral, gemma, deepseek).
+
+- **Local dev:** add the API key in Settings, or set `OPENROUTER_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GOOGLE_GENERATIVE_AI_API_KEY` in `.env.local`.
+- **Production:** set the key on the server. The chat endpoint reads it from the env so keys never reach the browser.
 
 ### Quick Start Presets
 
 Open Settings → Quick Start Presets:
 
-- **Fast & Local** — zero API setup. Auto-detects Ollama; falls back to WebLLM in-browser if Ollama isn't running.
-- **Balanced Cloud** — OpenRouter free tier, smoother quality.
-- **Deep Empathy** — stronger reflective depth for longer conversations.
-
-### One-time Ollama setup (recommended for desktop)
-
-```bash
-# install Ollama from https://ollama.com or via your package manager
-brew install ollama          # macOS
-# or: curl -fsSL https://ollama.com/install.sh | sh   (Linux)
-
-# pull a small empathic model
-ollama pull llama3.2
-
-# start the daemon (allow your installed PWA / dev origin to talk to it)
-OLLAMA_ORIGINS="http://localhost:3000,https://yourname.github.io" ollama serve
-```
-
-Then open EMPATHEIA. The app probes `http://127.0.0.1:11434` on startup and auto-switches to Ollama when reachable. From then on every conversation runs locally with no network round-trips.
+- **Local LLM (Ollama)** — recommended. Auto-detects Ollama on your machine. Zero API setup.
+- **Balanced Cloud** — OpenRouter free tier (`qwen/qwen3-4b:free`). Smooth quality with low latency.
+- **Deep Empathy** — `meta-llama/llama-3.3-70b-instruct:free`. Stronger reflective depth for longer conversations.
 
 ## Setup Checklist Panel
 
-The left panel now includes a Setup Checklist section.
+The left panel includes a Setup Checklist section.
 
 - Verifies camera API support
-- Shows selected provider status
-- For WebLLM: checks WebGPU availability
-- For Ollama: click Verify Ollama to test endpoint and model availability
+- Shows the selected provider status
+- For Ollama: click **Verify Ollama** to test the endpoint and model availability
 
-## WebLLM WebGPU Setup
+## Recommended Ollama Models
 
-WebLLM runs in-browser and needs WebGPU to use your local GPU for fast inference.
+A short list of models that work well with the empathy stack:
 
-1. Enable WebGPU and acceleration:
-	- Chrome/Edge: open `chrome://settings/system` and enable graphics acceleration.
-	- Chrome/Edge flags: enable `chrome://flags/#enable-unsafe-webgpu`.
-	- Linux/Windows: also enable `chrome://flags/#enable-vulkan`.
-	- Firefox: use a recent version and set `dom.webgpu.enabled=true` in `about:config`.
+- `llama3.2` (default) — 2GB, strong instruction-following and emotional nuance
+- `llama3.2:1b` — 1.3GB, faster on lower-end CPUs
+- `gemma2:2b` — 1.6GB, warmer / more creative tone
+- `mistral:7b-instruct` — 4.4GB, deeper analytical conversations
 
-2. Verify hardware support:
-	- Check `webgpureport.org` to confirm browser GPU detection.
-	- Update GPU drivers (NVIDIA/AMD/Intel) if WebGPU is unavailable.
+Pull whichever you want:
 
-3. Understand first-run behavior:
-	- Model shards are downloaded and cached in browser storage.
-	- WebAssembly runs model runtime logic.
-	- WebGPU performs matrix math on GPU for usable speed.
+```bash
+ollama pull llama3.2
+```
 
-4. Fix slow/crashy sessions:
-	- Use smaller models (1B/2B) for lower VRAM use.
-	- Close heavy tabs/applications to free GPU memory.
-	- 3B class models often need around 4GB of available VRAM.
-	- Keep laptop plugged in and avoid thermal throttling.
-	- Prefer secure contexts (`https://` or `localhost`) instead of plain local-network `http://192.168...` URLs.
-	- Re-check `chrome://flags/#enable-unsafe-webgpu` after browser updates because it can reset.
-	- For production deployments, apply for a Google WebGPU Origin Trial token so WebGPU remains available outside localhost.
-
-If browser WebGPU remains unstable, switch provider to OpenRouter API or Ollama for more consistent runtime behavior.
-
-## Recommended No-Install Websites
-
-These websites run models directly in-browser and cache weights in IndexedDB:
-
-- WebLLM Chat: https://chat.webllm.ai
-- Hugging Face Chat: https://huggingface.co/chat
-- WebLLM Agents Playground: https://huggingface.co/spaces/webllm/web-llm-agent
-
-## Official WebLLM Model Repositories
-
-WebLLM uses pre-compiled MLC model formats. Recommended stable repositories:
-
-- Llama 3.2 3B (Instruct): https://huggingface.co/mlc-ai/Llama-3.2-3B-Instruct-q4f16_1-MLC
-	- Best for deep conversational logic and shadow-work flows.
-- Llama 3.2 1B (Instruct): https://huggingface.co/mlc-ai/Llama-3.2-1B-Instruct-q4f16_1-MLC
-	- Best for lower-end hardware or faster onboarding interactions.
-- Gemma 2 2B: https://huggingface.co/mlc-ai/gemma-2-2b-it-q4f16_1-MLC
-	- Best for warm and creative persona responses.
-- Mistral 7B v0.3: https://huggingface.co/mlc-ai/Mistral-7B-Instruct-v0.3-q4f16_1-MLC
-	- Best for complex analysis and deeper empathy-code generation.
-
-## Seamless Browser Requirements
-
-| Requirement | How to Verify / Fix |
-| --- | --- |
-| WebGPU Support | Check `webgpureport.org`. If unsupported, enable browser acceleration and WebGPU flags. |
-| Storage Space | Keep roughly 2GB to 5GB free for model downloads (3B class models are larger). |
-| Persistence | Avoid Incognito/Private mode because cached model weights are removed when session ends. |
-
-## Gemini Nano Note
-
-Some Chrome Dev/Canary environments may expose built-in local LLM capabilities (Gemini Nano) via experimental browser APIs. This can reduce download time, but availability depends on browser channel, OS, and device support.
+Then set the model id in Settings → Ollama, or stick with `llama3.2` (the default).
 
 ## Camera Mood Analysis
 
@@ -347,7 +275,6 @@ Once you've loaded the app at least once, EMPATHEIA continues to work without an
 
 - **Service Worker** ([public/sw.js](public/sw.js)) pre-caches the app shell, JS/CSS bundles, and face-detection weights on install.
 - **Face detection** loads from [public/face-models/](public/face-models/) (~860KB total). No CDN dependency, no first-launch downloads.
-- **WebLLM** runs the entire LLM in your browser via WebGPU — fully offline after the model has been cached once in IndexedDB.
 - **Ollama (browser-direct)** — when the Next.js `/api/chat` proxy is unavailable (static export builds, or you're offline), the app calls `http://127.0.0.1:11434/v1/chat/completions` directly from the browser. Start Ollama with the appropriate origin:
 
   ```bash
@@ -356,8 +283,8 @@ Once you've loaded the app at least once, EMPATHEIA continues to work without an
 
   Use `OLLAMA_ORIGINS=*` for unrestricted local development.
 
-- **Offline indicator** appears in the chat panel header when `navigator.onLine === false` and offers a one-click switch to WebLLM if you were on a cloud provider.
-- **Fallback ladder**: WebLLM error → MCP fallback → keyword/sentiment empathy heuristics. Conversation never hits a dead end, even with no network and no model.
+- **Offline indicator** appears in the chat panel header when `navigator.onLine === false` and surfaces a one-click switch to Ollama if you were on a cloud provider.
+- **Empathy fallback ladder**: when no LLM is reachable, the deterministic empathy engine (Plutchik-grounded emotion analysis + therapy-engine compose path) takes over so the conversation never hits a dead end, even with no network and no model.
 
 ## Install as a Native App
 
@@ -391,17 +318,17 @@ After install:
 
 - App opens in a standalone window with the EMPATHEIA icon (see [public/icon.svg](public/icon.svg)).
 - The Service Worker stays active across launches — no re-download of bundles or face-models on subsequent runs.
-- Pick **Settings → Quick Start Presets → Fast & Local** for a fully offline-capable runtime (WebLLM + WebGPU).
+- Pick **Settings → Quick Start Presets → Local LLM (Ollama)** for a fully offline-capable runtime.
 
 ## GitHub Pages — Download & Usage
 
-This repository deploys to GitHub Pages on every push to `main` via [.github/workflows/deploy-pages.yml](.github/workflows/deploy-pages.yml). The Pages build defaults to WebLLM so users can chat in-browser with no server keys.
+This repository deploys to GitHub Pages on every push to `main` via [.github/workflows/deploy-pages.yml](.github/workflows/deploy-pages.yml). The Pages build defaults to **Ollama** — visitors who have Ollama running locally get a real PC LLM immediately; visitors without Ollama get the deterministic empathy fallback engine until they either install Ollama or add a cloud API key in Settings.
 
 ### Use the hosted build
 
-1. Open the deployed Pages URL on any device with WebGPU (Chrome 113+, Edge 113+, Safari 18+ on macOS 15+).
+1. Open the deployed Pages URL on any modern browser.
 2. Accept the user agreement.
-3. The browser downloads a small WebLLM model on first chat (Qwen2.5-0.5B by default; cached in IndexedDB).
+3. If Ollama is running locally on `127.0.0.1:11434`, the app auto-detects it and switches over. Otherwise pick **Settings → API key** to use OpenRouter / OpenAI / Anthropic / Google, or install Ollama for a private PC LLM.
 4. Click the install icon (see table above) to install as a desktop / mobile app.
 
 ### Run your own copy
@@ -424,11 +351,11 @@ pnpm dev   # http://localhost:3000
 
 | Provider | Works on Pages? | How |
 | --- | --- | --- |
-| WebLLM | ✅ default | runs entirely in browser |
-| Ollama | ✅ if running locally | app calls `http://127.0.0.1:11434/v1` directly; set `OLLAMA_ORIGINS` to your Pages origin |
-| OpenAI / Anthropic / Google / OpenRouter | ❌ unless you provide a proxy | set `NEXT_PUBLIC_CHAT_API_URL` repo variable to a hosted Next.js or compatible chat API |
+| Ollama (PC LLM) | ✅ if running locally | the app calls `http://127.0.0.1:11434/v1` directly; set `OLLAMA_ORIGINS` to your Pages origin |
+| OpenAI / Anthropic / Google / OpenRouter | ✅ if you provide a proxy | set `NEXT_PUBLIC_CHAT_API_URL` repo variable to a hosted Next.js or compatible chat API |
+| No LLM at all | ✅ degraded | the deterministic empathy engine (Plutchik + therapy compose) still replies — meaningful and calibrated, just without a real model |
 
-The app already reads `NEXT_PUBLIC_CHAT_API_URL` and falls back to `/api/chat` for local development.
+The app reads `NEXT_PUBLIC_CHAT_API_URL` and falls back to `/api/chat` for local development.
 
 ## Deploy Targets
 

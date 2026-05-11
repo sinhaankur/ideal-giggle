@@ -137,7 +137,7 @@ export function OnboardingModal({
                 <Cpu className="h-3 w-3" />
                 {ollamaReachable
                   ? "Ollama detected on this device"
-                  : "No local Ollama detected — Local LLM will use in-browser WebLLM"}
+                  : "No local Ollama detected — install it for a fully private PC LLM, or pick a cloud API below"}
               </div>
             )}
 
@@ -162,7 +162,7 @@ export function OnboardingModal({
                     Local LLM (Recommended)
                   </div>
                   <div className={`text-muted-foreground ${embedMode ? "text-[11px]" : "text-xs"}`}>
-                    Ollama if running on your machine, in-browser WebLLM as fallback. No API key, no cloud round-trip.
+                    Runs on your PC via Ollama. Private, free, no API key, no cloud round-trip.
                   </div>
                 </div>
               </button>

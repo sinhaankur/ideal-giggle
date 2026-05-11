@@ -44,7 +44,7 @@ jobs:
           NEXT_TELEMETRY_DISABLED: "1"
           STATIC_EXPORT: "true"
           NEXT_PUBLIC_STATIC_EXPORT: "true"
-          NEXT_PUBLIC_DEFAULT_PROVIDER: "webllm"
+          NEXT_PUBLIC_DEFAULT_PROVIDER: "ollama"
           NEXT_PUBLIC_CHAT_API_URL: ${{ vars.NEXT_PUBLIC_CHAT_API_URL }}
         run: pnpm build
 

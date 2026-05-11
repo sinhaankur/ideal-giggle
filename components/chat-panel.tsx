@@ -7,7 +7,6 @@ import { AIOrb } from "@/components/ai-orb"
 import { MirrorStrip } from "@/components/mirror-strip"
 import { BreathCoach } from "@/components/breath-coach"
 import { SummaryCard } from "@/components/summary-card"
-import { WebLLMPreflight } from "@/components/webllm-preflight"
 import { ResumeSessionCard } from "@/components/resume-session-card"
 import type { SessionMemoryRecord } from "@/lib/vault/encrypted-profile"
 import type { Message, Emotion, CompanionSettings } from "@/lib/companion-types"
@@ -75,8 +74,7 @@ interface ChatPanelProps {
   emotion: Emotion
   settings: CompanionSettings
   connectionError?: string
-  systemHealth?: "ready" | "busy" | "fallback" | "initializing"
-  webLlmStatus?: string
+  systemHealth?: "ready" | "busy" | "fallback"
   introProgress?: { answered: number; total: number }
   onOpenSettings?: () => void
   isOffline?: boolean
@@ -89,9 +87,6 @@ interface ChatPanelProps {
   onSaveSummaryToVault?: () => void | Promise<void>
   vaultUnlocked?: boolean
   canSummarize?: boolean
-  showWebllmPreflight?: boolean
-  onConfirmWebllmDownload?: () => void
-  onDismissWebllmPreflight?: () => void
   resumeMemory?: SessionMemoryRecord | null
   onResumeSession?: () => void
   onStartFreshSession?: () => void
@@ -105,7 +100,6 @@ export function ChatPanel({
   settings,
   connectionError,
   systemHealth,
-  webLlmStatus,
   introProgress,
   onOpenSettings,
   isOffline,
@@ -118,9 +112,6 @@ export function ChatPanel({
   onSaveSummaryToVault,
   vaultUnlocked,
   canSummarize,
-  showWebllmPreflight,
-  onConfirmWebllmDownload,
-  onDismissWebllmPreflight,
   resumeMemory,
   onResumeSession,
   onStartFreshSession,
@@ -381,11 +372,7 @@ export function ChatPanel({
   }
 
   const providerLabel =
-    settings.provider === "webllm"
-      ? "BROWSER LOCAL"
-      : settings.provider === "ollama"
-        ? "OLLAMA LOCAL"
-        : settings.provider.toUpperCase()
+    settings.provider === "ollama" ? "OLLAMA LOCAL" : settings.provider.toUpperCase()
 
   const introTotal = introProgress?.total || 0
   const introAnswered = introProgress?.answered || 0
@@ -395,11 +382,7 @@ export function ChatPanel({
   const fallbackActive = systemHealth === "fallback" || Boolean(connectionError)
   const statusBannerText = fallbackActive
     ? connectionError || "Model connection is unstable. Local fallback responses are active."
-    : systemHealth === "initializing"
-      ? settings.provider === "webllm"
-        ? `Initializing WebLLM (${webLlmStatus || "starting"})...`
-        : "Preparing provider runtime..."
-      : ""
+    : ""
 
   const [promptSeed, setPromptSeed] = useState(() => Math.floor(Math.random() * 1_000_000))
 
@@ -530,10 +513,10 @@ export function ChatPanel({
         </div>
         <div className="flex items-center gap-2">
           {(() => {
-            const isLocalProvider = settings.provider === "webllm" || settings.provider === "ollama"
+            const isLocalProvider = settings.provider === "ollama"
             const label = isLocalProvider ? "PRIVATE" : "NOT STORED"
             const tooltip = isLocalProvider
-              ? `This conversation runs entirely on your device via ${settings.provider.toUpperCase()}. Nothing is sent to a server. Nothing is saved by EMPATHEIA.`
+              ? "This conversation runs entirely on your machine via Ollama. Nothing is sent to a server. Nothing is saved by EMPATHEIA."
               : `EMPATHEIA does not store this conversation. Messages are sent to ${settings.provider.toUpperCase()} for inference and discarded after the response.`
             return (
               <span
@@ -649,17 +632,17 @@ export function ChatPanel({
           <div className="flex items-center gap-2 text-amber-200">
             <WifiOff className="h-3.5 w-3.5" />
             <span className="leading-relaxed">
-              {settings.provider === "webllm" || settings.provider === "ollama"
-                ? "You are offline. Local provider keeps the conversation running."
-                : "You are offline. Switch to a local provider (WebLLM or Ollama) to keep chatting."}
+              {settings.provider === "ollama"
+                ? "You are offline. Ollama on your machine keeps the conversation running."
+                : "You are offline. Switch to Ollama (PC LLM) in Settings, or wait for the network to come back."}
             </span>
           </div>
-          {settings.provider !== "webllm" && settings.provider !== "ollama" && onUseLocalProvider && (
+          {settings.provider !== "ollama" && onUseLocalProvider && (
             <button
               onClick={onUseLocalProvider}
               className="inline-flex items-center gap-1 rounded border border-amber-500/40 bg-background/40 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-200 transition-colors hover:bg-amber-500/20"
             >
-              Use local
+              Use Ollama
             </button>
           )}
         </div>
@@ -712,18 +695,6 @@ export function ChatPanel({
           onStartFresh={onStartFreshSession}
         />
       )}
-
-      {showWebllmPreflight &&
-        settings.provider === "webllm" &&
-        onConfirmWebllmDownload &&
-        onDismissWebllmPreflight && (
-          <WebLLMPreflight
-            modelId={settings.webllmModel}
-            onConfirm={onConfirmWebllmDownload}
-            onDismiss={onDismissWebllmPreflight}
-            onPickSmaller={onOpenSettings}
-          />
-        )}
 
       {summaryCard && onDismissSummary && (
         <SummaryCard

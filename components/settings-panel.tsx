@@ -5,14 +5,6 @@ import Link from "next/link"
 import { Settings, Server, Cloud, Thermometer, User, Sparkles, Cpu, Download } from "lucide-react"
 import type { CompanionSettings, AIProvider, Personality, ToneMode } from "@/lib/companion-types"
 
-const WEBLLM_MODEL_PRESETS = [
-  "Qwen2.5-0.5B-Instruct-q4f16_1-MLC",
-  "Llama-3.2-1B-Instruct-q4f16_1-MLC",
-  "Llama-3.2-3B-Instruct-q4f16_1-MLC",
-  "gemma-2-2b-it-q4f16_1-MLC",
-  "Mistral-7B-Instruct-v0.3-q4f16_1-MLC",
-]
-
 const OPENROUTER_MODEL_PRESETS = [
   "qwen/qwen3-4b:free",
   "meta-llama/llama-3.3-70b-instruct:free",
@@ -22,23 +14,18 @@ const OPENROUTER_MODEL_PRESETS = [
   "google/gemma-2-9b-it:free",
 ]
 
+// Two-path provider model: Ollama (local PC LLM) or a cloud API.
 const PROVIDERS: { value: AIProvider; label: string; desc: string; icon: typeof Server }[] = [
   {
-    value: "webllm",
-    label: "WebLLM",
-    desc: "Runs in your browser and downloads model locally",
-    icon: Cpu,
-  },
-  {
     value: "ollama",
-    label: "Ollama",
-    desc: "Uses your local Ollama runtime",
+    label: "Ollama (PC LLM)",
+    desc: "Local LLM running on your own machine. Private, free, offline.",
     icon: Cpu,
   },
   {
     value: "openrouter",
-    label: "OpenRouter (OSS API)",
-    desc: "Hosted open-source models via API",
+    label: "OpenRouter (API)",
+    desc: "Hosted open-source models via API. Has a free tier.",
     icon: Cloud,
   },
 ]
@@ -327,18 +314,17 @@ export function SettingsPanel({
                 onClick={() =>
                   onSettingsChange({
                     ...settings,
-                    provider: "webllm",
-                    webllmModel: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC",
+                    provider: "ollama",
                     toneMode: "casual",
                     personality: "warm",
                     temperature: 0.7,
-                    maxOutputTokens: 220,
+                    maxOutputTokens: 260,
                   })
                 }
                 className="rounded border border-border px-3 py-2 text-left text-sm transition-colors hover:border-muted-foreground/40"
               >
-                <div className="font-semibold text-foreground">Fast & Local</div>
-                <div className="text-xs text-muted-foreground">No API setup. Best for quick and stable onboarding.</div>
+                <div className="font-semibold text-foreground">Local LLM (Ollama)</div>
+                <div className="text-xs text-muted-foreground">Runs on your PC. Private, free, no API key.</div>
               </button>
               <button
                 onClick={() =>
@@ -410,166 +396,6 @@ export function SettingsPanel({
               })}
             </div>
           </div>
-
-          {/* WebLLM Settings */}
-          {settings.provider === "webllm" && (
-            <div className="mb-6 rounded border border-border bg-background p-3">
-              <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
-                <Cpu className="h-4 w-4 text-foreground" />
-                <span className="text-sm font-semibold text-foreground">
-                  WebLLM (Browser Local)
-                </span>
-              </div>
-              <label className="mb-2 block text-sm font-medium text-foreground">
-                WebLLM Model
-              </label>
-              <select
-                value={WEBLLM_MODEL_PRESETS.includes(settings.webllmModel) ? settings.webllmModel : "custom"}
-                onChange={(e) => {
-                  if (e.target.value !== "custom") {
-                    update({ webllmModel: e.target.value })
-                  }
-                }}
-                className="mb-2 w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                {WEBLLM_MODEL_PRESETS.map((model) => (
-                  <option key={model} value={model}>
-                    {model}
-                  </option>
-                ))}
-                <option value="custom">Custom model id</option>
-              </select>
-              <input
-                type="text"
-                value={settings.webllmModel}
-                onChange={(e) => update({ webllmModel: e.target.value })}
-                className="w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="Enter or paste model id"
-              />
-              <p className="mt-2 text-xs text-muted-foreground">
-                First run downloads model files in-browser, then chats fully local.
-              </p>
-              <p className="mt-2 text-xs text-amber-300/90">
-                If the demo crashes, your GPU likely ran out of memory. Start with a smaller 1B or 0.5B model first.
-              </p>
-              <div className="mt-3 rounded border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
-                <div className="mb-1 font-semibold text-foreground">Official WebLLM Repositories</div>
-                <div>
-                  <a
-                    href="https://huggingface.co/mlc-ai/Qwen2.5-0.5B-Instruct-q4f16_1-MLC"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="underline underline-offset-2 hover:text-foreground"
-                  >
-                    Qwen2.5 0.5B (Instruct)
-                  </a>{" "}
-                  - best first test model for low-memory systems and crash recovery.
-                </div>
-                <div>
-                  <a
-                    href="https://huggingface.co/mlc-ai/Llama-3.2-3B-Instruct-q4f16_1-MLC"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="underline underline-offset-2 hover:text-foreground"
-                  >
-                    Llama 3.2 3B (Instruct)
-                  </a>{" "}
-                  - deeper conversational shadow-work flows.
-                </div>
-                <div>
-                  <a
-                    href="https://huggingface.co/mlc-ai/Llama-3.2-1B-Instruct-q4f16_1-MLC"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="underline underline-offset-2 hover:text-foreground"
-                  >
-                    Llama 3.2 1B (Instruct)
-                  </a>{" "}
-                  - lower-end hardware and quick onboarding.
-                </div>
-                <div>
-                  <a
-                    href="https://huggingface.co/mlc-ai/gemma-2-2b-it-q4f16_1-MLC"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="underline underline-offset-2 hover:text-foreground"
-                  >
-                    Gemma 2 2B
-                  </a>{" "}
-                  - warmer and creative persona tone.
-                </div>
-                <div>
-                  <a
-                    href="https://huggingface.co/mlc-ai/Mistral-7B-Instruct-v0.3-q4f16_1-MLC"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="underline underline-offset-2 hover:text-foreground"
-                  >
-                    Mistral 7B v0.3
-                  </a>{" "}
-                  - complex analysis and richer code synthesis.
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* MCP Fallback Settings */}
-          {settings.provider === "webllm" && (
-            <div className="mb-6 rounded border border-border bg-background p-3">
-              <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
-                <Server className="h-4 w-4 text-foreground" />
-                <span className="text-sm font-semibold text-foreground">
-                  MCP Fallback (Optional)
-                </span>
-              </div>
-
-              <label className="mb-2 flex items-center gap-2 text-sm text-foreground">
-                <input
-                  type="checkbox"
-                  checked={settings.mcpAutoFallback}
-                  onChange={(e) => update({ mcpAutoFallback: e.target.checked })}
-                />
-                <span>Use MCP server when WebLLM is unavailable</span>
-              </label>
-
-              <label className="mb-2 block text-sm font-medium text-foreground">
-                MCP Base URL
-              </label>
-              <input
-                type="text"
-                value={settings.mcpBaseUrl}
-                onChange={(e) => update({ mcpBaseUrl: e.target.value })}
-                className="mb-3 w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="http://127.0.0.1:8787"
-              />
-
-              <label className="mb-2 block text-sm font-medium text-foreground">
-                MCP Model
-              </label>
-              <input
-                type="text"
-                value={settings.mcpModel}
-                onChange={(e) => update({ mcpModel: e.target.value })}
-                className="mb-3 w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="gpt-4o-mini"
-              />
-
-              <label className="mb-2 block text-sm font-medium text-foreground">
-                MCP API Key (optional)
-              </label>
-              <input
-                type="password"
-                value={settings.mcpApiKey}
-                onChange={(e) => update({ mcpApiKey: e.target.value })}
-                className="w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="Leave blank for local MCP without auth"
-              />
-
-              <p className="mt-2 text-xs text-muted-foreground">
-                This assumes your local MCP service exposes an OpenAI-compatible chat endpoint.
-              </p>
-            </div>
-          )}
 
           {/* Ollama Settings */}
           {settings.provider === "ollama" && (

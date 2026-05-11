@@ -329,15 +329,12 @@ type QuickPresetId = "fast-local" | "balanced-cloud" | "deep-empathy"
 
 function withQuickPreset(base: CompanionSettings, presetId: QuickPresetId): CompanionSettings {
   if (presetId === "fast-local") {
-    // Provider is intentionally NOT pinned here. WebLLM is the safe fallback;
-    // the periodic Ollama probe will promote to "ollama" within a few seconds
-    // if a local daemon is running, otherwise this preset stays on WebLLM.
+    // Pin to Ollama as the local provider. The periodic Ollama probe will
+    // surface a connection error if the daemon isn't running; the heuristic
+    // therapy-engine compose path then handles replies until it's back.
     return {
       ...base,
-      provider: "webllm",
-      // 1B is the floor for usefully empathic in-browser replies. The 0.5B
-      // is still selectable in Settings for hardware that can't fit 1B.
-      webllmModel: "Llama-3.2-1B-Instruct-q4f16_1-MLC",
+      provider: "ollama",
       toneMode: "casual",
       personality: "warm",
       temperature: 0.7,
@@ -369,14 +366,6 @@ function withQuickPreset(base: CompanionSettings, presetId: QuickPresetId): Comp
     maxOutputTokens: 320,
     mcpAutoFallback: true,
   }
-}
-
-const WEBLLM_MODEL_REPO_MAP: Record<string, string> = {
-  "Qwen2.5-0.5B-Instruct-q4f16_1-MLC": "https://huggingface.co/mlc-ai/Qwen2.5-0.5B-Instruct-q4f16_1-MLC/resolve/main/",
-  "Llama-3.2-3B-Instruct-q4f16_1-MLC": "https://huggingface.co/mlc-ai/Llama-3.2-3B-Instruct-q4f16_1-MLC/resolve/main/",
-  "Llama-3.2-1B-Instruct-q4f16_1-MLC": "https://huggingface.co/mlc-ai/Llama-3.2-1B-Instruct-q4f16_1-MLC/resolve/main/",
-  "gemma-2-2b-it-q4f16_1-MLC": "https://huggingface.co/mlc-ai/gemma-2-2b-it-q4f16_1-MLC/resolve/main/",
-  "Mistral-7B-Instruct-v0.3-q4f16_1-MLC": "https://huggingface.co/mlc-ai/Mistral-7B-Instruct-v0.3-q4f16_1-MLC/resolve/main/",
 }
 
 function getDeepestPossibleQuestion(fullSessionData: EmpathyData) {
@@ -571,14 +560,6 @@ export default function CompanionApp() {
   const [showQuickStartModal, setShowQuickStartModal] = useState(false)
   const [agreementChecked, setAgreementChecked] = useState(false)
   const [errorSummaryCopiedAt, setErrorSummaryCopiedAt] = useState<number | null>(null)
-  const [webLlmMessages, setWebLlmMessages] = useState<Message[]>([])
-  const [isWebLlmLoading, setIsWebLlmLoading] = useState(false)
-  const [isInitializingWebLlm, setIsInitializingWebLlm] = useState(false)
-  const [webLlmStatus, setWebLlmStatus] = useState("idle")
-  const [webLlmProgress, setWebLlmProgress] = useState("")
-  const [webLlmError, setWebLlmError] = useState("")
-  const [webLlmXpStage, setWebLlmXpStage] = useState<"idle" | "echo-sync" | "shadow-prefetch" | "shadow-unlocked">("idle")
-  const [shadowPrefetchProgress, setShadowPrefetchProgress] = useState("")
   const [llmConnectionError, setLlmConnectionError] = useState("")
   const [ollamaTransition, setOllamaTransition] = useState<{
     kind: "online" | "offline"
@@ -602,7 +583,6 @@ export default function CompanionApp() {
   // so don't show it again this session even if memory is still in the vault.
   const [resumeCardHandled, setResumeCardHandled] = useState(false)
 
-  const webLlmMessagesRef = useRef<Message[]>([])
   const empathyDataRef = useRef<EmpathyData>({
     says: [],
     thinks: [],
@@ -610,10 +590,6 @@ export default function CompanionApp() {
     feels: [],
   })
   const processedRemoteUpdateIdsRef = useRef<Set<string>>(new Set())
-  const webLlmEngineRef = useRef<any>(null)
-  const webLlmInitPromiseRef = useRef<Promise<any> | null>(null)
-  const shadowPrefetchStartedRef = useRef(false)
-  const shadowPrefetchPromiseRef = useRef<Promise<void> | null>(null)
   const introCountedRef = useRef<Set<number>>(new Set())
   const fallbackPhase2InjectedRef = useRef(false)
   const lastFallbackReplyRef = useRef("")
@@ -693,8 +669,9 @@ export default function CompanionApp() {
   // - Re-probe every 30s while the document is visible.
   // - Re-probe immediately when the tab returns to foreground.
   // - Auto-switch the provider only when reachability *changes*, never silently every poll.
-  // - Two-way switching: when Ollama appears we promote it; when it disappears (and we
-  //   were the ones who promoted it) we revert to WebLLM so chat keeps working.
+  // - When Ollama appears we promote it; when it disappears (and we were the ones who
+  //   promoted it) we leave the provider on "ollama" and surface a connection error so
+  //   the heuristic therapy-engine fallback handles replies until the daemon is back.
   useEffect(() => {
     if (typeof window === "undefined") return
     if (!hasAgreed) return
@@ -763,13 +740,12 @@ export default function CompanionApp() {
         return
       }
 
-      // Offline transition: Ollama just went away.
+      // Offline transition: Ollama just went away. Keep the provider on
+      // "ollama" — the connection error will surface and the heuristic
+      // therapy-engine compose path handles replies until Ollama is back.
       if (!result.reachable && wasReachable === true) {
         if (autoSelectedOllamaRef.current && settings.provider === "ollama") {
           autoSelectedOllamaRef.current = false
-          setSettings((prev) =>
-            prev.provider === "ollama" ? { ...prev, provider: "webllm" } : prev
-          )
           setOllamaTransition({ kind: "offline", model: null, at: Date.now() })
         }
       }
@@ -1104,10 +1080,6 @@ export default function CompanionApp() {
   )
 
   useEffect(() => {
-    webLlmMessagesRef.current = webLlmMessages
-  }, [webLlmMessages])
-
-  useEffect(() => {
     empathyDataRef.current = empathyData
   }, [empathyData])
 
@@ -1120,19 +1092,6 @@ export default function CompanionApp() {
 
     return () => window.clearInterval(intervalId)
   }, [sessionStartedAt])
-
-  useEffect(() => {
-    webLlmEngineRef.current = null
-    webLlmInitPromiseRef.current = null
-    setWebLlmStatus("idle")
-    setWebLlmProgress("")
-    setWebLlmError("")
-    setWebLlmXpStage(settings.webllmModel === "Llama-3.2-3B-Instruct-q4f16_1-MLC" ? "shadow-unlocked" : "idle")
-    setShadowPrefetchProgress("")
-    shadowPrefetchStartedRef.current = false
-    shadowPrefetchPromiseRef.current = null
-    setLlmConnectionError("")
-  }, [settings.webllmModel])
 
   const currentSummary = useMemo(
     () => ({
@@ -1179,20 +1138,10 @@ export default function CompanionApp() {
   }) as any)
 
   const isRemoteLoading = status === "streaming" || status === "submitted"
-  const isLoading = settings.provider === "webllm" ? isWebLlmLoading : isRemoteLoading
-  const hasLocalFallbackActive =
-    settings.provider === "webllm"
-      ? Boolean(llmConnectionError) || webLlmStatus === "error"
-      : Boolean(llmConnectionError)
-  const systemHealth = hasLocalFallbackActive
-    ? "fallback"
-    : isLoading || (settings.provider === "webllm" && (webLlmStatus === "downloading" || webLlmStatus === "thinking"))
-      ? "busy"
-      : settings.provider === "webllm" && webLlmStatus !== "ready"
-        ? "initializing"
-        : "ready"
-  const isColdFallbackMode =
-    settings.provider === "webllm" && (webLlmStatus === "error" || Boolean(webLlmError) || Boolean(llmConnectionError))
+  const isLoading = isRemoteLoading
+  const hasLocalFallbackActive = Boolean(llmConnectionError)
+  const systemHealth = hasLocalFallbackActive ? "fallback" : isLoading ? "busy" : "ready"
+  const isColdFallbackMode = Boolean(llmConnectionError)
   const elapsedMinutes = elapsedMs / 60000
   const fallbackPhase = !isColdFallbackMode ? 0 : elapsedMinutes < 2 ? 1 : elapsedMinutes < 5 ? 2 : 3
 
@@ -1229,246 +1178,12 @@ export default function CompanionApp() {
   }, [isResizingRightPanel])
 
   useEffect(() => {
-    if (settings.provider === "webllm") return
-
-    // Clear stale local-runtime diagnostics so cloud providers are not marked fallback
-    // by previous WebGPU/WebLLM failures.
-    webLlmEngineRef.current = null
-    webLlmInitPromiseRef.current = null
-    setWebLlmStatus("idle")
-    setWebLlmProgress("")
-    setWebLlmError("")
-    setWebLlmXpStage("idle")
-    setShadowPrefetchProgress("")
-    shadowPrefetchStartedRef.current = false
-    shadowPrefetchPromiseRef.current = null
-
-    // Clear previous connection error only when it came from local runtime.
-    setLlmConnectionError((prev) => {
-      if (!prev) return ""
-      const lower = prev.toLowerCase()
-      if (
-        lower.includes("webgpu") ||
-        lower.includes("adapter") ||
-        lower.includes("device creation") ||
-        lower.includes("webllm")
-      ) {
-        return ""
-      }
-      return prev
-    })
+    // Clear stale connection diagnostics when switching providers so the new
+    // provider isn't immediately marked as in fallback by a previous error.
+    setLlmConnectionError("")
   }, [settings.provider])
 
-  const createWorkerEngine = useCallback(
-    async (
-      selectedModel: string,
-      onProgress: (report: { progress?: number; text?: string }) => void
-    ) => {
-      const webllm = await import("@mlc-ai/web-llm")
-      const worker = new Worker(new URL("./webllm-worker.ts", import.meta.url), { type: "module" })
-      const selectedRepoUrl = WEBLLM_MODEL_REPO_MAP[selectedModel]
-
-      const engineConfig = {
-        initProgressCallback(report: { progress?: number; text?: string }) {
-          onProgress(report)
-        },
-        ...(selectedRepoUrl
-          ? {
-              model_list: [
-                {
-                  model_url: selectedRepoUrl,
-                  local_id: selectedModel,
-                },
-              ],
-            }
-          : {}),
-      }
-
-      try {
-        const engine = await webllm.CreateWebWorkerMLCEngine(worker, selectedModel, engineConfig)
-        return { engine, worker }
-      } catch {
-        worker.terminate()
-        // Fallback for environments where worker initialization is blocked.
-        const engine = await webllm.CreateMLCEngine(selectedModel, engineConfig)
-        return { engine, worker: null as Worker | null }
-      }
-    },
-    []
-  )
-
-  const diagnoseWebGpuSupport = useCallback(async (): Promise<{ ok: true } | { ok: false; message: string }> => {
-    if (typeof navigator === "undefined" || typeof window === "undefined") {
-      return { ok: false, message: "WebLLM can only run in a browser window." }
-    }
-
-    if (!window.isSecureContext) {
-      return {
-        ok: false,
-        message: "WebGPU requires a secure context. Use https:// or localhost (avoid plain LAN http://).",
-      }
-    }
-
-    const nav = navigator as Navigator & {
-      gpu?: {
-        requestAdapter: (options?: unknown) => Promise<any>
-      }
-    }
-
-    if (!nav.gpu) {
-      return {
-        ok: false,
-        message: "WebGPU API is not available in this browser/profile. Try latest Chrome/Edge/Firefox with GPU acceleration enabled.",
-      }
-    }
-
-    try {
-      const adapter = await nav.gpu.requestAdapter({ powerPreference: "high-performance" })
-      if (!adapter) {
-        return {
-          ok: false,
-          message: "WebGPU detected, but no adapter was returned. Update GPU drivers or disable Remote Desktop/VM rendering.",
-        }
-      }
-
-      try {
-        await adapter.requestDevice()
-      } catch {
-        return {
-          ok: false,
-          message: "GPU adapter found, but device creation failed. Close heavy GPU apps/tabs and retry.",
-        }
-      }
-    } catch (error) {
-      return {
-        ok: false,
-        message: error instanceof Error ? error.message : "WebGPU initialization failed.",
-      }
-    }
-
-    return { ok: true }
-  }, [])
-
-  const startShadowPrefetch = useCallback(async () => {
-    if (shadowPrefetchStartedRef.current || settings.provider !== "webllm") return
-    if (settings.webllmModel !== "Llama-3.2-1B-Instruct-q4f16_1-MLC") return
-
-    shadowPrefetchStartedRef.current = true
-    setWebLlmXpStage("shadow-prefetch")
-    setShadowPrefetchProgress("Syncing with Neural Network - Level 3 (The Shadow) 0%")
-
-    const prefetchPromise = (async () => {
-      let shadowWorker: Worker | null = null
-      try {
-        const { engine, worker } = await createWorkerEngine(
-          "Llama-3.2-3B-Instruct-q4f16_1-MLC",
-          (report) => {
-            const progressValue = typeof report.progress === "number" ? Math.round(report.progress * 100) : 0
-            const progressText = report.text ? ` ${report.text}` : ""
-            setShadowPrefetchProgress(
-              `Syncing with Neural Network - Level 3 (The Shadow) ${progressValue}%${progressText}`.trim()
-            )
-          }
-        )
-
-        shadowWorker = worker
-        setShadowPrefetchProgress("Syncing with Neural Network - Level 3 (The Shadow) complete")
-        setWebLlmXpStage("shadow-unlocked")
-        if (typeof (engine as { unload?: () => Promise<void> }).unload === "function") {
-          await (engine as { unload: () => Promise<void> }).unload()
-        }
-      } catch {
-        setShadowPrefetchProgress("Level 3 prefetch skipped - continuing with Echo model")
-      } finally {
-        shadowWorker?.terminate()
-      }
-    })()
-
-    shadowPrefetchPromiseRef.current = prefetchPromise
-    await prefetchPromise
-  }, [settings.provider, settings.webllmModel, createWorkerEngine])
-
-  const ensureWebLlmEngine = useCallback(async () => {
-    if (webLlmEngineRef.current) {
-      return webLlmEngineRef.current
-    }
-    if (webLlmInitPromiseRef.current) {
-      return webLlmInitPromiseRef.current
-    }
-
-    setWebLlmStatus("downloading")
-    setWebLlmError("")
-
-    const initPromise = (async () => {
-      const webGpuSupport = await diagnoseWebGpuSupport()
-      if (!webGpuSupport.ok) {
-        throw new Error(webGpuSupport.message)
-      }
-      const selectedModel = settings.webllmModel
-      if (selectedModel === "Llama-3.2-1B-Instruct-q4f16_1-MLC") {
-        setWebLlmXpStage("echo-sync")
-      }
-
-      const { engine } = await createWorkerEngine(selectedModel, (report) => {
-        const progressValue =
-          typeof report.progress === "number"
-            ? `${Math.round(report.progress * 100)}%`
-            : ""
-        const progressText = report.text ? ` ${report.text}` : ""
-        const prefix = selectedModel === "Llama-3.2-1B-Instruct-q4f16_1-MLC"
-          ? "Syncing with Neural Network - Level 1 (The Echo)"
-          : "Syncing with Neural Network"
-        setWebLlmProgress(`${prefix} ${progressValue}${progressText}`.trim())
-      })
-
-      webLlmEngineRef.current = engine
-      setWebLlmStatus("ready")
-      return engine
-    })()
-
-    webLlmInitPromiseRef.current = initPromise
-
-    try {
-      return await initPromise
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "WebLLM initialization failed"
-      setWebLlmStatus("error")
-      setWebLlmError(message)
-      setLlmConnectionError(message)
-      throw error
-    } finally {
-      webLlmInitPromiseRef.current = null
-    }
-  }, [settings.webllmModel, createWorkerEngine, diagnoseWebGpuSupport])
-
-  const handleInitializeWebLlm = useCallback(async () => {
-    setIsInitializingWebLlm(true)
-    setLlmConnectionError("")
-    try {
-      await ensureWebLlmEngine()
-      setWebLlmStatus("ready")
-      setWebLlmProgress("Model ready for chat.")
-    } catch {
-      // Error state already handled in ensureWebLlmEngine.
-    } finally {
-      setIsInitializingWebLlm(false)
-    }
-  }, [ensureWebLlmEngine])
-
-  useEffect(() => {
-    if (settings.provider !== "webllm") return
-    if (webLlmStatus !== "idle") return
-    if (isInitializingWebLlm) return
-    if (webLlmEngineRef.current || webLlmInitPromiseRef.current) return
-    void handleInitializeWebLlm()
-  }, [settings.provider, webLlmStatus, isInitializingWebLlm, handleInitializeWebLlm])
-
   const handleConnectLlmApi = useCallback(() => {
-    setSettings((prev) =>
-      prev.provider === "webllm"
-        ? { ...prev, provider: "openrouter" }
-        : prev
-    )
     setShowSettings(true)
   }, [])
 
@@ -1476,7 +1191,7 @@ export default function CompanionApp() {
     async (text: string) => {
       if (!settings.mcpAutoFallback) return null
 
-      const history = [...webLlmMessagesRef.current]
+      const history = [...remoteFallbackMessages]
         .slice(-Math.max(2, settings.contextMessages - 1))
         .map((item) => ({
           role: item.sender === "user" ? "user" : "assistant",
@@ -1508,6 +1223,7 @@ export default function CompanionApp() {
       }
     },
     [
+      remoteFallbackMessages,
       settings.mcpAutoFallback,
       settings.mcpBaseUrl,
       settings.mcpModel,
@@ -1573,15 +1289,15 @@ export default function CompanionApp() {
   }, [chatMessages])
 
   useEffect(() => {
-    if (settings.provider !== "webllm") {
+    if (!isColdFallbackMode) {
       fallbackPhase2InjectedRef.current = false
       return
     }
-    if (!isColdFallbackMode || fallbackPhase < 2 || fallbackPhase >= 3 || fallbackPhase2InjectedRef.current) {
+    if (fallbackPhase < 2 || fallbackPhase >= 3 || fallbackPhase2InjectedRef.current) {
       return
     }
 
-    setWebLlmMessages((prev) => [
+    setRemoteFallbackMessages((prev) => [
       ...prev,
       {
         id: crypto.randomUUID(),
@@ -1592,13 +1308,13 @@ export default function CompanionApp() {
       },
     ])
     fallbackPhase2InjectedRef.current = true
-  }, [settings.provider, isColdFallbackMode, fallbackPhase])
+  }, [isColdFallbackMode, fallbackPhase])
 
   const introQuestionCount = INTRO_CHAT_QUESTIONS.length
   const answeredIntroCount = introAnswers.slice(0, introQuestionCount).filter((ans) => ans.trim().length > 1).length
   const providerMessages = useMemo(
-    () => (settings.provider === "webllm" ? webLlmMessages : [...remoteMessages, ...remoteFallbackMessages]),
-    [settings.provider, webLlmMessages, remoteMessages, remoteFallbackMessages]
+    () => [...remoteMessages, ...remoteFallbackMessages],
+    [remoteMessages, remoteFallbackMessages]
   )
   const messages = useMemo(
     () => [...onboardingChatMessages, ...providerMessages],
@@ -1845,11 +1561,7 @@ export default function CompanionApp() {
       timestamp: new Date(turn.at),
     }))
 
-    if (settings.provider === "webllm") {
-      setWebLlmMessages((prev) => [...resumed, ...prev])
-    } else {
-      setRemoteFallbackMessages((prev) => [...resumed, ...prev])
-    }
+    setRemoteFallbackMessages((prev) => [...resumed, ...prev])
 
     // The user already poured themselves out before. Skip the hardcoded
     // "How are you feeling today?" greeting and the intro-question gate
@@ -1868,7 +1580,7 @@ export default function CompanionApp() {
     })
 
     setResumeCardHandled(true)
-  }, [storedSessionMemory, settings.provider])
+  }, [storedSessionMemory])
 
   const handleStartFreshSession = useCallback(() => {
     setResumeCardHandled(true)
@@ -1899,46 +1611,6 @@ export default function CompanionApp() {
     storedSessionMemory !== null &&
     !resumeCardHandled &&
     vaultStatus === "unlocked"
-
-  // WebLLM pre-flight: show a download/ETA panel exactly once per model. The
-  // user has to acknowledge before the actual download kicks off, so they
-  // never face a silent multi-hundred-MB fetch on first chat.
-  const webllmConfirmedKey = `empatheia_webllm_confirmed_${settings.webllmModel}`
-  const [webllmConfirmedForModel, setWebllmConfirmedForModel] = useState(false)
-  const [webllmPreflightDismissed, setWebllmPreflightDismissed] = useState(false)
-  useEffect(() => {
-    if (typeof window === "undefined") return
-    setWebllmConfirmedForModel(
-      window.localStorage.getItem(webllmConfirmedKey) === "true"
-    )
-    setWebllmPreflightDismissed(false)
-  }, [webllmConfirmedKey])
-
-  const showWebllmPreflight =
-    settings.provider === "webllm" &&
-    !webllmConfirmedForModel &&
-    !webllmPreflightDismissed &&
-    webLlmStatus === "idle" &&
-    !webLlmEngineRef.current
-
-  const confirmWebllmDownload = useCallback(() => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(webllmConfirmedKey, "true")
-    }
-    setWebllmConfirmedForModel(true)
-    handleInitializeWebLlm()
-  }, [webllmConfirmedKey, handleInitializeWebLlm])
-
-  const dismissWebllmPreflight = useCallback(() => {
-    setWebllmPreflightDismissed(true)
-  }, [])
-
-  useEffect(() => {
-    if (settings.provider !== "webllm") return
-    if (answeredIntroCount < 2) return
-    if (depthState.tier !== "tier_1_surface" && depthState.tier !== "tier_2_internal") return
-    startShadowPrefetch()
-  }, [settings.provider, answeredIntroCount, depthState.tier, startShadowPrefetch])
 
   const generateCurrentEmpathyCode = useCallback(() => {
     const resonance = generateEmpathyCode({
@@ -2078,43 +1750,23 @@ export default function CompanionApp() {
           return
         }
 
-        if (settings.provider === "webllm") {
-          setWebLlmMessages((prev) => [
-            ...prev,
-            {
-              id: crypto.randomUUID(),
-              text,
-              sender: "user",
-              timestamp: new Date(),
-              emotion: sentimentEmotion,
-            },
-            {
-              id: crypto.randomUUID(),
-              text: checkInReply,
-              sender: "ai",
-              timestamp: new Date(),
-              emotion: "thinking",
-            },
-          ])
-        } else {
-          setRemoteFallbackMessages((prev) => [
-            ...prev,
-            {
-              id: crypto.randomUUID(),
-              text,
-              sender: "user",
-              timestamp: new Date(),
-              emotion: sentimentEmotion,
-            },
-            {
-              id: crypto.randomUUID(),
-              text: checkInReply,
-              sender: "ai",
-              timestamp: new Date(),
-              emotion: "thinking",
-            },
-          ])
-        }
+        setRemoteFallbackMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            text,
+            sender: "user",
+            timestamp: new Date(),
+            emotion: sentimentEmotion,
+          },
+          {
+            id: crypto.randomUUID(),
+            text: checkInReply,
+            sender: "ai",
+            timestamp: new Date(),
+            emotion: "thinking",
+          },
+        ])
 
         return
       }
@@ -2170,191 +1822,6 @@ export default function CompanionApp() {
             emotion: "thinking",
           },
         ])
-        return
-      }
-
-      if (settings.provider === "webllm") {
-        const userMessage: Message = {
-          id: crypto.randomUUID(),
-          text,
-          sender: "user",
-          timestamp: new Date(),
-          emotion: sentimentEmotion,
-        }
-
-        const shouldUseImmediateFallback =
-          webLlmStatus === "error" && !webLlmEngineRef.current
-
-        if (shouldUseImmediateFallback) {
-          const mcpFallbackText = await requestMcpFallbackReply(text)
-          if (mcpFallbackText) {
-            setWebLlmMessages((prev) => [
-              ...prev,
-              userMessage,
-              {
-                id: crypto.randomUUID(),
-                text: mcpFallbackText,
-                sender: "ai",
-                timestamp: new Date(),
-                emotion: sentimentEmotion,
-                mode: "mcp-fallback",
-              },
-            ])
-            return
-          }
-
-          const baseFallback = buildLocalCompanionReply(text, analysis.sentimentScore, suggestedNext.question, {
-            provider: settings.provider,
-            llmConnectionError,
-            webLlmStatus,
-            systemHealth,
-            ollamaBaseUrl: settings.ollamaBaseUrl,
-            ollamaModel: settings.ollamaModel,
-          }, responsePlan)
-          const fallbackText = ensureNonRepeatingFallback(
-            baseFallback,
-            lastFallbackReplyRef.current,
-            suggestedNext.question
-          )
-          lastFallbackReplyRef.current = fallbackText
-
-          setWebLlmMessages((prev) => [
-            ...prev,
-            userMessage,
-            {
-              id: crypto.randomUUID(),
-              text: fallbackText,
-              sender: "ai",
-              timestamp: new Date(),
-              emotion: sentimentEmotion,
-              mode: "fallback",
-            },
-          ])
-          return
-        }
-
-        setWebLlmMessages((prev) => [...prev, userMessage])
-        setIsWebLlmLoading(true)
-
-        try {
-          const engine = await ensureWebLlmEngine()
-          setWebLlmStatus("thinking")
-
-          const conversation = [...webLlmMessagesRef.current, userMessage]
-            .slice(-settings.contextMessages)
-            .map((m) => ({
-              role: m.sender === "user" ? "user" : "assistant",
-              content: m.text,
-            }))
-
-          const completion = await engine.chat.completions.create({
-            messages: [
-              {
-                role: "system",
-                content: buildSystemPrompt(
-                  settings.name,
-                  settings.personality,
-                  settings.toneMode,
-                  sentimentEmotion,
-                  empathyProfile,
-                  empathyCode,
-                  samanthaGuidance,
-                  text,
-                  responsePlan
-                ),
-              },
-              ...conversation,
-            ],
-            temperature: settings.temperature,
-            top_p: settings.topP,
-            max_tokens: settings.maxOutputTokens,
-          })
-
-          const aiContentRaw = completion.choices?.[0]?.message?.content
-          const aiTextRaw =
-            typeof aiContentRaw === "string"
-              ? aiContentRaw
-              : Array.isArray(aiContentRaw)
-                ? aiContentRaw
-                    .map((part: any) => (typeof part?.text === "string" ? part.text : ""))
-                    .join("")
-                : ""
-
-          const extracted = extractDataUpdate(aiTextRaw)
-          const metaExtracted = extractMetaBlock(extracted.cleanText)
-          if (extracted.update) {
-            const nextData = applyDataUpdateBlock(empathyDataRef.current, extracted.update)
-            setEmpathyData(nextData)
-            empathyDataRef.current = nextData
-          }
-
-          applyMetaSignal(metaExtracted.meta, setSessionDepthLevel, setCurrentStep, setConversationSentimentScore)
-          if (metaExtracted.meta) {
-            setMetaHistory((prev) => [...prev.slice(-19), metaExtracted.meta!])
-          }
-
-          const aiMessage: Message = {
-            id: crypto.randomUUID(),
-            text: metaExtracted.cleanText || "I am here with you. Could you tell me a little more?",
-            sender: "ai",
-            timestamp: new Date(),
-            emotion: sentimentEmotion,
-          }
-
-          setWebLlmMessages((prev) => [...prev, aiMessage])
-          setWebLlmStatus("ready")
-          setLlmConnectionError("")
-        } catch (error) {
-          const message = error instanceof Error ? error.message : "Unknown WebLLM error"
-          setWebLlmStatus("error")
-          setWebLlmError(message)
-          setLlmConnectionError(message)
-
-          const mcpFallbackText = await requestMcpFallbackReply(text)
-          if (mcpFallbackText) {
-            setWebLlmMessages((prev) => [
-              ...prev,
-              {
-                id: crypto.randomUUID(),
-                text: mcpFallbackText,
-                sender: "ai",
-                timestamp: new Date(),
-                emotion: sentimentEmotion,
-                mode: "mcp-fallback",
-              },
-            ])
-            return
-          }
-
-          const baseFallback = buildLocalCompanionReply(text, analysis.sentimentScore, suggestedNext.question, {
-            provider: settings.provider,
-            llmConnectionError,
-            webLlmStatus,
-            systemHealth,
-            ollamaBaseUrl: settings.ollamaBaseUrl,
-            ollamaModel: settings.ollamaModel,
-          }, responsePlan)
-          const fallbackText = ensureNonRepeatingFallback(
-            baseFallback,
-            lastFallbackReplyRef.current,
-            suggestedNext.question
-          )
-          lastFallbackReplyRef.current = fallbackText
-
-          const localFallback: Message = {
-            id: crypto.randomUUID(),
-            text: fallbackText,
-            sender: "ai",
-            timestamp: new Date(),
-            emotion: sentimentEmotion,
-            mode: "fallback",
-          }
-          setWebLlmMessages((prev) => [...prev, localFallback])
-
-          console.error("WebLLM error:", error)
-        } finally {
-          setIsWebLlmLoading(false)
-        }
         return
       }
 
@@ -2441,7 +1908,6 @@ export default function CompanionApp() {
             {
               provider: settings.provider,
               llmConnectionError: detail,
-              webLlmStatus,
               systemHealth,
               ollamaBaseUrl: settings.ollamaBaseUrl,
               ollamaModel: settings.ollamaModel,
@@ -2479,7 +1945,6 @@ export default function CompanionApp() {
         const baseFallback = buildLocalCompanionReply(text, analysis.sentimentScore, suggestedNext.question, {
           provider: settings.provider,
           llmConnectionError,
-          webLlmStatus,
           systemHealth,
           ollamaBaseUrl: settings.ollamaBaseUrl,
           ollamaModel: settings.ollamaModel,
@@ -2523,7 +1988,6 @@ export default function CompanionApp() {
       cameraEmotion,
       sendMessage,
       settings,
-      ensureWebLlmEngine,
       empathyProfile,
       empathyCode,
       samanthaGuidance,
@@ -2535,7 +1999,6 @@ export default function CompanionApp() {
       requestMcpFallbackReply,
       llmConnectionError,
       systemHealth,
-      webLlmStatus,
       isOnline,
       remoteFallbackMessages,
     ]
@@ -2625,8 +2088,7 @@ export default function CompanionApp() {
     handleProfileExport,
   ])
 
-  const hasDownloadableError =
-    Boolean(webLlmError) || Boolean(llmConnectionError) || (settings.provider === "webllm" && webLlmStatus === "error")
+  const hasDownloadableError = Boolean(llmConnectionError)
 
   const buildErrorPayload = useCallback(() => {
     const timestamp = new Date().toISOString()
@@ -2637,11 +2099,9 @@ export default function CompanionApp() {
           ? PROVIDER_DEFAULT_MODELS.anthropic
           : settings.provider === "google"
             ? PROVIDER_DEFAULT_MODELS.google
-            : settings.provider === "webllm"
-              ? settings.webllmModel
-              : settings.provider === "openrouter"
-                ? settings.openRouterModel
-                : settings.ollamaModel
+            : settings.provider === "openrouter"
+              ? settings.openRouterModel
+              : settings.ollamaModel
 
       return {
       generatedAt: timestamp,
@@ -2650,15 +2110,10 @@ export default function CompanionApp() {
         provider: settings.provider,
         model: modelInUse,
         systemHealth,
-        webLlmStatus,
-        webLlmProgress,
-        webLlmXpStage,
         isLoading,
-        isInitializingWebLlm,
       },
       errors: {
         llmConnectionError,
-        webLlmError,
       },
       settingsSnapshot: {
         personality: settings.personality,
@@ -2692,17 +2147,12 @@ export default function CompanionApp() {
   }, [
     elapsedMs,
     fallbackPhase,
-    isInitializingWebLlm,
     isLoading,
     llmConnectionError,
     messages,
     sessionStartedAt,
     settings,
     systemHealth,
-    webLlmError,
-    webLlmProgress,
-    webLlmStatus,
-    webLlmXpStage,
   ])
 
   const handleDownloadErrorLog = useCallback(() => {
@@ -2726,9 +2176,7 @@ export default function CompanionApp() {
       `provider: ${payload.runtime.provider}`,
       `model: ${payload.runtime.model}`,
       `systemHealth: ${payload.runtime.systemHealth}`,
-      `webLlmStatus: ${payload.runtime.webLlmStatus}`,
       `llmConnectionError: ${payload.errors.llmConnectionError || "none"}`,
-      `webLlmError: ${payload.errors.webLlmError || "none"}`,
       `messageCount: ${payload.session.messageCount}`,
       `fallbackPhase: ${payload.session.fallbackPhase}`,
       `recentMessages: ${payload.session.recentMessages.length}`,
@@ -2839,7 +2287,7 @@ export default function CompanionApp() {
               className={`h-2 w-2 rounded-full ${
                 systemHealth === "fallback"
                   ? "bg-amber-500"
-                  : systemHealth === "busy" || systemHealth === "initializing"
+                  : systemHealth === "busy"
                     ? "animate-pulse bg-amber-500"
                     : "bg-emerald-500"
               }`}
@@ -2849,9 +2297,7 @@ export default function CompanionApp() {
                 ? "Local Fallback Active"
                 : systemHealth === "busy"
                   ? "System Busy"
-                  : systemHealth === "initializing"
-                    ? "System Initializing"
-                    : "System Ready"}
+                  : "System Ready"}
             </span>
           </div>
           <Link
@@ -2909,34 +2355,11 @@ export default function CompanionApp() {
                       ? PROVIDER_DEFAULT_MODELS.anthropic
                       : settings.provider === "google"
                         ? PROVIDER_DEFAULT_MODELS.google
-                        : settings.provider === "webllm"
-                          ? settings.webllmModel
-                          : settings.provider === "openrouter"
-                            ? settings.openRouterModel
-                            : settings.ollamaModel}
+                        : settings.provider === "openrouter"
+                          ? settings.openRouterModel
+                          : settings.ollamaModel}
                 </span>
               </div>
-              {settings.provider === "webllm" && (
-                <>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Runtime</span>
-                    <span className="text-foreground uppercase">{webLlmStatus}</span>
-                  </div>
-                  {webLlmProgress && (
-                    <div className="text-[11px] text-muted-foreground">{webLlmProgress}</div>
-                  )}
-                  {webLlmError && (
-                    <div className="text-[11px] text-destructive">{webLlmError}</div>
-                  )}
-                  <button
-                    onClick={handleInitializeWebLlm}
-                    disabled={isInitializingWebLlm}
-                    className="mt-1 rounded border border-border bg-background px-2 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
-                  >
-                    {isInitializingWebLlm ? "Initializing..." : "Initialize Model"}
-                  </button>
-                </>
-              )}
               {llmConnectionError && (
                 <>
                   <div className="text-[11px] text-destructive">{llmConnectionError}</div>
@@ -2973,14 +2396,7 @@ export default function CompanionApp() {
 
           <SetupChecklist
             settings={settings}
-            runtime={{
-              isLoading,
-              llmConnectionError,
-              webLlmStatus,
-              webLlmError,
-              webLlmXpStage,
-              shadowPrefetchProgress,
-            }}
+            runtime={{ isLoading, llmConnectionError } as any}
           />
 
         </aside>
@@ -3004,7 +2420,7 @@ export default function CompanionApp() {
               <span>
                 {ollamaTransition.kind === "online"
                   ? `Ollama just came online${ollamaTransition.model ? ` (${ollamaTransition.model})` : ""} — switched to local.`
-                  : "Ollama went offline — falling back to in-browser WebLLM. Your conversation continues."}
+                  : "Ollama went offline — local chat is paused until it's back."}
               </span>
               <button
                 onClick={() => setOllamaTransition(null)}
@@ -3021,15 +2437,11 @@ export default function CompanionApp() {
             isLoading={isLoading}
             emotion={currentEmotion}
             settings={settings}
-            connectionError={llmConnectionError || webLlmError}
+            connectionError={llmConnectionError}
             systemHealth={systemHealth}
-            webLlmStatus={webLlmStatus}
             introProgress={{ answered: answeredIntroCount, total: introQuestionCount }}
             onOpenSettings={() => setShowSettings(true)}
             isOffline={!isOnline}
-            onUseLocalProvider={() =>
-              setSettings((prev) => ({ ...prev, provider: "webllm" }))
-            }
             feltState={feltState}
             onMirrorCorrection={(correction) =>
               handleSendMessage(`(Correcting your read of me) ${correction}`)
@@ -3041,9 +2453,6 @@ export default function CompanionApp() {
             canSummarize={
               userTurnCount >= 4 && answeredIntroCount >= introQuestionCount
             }
-            showWebllmPreflight={showWebllmPreflight}
-            onConfirmWebllmDownload={confirmWebllmDownload}
-            onDismissWebllmPreflight={dismissWebllmPreflight}
             resumeMemory={showResumeCard ? storedSessionMemory : null}
             onResumeSession={handleResumeSession}
             onStartFreshSession={handleStartFreshSession}

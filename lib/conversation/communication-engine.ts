@@ -13,14 +13,13 @@ import {
 const NEGATIVE_OR_DISAGREEMENT_PATTERN = /\b(no|nope|nah|not really|don't|dont|can't|cant|wrong|not true|incorrect|doesn't|doesnt)\b/i
 const LOW_CONFIDENCE_PATTERN = /\b(idk|i don't know|i dont know|dont know|not sure|unsure|maybe)\b/i
 const DISTRESS_PATTERN = /\b(overwhelmed|panic|panicking|anxious|anxiety|spiraling|spiralling|unsafe|can't breathe|cant breathe|stressed out|freaking out)\b/i
-const RUNTIME_QUERY_PATTERN = /\b(ai|model|ollama|webllm|openrouter|api|connection|server)\b/i
+const RUNTIME_QUERY_PATTERN = /\b(ai|model|ollama|openrouter|api|connection|server)\b/i
 const RUNTIME_STATUS_PATTERN = /\b(run|running|work|working|online|up|alive|status|connected|connect|ready)\b/i
 
 export type RuntimeFallbackContext = {
   provider?: CompanionSettings["provider"]
   llmConnectionError?: string
-  webLlmStatus?: string
-  systemHealth?: "ready" | "busy" | "fallback" | "initializing"
+  systemHealth?: "ready" | "busy" | "fallback"
   ollamaBaseUrl?: string
   ollamaModel?: string
 }
@@ -210,10 +209,6 @@ export function buildLocalCompanionReply(
   ) {
     if (context?.llmConnectionError) {
       return `Right now the full AI model connection is down, so I'm responding in local fallback mode. Provider: ${(context.provider || "unknown").toUpperCase()}. Error: ${context.llmConnectionError}. You can keep chatting while we reconnect the model in Settings.`
-    }
-
-    if (context?.provider === "webllm" && context?.webLlmStatus && context.webLlmStatus !== "ready") {
-      return `WebLLM is currently ${context.webLlmStatus}, so I am using local fallback right now. Initialize the model or switch provider in Settings, then I can resume full AI replies.`
     }
 
     if (context?.provider === "ollama") {

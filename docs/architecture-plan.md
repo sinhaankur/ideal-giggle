@@ -15,7 +15,7 @@ claude -p --mcp-config .mcp.json --strict-mcp-config "You are a principal archit
 - Main orchestration is centralized in [app/page.tsx](app/page.tsx) (state, prompts, provider routing, fallbacks, session depth, UX logic).
 - Providers:
   - Remote: OpenAI / Anthropic / Google / OpenRouter via [app/api/chat/route.ts](app/api/chat/route.ts).
-  - Local: WebLLM in browser, Ollama local runtime.
+  - Local: Ollama runtime on the user's own PC.
 - Fallback chain:
   - Primary provider response.
   - MCP fallback via [app/api/mcp-fallback/route.ts](app/api/mcp-fallback/route.ts).
@@ -61,14 +61,13 @@ claude -p --mcp-config .mcp.json --strict-mcp-config "You are a principal archit
 - Create `lib/providers/` for normalized provider contracts:
   - `chat(input, context, settings) -> { text, meta, mode }`
 - Adapters:
-  - remote provider adapter
-  - webllm adapter
-  - mcp adapter
-  - local heuristic adapter
+  - remote provider adapter (OpenAI / Anthropic / Google / OpenRouter)
+  - ollama-direct adapter (browser → 127.0.0.1:11434)
+  - local heuristic adapter (Plutchik + therapy-engine compose)
 
 4. Observability layer:
 - Create `lib/telemetry/` for structured event emitters.
-- Track event categories: provider_latency, provider_error, fallback_mode, webgpu_diagnostic, audio_state.
+- Track event categories: provider_latency, provider_error, fallback_mode, audio_state.
 
 ### Data Flow
 1. UI sends user message -> conversation orchestrator.
@@ -80,10 +79,10 @@ claude -p --mcp-config .mcp.json --strict-mcp-config "You are a principal archit
 
 ### AI/Fallback Strategy
 - Default route matrix:
-  - WebLLM ready: WebLLM first.
-  - WebLLM unavailable: configured remote provider.
+  - Ollama reachable: Ollama (PC LLM) first.
+  - Ollama unavailable: configured remote provider (OpenAI / Anthropic / Google / OpenRouter).
   - Remote fail and MCP enabled: MCP fallback.
-  - Any fail: local fallback.
+  - Any fail: local deterministic empathy fallback (Plutchik + therapy compose).
 - Add circuit-breaker counters:
   - short-term provider failure threshold -> temporary provider backoff.
 
@@ -126,7 +125,7 @@ claude -p --mcp-config .mcp.json --strict-mcp-config "You are a principal archit
 3. Add E2E tests (Playwright):
 - onboarding flow
 - provider switch
-- WebLLM fail -> fallback chain
+- Ollama unreachable -> fallback chain
 - audio mute panic behavior
 
 ## 5) CI/CD and Quality Gates
@@ -145,7 +144,7 @@ claude -p --mcp-config .mcp.json --strict-mcp-config "You are a principal archit
 Track at minimum:
 - Provider selected, route latency, error count.
 - Fallback activations by mode (`fallback`, `mcp-fallback`).
-- WebLLM init failures and GPU diagnostic reasons.
+- Ollama probe success / failure and remote-API response codes.
 - Audio state transitions (speaking, stopped, emergency mute).
 
 Expose via:
@@ -155,7 +154,7 @@ Expose via:
 ## 7) Performance and UX Safeguards
 - Keep context window bounded (`settings.contextMessages`) and enforce max length server-side.
 - Use deterministic anti-repeat response strategy in fallback mode.
-- Preserve fast startup by lazy-loading heavy runtime paths (WebLLM init only when needed).
+- Preserve fast startup by lazy-loading heavy runtime paths (face-api worker, summary card composer, etc.).
 - Keep emergency mute and ESC panic mute as mandatory UX safety features.
 
 ## 8) Security Checklist

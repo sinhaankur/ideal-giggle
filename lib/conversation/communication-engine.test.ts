@@ -53,20 +53,21 @@ describe("buildLocalCompanionReply runtime status behavior", () => {
     expect(reply).not.toMatch(/go one layer deeper|what feels most true right now/i)
   })
 
-  it("returns concrete WebLLM status guidance when runtime is not ready", () => {
+  it("returns Ollama mode guidance when provider is Ollama and the runtime is healthy", () => {
     const reply = buildLocalCompanionReply(
       "is the model connected?",
       0,
       "What part feels sharpest right now?",
       {
-        provider: "webllm",
-        webLlmStatus: "downloading",
-        systemHealth: "initializing",
+        provider: "ollama",
+        systemHealth: "ready",
+        ollamaBaseUrl: "http://127.0.0.1:11434",
+        ollamaModel: "llama3.2",
       }
     )
 
-    expect(reply).toMatch(/WebLLM is currently downloading/i)
-    expect(reply).toMatch(/Initialize the model|switch provider/i)
+    expect(reply).toMatch(/Ollama mode is active/i)
+    expect(reply).toMatch(/127\.0\.0\.1:11434/)
     expect(reply).not.toMatch(/what part feels sharpest right now/i)
   })
 })

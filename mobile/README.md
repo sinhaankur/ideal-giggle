@@ -16,7 +16,7 @@ The two paths are very different. Read both quickly before picking one.
 
 Neither approach needs you to rewrite the app. Both wrap the same code
 that already runs on the web — same `face-api.js` weights from
-`public/face-models/`, same WebLLM engine, same Mirror, same vault.
+`public/face-models/`, same Plutchik emotion engine, same Mirror, same vault.
 
 ---
 
@@ -124,8 +124,10 @@ App Store, but Capacitor's bundled approach is fine for sideload.
 - An **Apple ID** in Xcode (free works for 7-day signing, paid works for
   stable signing).
 - The app runs against the bundled static export — server routes
-  (`/api/chat`) are not available. Use **WebLLM** or **Ollama-direct**
-  via `OLLAMA_ORIGINS=*` (for users running Ollama on the same Wi-Fi).
+  (`/api/chat`) are not available. Use **Ollama-direct** via
+  `OLLAMA_ORIGINS=*` (for users running Ollama on the same Wi-Fi /
+  device), or provide a `NEXT_PUBLIC_CHAT_API_URL` pointing at your
+  own hosted chat proxy.
 
 ### One-time setup
 

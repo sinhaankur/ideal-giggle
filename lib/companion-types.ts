@@ -4,7 +4,10 @@ export type Personality = "warm" | "analytical" | "playful" | "professional"
 
 export type ToneMode = "casual" | "balanced" | "deep"
 
-export type AIProvider = "openai" | "anthropic" | "google" | "webllm" | "ollama" | "openrouter"
+// Two clean paths, no in-browser WebLLM:
+//   "ollama" — a local LLM running on the user's own PC
+//   "openai" | "anthropic" | "google" | "openrouter" — cloud API
+export type AIProvider = "openai" | "anthropic" | "google" | "ollama" | "openrouter"
 
 export const PROVIDER_DEFAULT_MODELS = {
   openai: "gpt-4o-mini",
@@ -17,11 +20,10 @@ const defaultProvider: AIProvider =
   envDefaultProvider === "openai" ||
   envDefaultProvider === "anthropic" ||
   envDefaultProvider === "google" ||
-  envDefaultProvider === "webllm" ||
   envDefaultProvider === "ollama" ||
   envDefaultProvider === "openrouter"
     ? envDefaultProvider
-    : "webllm"
+    : "ollama"
 
 const envDefaultOllamaBaseUrl =
   process.env.NEXT_PUBLIC_OLLAMA_BASE_URL || "http://127.0.0.1:11434"
@@ -226,7 +228,6 @@ export interface CompanionSettings {
   maxOutputTokens: number
   contextMessages: number
   cameraDeviceId: string
-  webllmModel: string
   ollamaBaseUrl: string
   ollamaModel: string
   mcpBaseUrl: string
@@ -253,10 +254,6 @@ export const DEFAULT_SETTINGS: CompanionSettings = {
   maxOutputTokens: 300,
   contextMessages: 12,
   cameraDeviceId: "",
-  // 1B Llama produces noticeably more empathic, less generic responses
-  // than 0.5B Qwen — at the cost of a ~740MB one-time WebLLM download.
-  // For very low-end hardware, users can still pick the 0.5B from Settings.
-  webllmModel: "Llama-3.2-1B-Instruct-q4f16_1-MLC",
   ollamaBaseUrl: envDefaultOllamaBaseUrl,
   ollamaModel: "llama3.2",
   mcpBaseUrl: "http://127.0.0.1:8787",
