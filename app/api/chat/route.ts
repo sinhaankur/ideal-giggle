@@ -8,7 +8,11 @@ import { createOpenAI, openai } from "@ai-sdk/openai"
 import { anthropic } from "@ai-sdk/anthropic"
 import { google } from "@ai-sdk/google"
 import { PROVIDER_DEFAULT_MODELS } from "@/lib/companion-types"
-import { buildEmpathySystemPrompt, buildUserUnderstandingGuidance } from "@/lib/conversation/communication-engine"
+import {
+  buildEmpathySystemPrompt,
+  buildUserUnderstandingGuidance,
+  planFromContext,
+} from "@/lib/conversation/communication-engine"
 import {
   badRequestFromZod,
   chatRequestSchema,
@@ -118,6 +122,20 @@ export async function POST(req: Request) {
     baseURL: "https://openrouter.ai/api/v1",
   })
 
+  // Per-turn therapy-engine plan: regulation state, arc phase, modality,
+  // intent stack, dose, pacing, forbidden moves. The plan rides into the
+  // system prompt as concrete directives so the model knows what THIS
+  // turn is supposed to do, not just general empathy advice.
+  const latestUserText = getLatestUserMessageText(messages)
+  const userTurnCount = messages.filter((m) => m.role === "user").length
+  const responsePlan = planFromContext({
+    text: latestUserText,
+    cameraEmotion: emotion,
+    userTurnCount,
+    sessionMinutes: 0, // route is stateless; client passes its own context
+    preferredName: empathyProfile?.preferredName,
+  })
+
   const systemPrompt = buildEmpathySystemPrompt({
     companionName,
     personality,
@@ -128,7 +146,8 @@ export async function POST(req: Request) {
     empathySummary,
     samanthaGuidance,
     nextDeepQuestion: nextDeepQuestion || "Use your best tier-appropriate follow-up.",
-    userUnderstandingGuidance: buildUserUnderstandingGuidance(getLatestUserMessageText(messages)),
+    userUnderstandingGuidance: buildUserUnderstandingGuidance(latestUserText),
+    responsePlan,
   })
 
   // Use direct model providers.

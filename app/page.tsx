@@ -49,7 +49,9 @@ import {
   describeFeltState,
   summarizeFeltState,
   composeConversationSummary,
+  planFromContext,
   type ConversationSummary,
+  type ResponsePlan,
   type RuntimeFallbackContext,
 } from "@/lib/conversation/communication-engine"
 import { sendOllamaDirect, probeOllama } from "@/lib/api/ollama-direct"
@@ -290,9 +292,10 @@ function buildLocalCompanionReply(
   input: string,
   sentimentScore: number,
   suggestedQuestion: string,
-  context?: RuntimeFallbackContext
+  context?: RuntimeFallbackContext,
+  plan?: ResponsePlan | null
 ) {
-  return buildLocalCompanionReplyFromEngine(input, sentimentScore, suggestedQuestion, context)
+  return buildLocalCompanionReplyFromEngine(input, sentimentScore, suggestedQuestion, context, plan)
 }
 
 function ensureNonRepeatingFallback(nextText: string, previousText: string, suggestedQuestion: string) {
@@ -514,7 +517,8 @@ function buildSystemPrompt(
   empathyProfile: EmpathyProfile,
   empathyCode: string,
   samanthaGuidance: string,
-  userText: string
+  userText: string,
+  responsePlan?: ResponsePlan | null
 ) {
   return buildEmpathySystemPrompt({
     companionName,
@@ -525,6 +529,7 @@ function buildSystemPrompt(
     empathyCode,
     samanthaGuidance,
     userUnderstandingGuidance: buildUserUnderstandingGuidance(userText),
+    responsePlan,
   })
 }
 
@@ -2026,6 +2031,24 @@ export default function CompanionApp() {
           : combinedEmotion
       setCurrentEmotion(sentimentEmotion)
 
+      // One ResponsePlan per user turn. Drives the LLM system prompt
+      // (when remote) and the local fallback (when offline / errored).
+      // metaHistory gives us the recent-readings trajectory needed for
+      // regulation / arc classification.
+      const recentReadings = metaHistory.slice(-5).map((m) => ({
+        valence: m.sentimentPolarity,
+        arousal: Math.min(1, m.depth / 10),
+      }))
+      const responsePlan = planFromContext({
+        text,
+        cameraEmotion: combinedEmotion,
+        userTurnCount: messages.filter((m) => m.sender === "user").length + 1,
+        sessionMinutes: elapsedMs / 60000,
+        recentReadings,
+        wantsForwardMotion: inferUserUnderstanding(text).primaryIntent === "problem-solving",
+        preferredName: empathyProfile?.preferredName,
+      })
+
       const isHowAreYouCheckIn = HOW_ARE_YOU_PATTERN.test(text)
 
       if (isHowAreYouCheckIn) {
@@ -2187,7 +2210,7 @@ export default function CompanionApp() {
             systemHealth,
             ollamaBaseUrl: settings.ollamaBaseUrl,
             ollamaModel: settings.ollamaModel,
-          })
+          }, responsePlan)
           const fallbackText = ensureNonRepeatingFallback(
             baseFallback,
             lastFallbackReplyRef.current,
@@ -2236,7 +2259,8 @@ export default function CompanionApp() {
                   empathyProfile,
                   empathyCode,
                   samanthaGuidance,
-                  text
+                  text,
+                  responsePlan
                 ),
               },
               ...conversation,
@@ -2309,7 +2333,7 @@ export default function CompanionApp() {
             systemHealth,
             ollamaBaseUrl: settings.ollamaBaseUrl,
             ollamaModel: settings.ollamaModel,
-          })
+          }, responsePlan)
           const fallbackText = ensureNonRepeatingFallback(
             baseFallback,
             lastFallbackReplyRef.current,
@@ -2371,7 +2395,8 @@ export default function CompanionApp() {
               empathyProfile,
               empathyCode,
               samanthaGuidance,
-              text
+              text,
+              responsePlan
             ),
             messages: conversation,
             temperature: settings.temperature,
@@ -2420,7 +2445,8 @@ export default function CompanionApp() {
               systemHealth,
               ollamaBaseUrl: settings.ollamaBaseUrl,
               ollamaModel: settings.ollamaModel,
-            }
+            },
+            responsePlan
           )
           const fallbackText = ensureNonRepeatingFallback(
             baseFallback,
@@ -2457,7 +2483,7 @@ export default function CompanionApp() {
           systemHealth,
           ollamaBaseUrl: settings.ollamaBaseUrl,
           ollamaModel: settings.ollamaModel,
-        })
+        }, responsePlan)
         const fallbackText = ensureNonRepeatingFallback(
           baseFallback,
           lastFallbackReplyRef.current,

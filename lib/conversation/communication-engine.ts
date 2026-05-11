@@ -2,6 +2,13 @@ import { detectEmotion } from "../companion-types"
 import type { CompanionSettings, Emotion, EmpathyProfile, Personality, ToneMode } from "../companion-types"
 import { selectFromQABank } from "./qa-bank"
 import { analyzeEmotion, type EmotionalReading } from "./emotion-engine"
+import {
+  composeFromPlan,
+  directivesFromPlan,
+  planTherapyResponse,
+  type PlanInput,
+  type ResponsePlan,
+} from "./therapy-engine"
 
 const NEGATIVE_OR_DISAGREEMENT_PATTERN = /\b(no|nope|nah|not really|don't|dont|can't|cant|wrong|not true|incorrect|doesn't|doesnt)\b/i
 const LOW_CONFIDENCE_PATTERN = /\b(idk|i don't know|i dont know|dont know|not sure|unsure|maybe)\b/i
@@ -180,8 +187,20 @@ export function buildLocalCompanionReply(
   input: string,
   sentimentScore: number,
   suggestedQuestion: string,
-  context?: RuntimeFallbackContext
+  context?: RuntimeFallbackContext,
+  plan?: ResponsePlan | null
 ) {
+  // If we were handed a fully-formed ResponsePlan from the therapy
+  // engine, use the plan-based composer. It honors regulation,
+  // dose, intent stack, pacing, mustQuoteUser, and mustAskQuestion.
+  // The legacy QA-bank path remains as a fallback when no plan is
+  // available (kept for backward compatibility with existing callers).
+  if (plan) {
+    const seed = Math.abs(input.length) * 31 + Math.abs(Math.round(sentimentScore * 100))
+    const composed = composeFromPlan(plan, input, seed)
+    if (composed.trim().length > 0) return composed
+  }
+
   const lower = input.toLowerCase()
   const tokenCount = lower.trim().split(/\s+/).filter(Boolean).length
 
@@ -404,6 +423,10 @@ export function buildEmpathySystemPrompt(params: {
   samanthaGuidance: string
   nextDeepQuestion?: string
   userUnderstandingGuidance?: string
+  // Per-turn plan from the therapy engine. When present, its directive
+  // block lands at the top of the prompt so the model treats it as the
+  // hardest of the hard rules for THIS turn.
+  responsePlan?: ResponsePlan | null
 }) {
   const {
     companionName,
@@ -416,9 +439,16 @@ export function buildEmpathySystemPrompt(params: {
     samanthaGuidance,
     nextDeepQuestion,
     userUnderstandingGuidance,
+    responsePlan,
   } = params
 
-  return `${getPersonalityPrompt(companionName, personality)}
+  // Per-turn directive block, if a plan was supplied. We put it FIRST
+  // so the model treats it as the most binding instruction.
+  const planBlock = responsePlan
+    ? `${directivesFromPlan(responsePlan, empathyProfile?.preferredName || undefined)}\n\n---\n\n`
+    : ""
+
+  return `${planBlock}${getPersonalityPrompt(companionName, personality)}
 
 Current detected emotion from the user: ${emotion}. Adjust your response tone accordingly.
 Tone mode: ${String(toneMode).toUpperCase()}.
@@ -602,6 +632,37 @@ function needFromIntent(
   if (understanding.primaryIntent === "check-in") return "warm, low-pressure presence"
   return "to feel understood, not analysed"
 }
+
+// One-shot helper: from the latest user text + conversation context,
+// produce a fully-resolved ResponsePlan. Both the chat route's system
+// prompt and the local fallback should call this so the per-turn
+// decisions stay consistent across paths.
+export function planFromContext(args: {
+  text: string
+  cameraEmotion?: Emotion | string | null
+  userTurnCount: number
+  sessionMinutes: number
+  recentReadings?: Array<{ valence: number; arousal: number }>
+  wantsForwardMotion?: boolean
+  recentlyCorrected?: boolean
+  preferredName?: string
+}): ResponsePlan {
+  const reading = analyzeEmotion(args.text || "", args.cameraEmotion ?? null)
+  const understanding = inferUserUnderstanding(args.text || "")
+  const planInput: PlanInput = {
+    reading,
+    understanding,
+    userTurnCount: args.userTurnCount,
+    sessionMinutes: args.sessionMinutes,
+    recentReadings: args.recentReadings,
+    wantsForwardMotion: args.wantsForwardMotion,
+    recentlyCorrected: args.recentlyCorrected,
+    preferredName: args.preferredName,
+  }
+  return planTherapyResponse(planInput)
+}
+
+export type { ResponsePlan } from "./therapy-engine"
 
 export function summarizeFeltState(state: FeltState): string {
   // When a Plutchik dyad emerged, lead with that name and keep the
