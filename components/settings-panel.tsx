@@ -82,6 +82,14 @@ export function SettingsPanel({
   const [limiterError, setLimiterError] = useState("")
   const [isLimiterLoading, setIsLimiterLoading] = useState(false)
   const [limiterTokenInput, setLimiterTokenInput] = useState("")
+  type TabId = "start" | "provider" | "persona" | "memory"
+  const [activeTab, setActiveTab] = useState<TabId>("start")
+  const TABS: Array<{ id: TabId; label: string }> = [
+    { id: "start", label: "Start" },
+    { id: "provider", label: "Provider" },
+    { id: "persona", label: "Persona" },
+    { id: "memory", label: "Memory" },
+  ]
 
   const update = (partial: Partial<CompanionSettings>) => {
     onSettingsChange({ ...settings, ...partial })
@@ -139,9 +147,28 @@ export function SettingsPanel({
           </button>
         </div>
 
+        {/* Tab bar */}
+        <div className="flex border-b border-border bg-background/50">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex-1 border-b-2 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide transition-colors ${
+                activeTab === tab.id
+                  ? "border-foreground text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+              aria-current={activeTab === tab.id ? "page" : undefined}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
-          {/* Companion Name */}
+          {/* PERSONA TAB: Identity / Companion Name */}
+          {activeTab === "persona" && <>
           <div className="mb-6">
             <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
               <User className="h-4 w-4 text-foreground" />
@@ -215,7 +242,10 @@ export function SettingsPanel({
             </div>
           </div>
 
-          {/* Accessibility */}
+          </>}
+
+          {/* MEMORY TAB: Accessibility + Memory across sessions */}
+          {activeTab === "memory" && <>
           <div className="mb-6 rounded border border-border bg-background p-3">
             <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
               <Sparkles className="h-4 w-4 text-foreground" />
@@ -301,7 +331,10 @@ export function SettingsPanel({
             )}
           </div>
 
-          {/* Quick Start Presets */}
+          </>}
+
+          {/* START TAB: Quick Start Presets */}
+          {activeTab === "start" && <>
           <div className="mb-6 rounded border border-border bg-background p-3">
             <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
               <Sparkles className="h-4 w-4 text-foreground" />
@@ -363,7 +396,10 @@ export function SettingsPanel({
             </div>
           </div>
 
-          {/* AI Provider */}
+          </>}
+
+          {/* PROVIDER TAB: AI Provider + Ollama + OpenRouter + Generation */}
+          {activeTab === "provider" && <>
           <div className="mb-6">
             <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
               <Server className="h-4 w-4 text-foreground" />
@@ -645,6 +681,7 @@ export function SettingsPanel({
 
             {limiterError && <p className="text-xs text-amber-300">{limiterError}</p>}
           </div>
+          </>}
         </div>
 
         {/* Footer */}

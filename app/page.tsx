@@ -4,7 +4,7 @@ import { useState, useCallback, useMemo, useEffect, useRef, type Dispatch, type 
 import dynamic from "next/dynamic"
 import Link from "next/link"
 import { useChat } from "@ai-sdk/react"
-import { Settings, Download } from "lucide-react"
+import { Settings, Download, Camera, MessageSquare, Heart, Search } from "lucide-react"
 import { ChatPanel } from "@/components/chat-panel"
 import { VaultModal, type VaultModalMode } from "@/components/vault-modal"
 import {
@@ -54,8 +54,13 @@ import {
   type ResponsePlan,
   type RuntimeFallbackContext,
 } from "@/lib/conversation/communication-engine"
-import { sendOllamaDirect, probeOllama } from "@/lib/api/ollama-direct"
+import {
+  sendOllamaDirect,
+  probeLocalLLM,
+  runtimeNameFromBaseUrl,
+} from "@/lib/api/ollama-direct"
 import { OnboardingModal } from "@/components/onboarding-modal"
+import { CommandPalette, type CommandSection } from "@/components/command-palette"
 import { useOnlineStatus } from "@/hooks/use-online-status"
 
 const CameraPanel = dynamic(() => import("@/components/camera-panel").then((mod) => mod.CameraPanel), {
@@ -532,6 +537,7 @@ export default function CompanionApp() {
 
   const [settings, setSettings] = useState<CompanionSettings>(DEFAULT_SETTINGS)
   const [showSettings, setShowSettings] = useState(false)
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [cameraEmotion, setCameraEmotion] = useState<Emotion>("neutral")
   const [empathyData, setEmpathyData] = useState<EmpathyData>({
     says: [],
@@ -708,10 +714,13 @@ export default function CompanionApp() {
 
       let result
       try {
-        result = await probeOllama(
-          settings.ollamaBaseUrl,
+        // Try every known local-LLM runtime in parallel — Ollama, LM Studio,
+        // Jan, llamafile — and use whichever responds first. The user's
+        // configured base URL is prioritized so it still wins if reachable.
+        result = await probeLocalLLM(
           settings.ollamaModel,
-          requestController.signal
+          requestController.signal,
+          settings.ollamaBaseUrl
         )
       } finally {
         window.clearTimeout(timeoutId)
@@ -723,26 +732,38 @@ export default function CompanionApp() {
       const wasReachable = ollamaReachableRef.current
       ollamaReachableRef.current = result.reachable
 
-      // Online transition: Ollama just appeared.
+      // Online transition: some local runtime just appeared.
       if (result.reachable && wasReachable !== true) {
         const detectedModel = result.pickedModel || settings.ollamaModel
+        const detectedBaseUrl = result.baseUrl || settings.ollamaBaseUrl
+        const runtimeName = result.runtimeName ?? runtimeNameFromBaseUrl(detectedBaseUrl)
         if (!explicit && !dismissed && !isUserExplicitProvider(settings.provider)) {
           autoSelectedOllamaRef.current = true
           setSettings((prev) =>
-            prev.provider === "ollama"
+            prev.provider === "ollama" && prev.ollamaBaseUrl === detectedBaseUrl
               ? prev
-              : { ...prev, provider: "ollama", ollamaModel: detectedModel }
+              : {
+                  ...prev,
+                  provider: "ollama",
+                  ollamaBaseUrl: detectedBaseUrl,
+                  ollamaModel: detectedModel,
+                }
           )
           if (wasReachable === false) {
-            setOllamaTransition({ kind: "online", model: detectedModel, at: Date.now() })
+            setOllamaTransition({
+              kind: "online",
+              model: `${runtimeName} · ${detectedModel}`,
+              at: Date.now(),
+            })
           }
         }
         return
       }
 
-      // Offline transition: Ollama just went away. Keep the provider on
-      // "ollama" — the connection error will surface and the heuristic
-      // therapy-engine compose path handles replies until Ollama is back.
+      // Offline transition: the local runtime went away. Keep the
+      // provider on "ollama" — the connection error will surface and the
+      // heuristic therapy-engine compose path handles replies until a
+      // runtime is back.
       if (!result.reachable && wasReachable === true) {
         if (autoSelectedOllamaRef.current && settings.provider === "ollama") {
           autoSelectedOllamaRef.current = false
@@ -2062,7 +2083,7 @@ export default function CompanionApp() {
 
       if (key === "k" && !event.shiftKey) {
         event.preventDefault()
-        setShowSettings(true)
+        setCommandPaletteOpen(true)
         return
       }
       if (key === "j" && !event.shiftKey) {
@@ -2078,8 +2099,23 @@ export default function CompanionApp() {
       }
     }
 
+    // "/" with no modifier opens the palette too — easier to discover
+    // than Cmd+K and works on keyboards without a Meta/Ctrl modifier.
+    const handleSlash = (event: KeyboardEvent) => {
+      if (event.key !== "/") return
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+      if (isTypingTarget(event.target)) return
+      event.preventDefault()
+      setCommandPaletteOpen(true)
+    }
+
+
     window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
+    window.addEventListener("keydown", handleSlash)
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown)
+      window.removeEventListener("keydown", handleSlash)
+    }
   }, [
     userTurnCount,
     answeredIntroCount,
@@ -2254,6 +2290,122 @@ export default function CompanionApp() {
         embedMode={embedMode}
         ollamaReachable={ollamaReachableRef.current}
       />
+
+      <CommandPalette
+        open={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        sections={[
+          {
+            id: "navigate",
+            label: "Navigate",
+            items: [
+              {
+                id: "go-chat",
+                label: "Focus chat",
+                hint: "Show the conversation panel on mobile",
+                onSelect: () => setMobilePanel("chat"),
+              },
+              {
+                id: "go-camera",
+                label: "Focus camera",
+                hint: "Show the camera + emotion panel on mobile",
+                onSelect: () => setMobilePanel("camera"),
+              },
+              {
+                id: "go-empathy",
+                label: "Focus empathy map",
+                hint: "Show the right-rail empathy panel on mobile",
+                onSelect: () => setMobilePanel("empathy"),
+              },
+            ],
+          },
+          {
+            id: "actions",
+            label: "Actions",
+            items: [
+              {
+                id: "open-settings",
+                label: "Open Settings",
+                shortcut: "⌘K",
+                keywords: ["provider", "ollama", "openrouter", "api", "key", "persona", "tone", "voice"],
+                onSelect: () => setShowSettings(true),
+              },
+              {
+                id: "generate-summary",
+                label: "Generate reflection summary",
+                shortcut: "⌘⇧S",
+                hint:
+                  userTurnCount >= 4 && answeredIntroCount >= introQuestionCount
+                    ? "Synthesize this session into a card"
+                    : "Available after a few exchanges",
+                disabled: !(userTurnCount >= 4 && answeredIntroCount >= introQuestionCount),
+                onSelect: handleGenerateSummary,
+              },
+              {
+                id: "export-profile",
+                label: "Export encrypted profile",
+                shortcut: "⌘J",
+                hint: "Download a vault backup",
+                onSelect: handleProfileExport,
+              },
+            ],
+          },
+          {
+            id: "vault",
+            label: "Vault",
+            items: [
+              {
+                id: "vault-lock",
+                label: "Lock vault",
+                hint: vaultStatus === "unlocked" ? "Clear the unlock key from memory" : "Vault is not unlocked",
+                disabled: vaultStatus !== "unlocked",
+                onSelect: requestVaultLock,
+              },
+              {
+                id: "vault-clear",
+                label: "Clear vault from this device",
+                hint: vaultStatus !== "no-vault" ? "Delete encrypted vault here (keeps your downloaded backup)" : "No vault to clear",
+                disabled: vaultStatus === "no-vault",
+                onSelect: requestVaultClear,
+              },
+              {
+                id: "vault-forget-memory",
+                label: "Forget remembered sessions",
+                hint: storedSessionMemory !== null ? "Delete stored cross-session memory" : "No session memory stored",
+                disabled: storedSessionMemory === null,
+                onSelect: handleForgetSessionMemory,
+              },
+            ],
+          },
+          {
+            id: "links",
+            label: "Resources",
+            items: [
+              {
+                id: "ollama-install",
+                label: "Install Ollama guide",
+                keywords: ["pc llm", "local", "private"],
+                onSelect: () => {
+                  if (typeof window !== "undefined") {
+                    window.location.href = "/ollama-install"
+                  }
+                },
+              },
+              {
+                id: "reset-sw",
+                label: "Reset service worker (force fresh build)",
+                hint: "Clears the cached app shell — useful after a deploy",
+                keywords: ["refresh", "cache", "stuck", "broken"],
+                onSelect: () => {
+                  if (typeof window !== "undefined") {
+                    window.location.href = "/?reset-sw=1"
+                  }
+                },
+              },
+            ],
+          },
+        ] satisfies CommandSection[]}
+      />
       {/* Top Bar */}
       <header className="flex items-center justify-between border-b border-border px-4 py-3 md:px-6">
         <div className="flex items-center gap-3">
@@ -2262,23 +2414,6 @@ export default function CompanionApp() {
               EMPATHEIA
             </span>
           </div>
-        </div>
-
-        {/* Mobile nav */}
-        <div className="flex items-center gap-1 md:hidden">
-          {(["camera", "chat", "empathy"] as const).map((panel) => (
-            <button
-              key={panel}
-              onClick={() => setMobilePanel(panel)}
-              className={`rounded px-3 py-1 text-xs font-medium ${
-                mobilePanel === panel
-                  ? "bg-foreground text-background"
-                  : "text-muted-foreground"
-              }`}
-            >
-              {panel.charAt(0).toUpperCase() + panel.slice(1)}
-            </button>
-          ))}
         </div>
 
         <div className="flex items-center gap-3">
@@ -2300,14 +2435,26 @@ export default function CompanionApp() {
                   : "System Ready"}
             </span>
           </div>
+          <button
+            onClick={() => setCommandPaletteOpen(true)}
+            className="flex items-center gap-2 rounded border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            aria-label="Open command palette"
+            title="Search settings, actions, sections (⌘K or /)"
+          >
+            <Search className="h-4 w-4" />
+            <span className="hidden md:inline">Search</span>
+            <kbd className="hidden rounded border border-border bg-background px-1 py-0.5 text-[10px] uppercase tracking-wide md:inline">
+              ⌘K
+            </kbd>
+          </button>
           <Link
             href="/ollama-install"
-            className="flex items-center gap-2 rounded border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+            className="hidden items-center gap-2 rounded border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent md:flex"
             aria-label="Open install and run guide"
             title="Install your own private LLM"
           >
             <Download className="h-4 w-4" />
-            <span className="hidden md:inline">Install</span>
+            <span>Install</span>
           </Link>
           <button
             onClick={() => setShowSettings(true)}
@@ -2320,8 +2467,9 @@ export default function CompanionApp() {
         </div>
       </header>
 
-      {/* Main Content - Three Panel Layout */}
-      <div className="flex flex-1 overflow-hidden">
+      {/* Main Content - Three Panel Layout. Bottom padding on mobile so
+          the fixed nav bar at the bottom doesn't cover the chat input. */}
+      <div className="flex flex-1 overflow-hidden pb-14 md:pb-0">
         {/* Left Panel - Camera & Controls */}
         <aside
           className={`w-full flex-shrink-0 overflow-y-auto border-r border-border p-4 md:w-72 lg:w-80 ${
@@ -2547,6 +2695,47 @@ export default function CompanionApp() {
           onForgetSessionMemory={handleForgetSessionMemory}
         />
       )}
+
+      {/* Mobile bottom nav. Thumb-reachable on phones; hidden on md+ where
+          the three-pane layout shows everything at once. */}
+      <nav
+        className="fixed inset-x-0 bottom-0 z-30 flex h-14 items-stretch border-t border-border bg-background/95 backdrop-blur-sm md:hidden"
+        aria-label="Primary panel navigation"
+      >
+        {(
+          [
+            { id: "camera" as const, label: "Camera", icon: Camera },
+            { id: "chat" as const, label: "Chat", icon: MessageSquare },
+            { id: "empathy" as const, label: "Empathy", icon: Heart },
+          ]
+        ).map(({ id, label, icon: Icon }) => {
+          const active = mobilePanel === id
+          return (
+            <button
+              key={id}
+              onClick={() => setMobilePanel(id)}
+              className={`flex flex-1 flex-col items-center justify-center gap-0.5 transition-colors ${
+                active
+                  ? "bg-foreground/5 text-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
+              }`}
+              aria-current={active ? "page" : undefined}
+            >
+              <Icon className={`h-4 w-4 ${active ? "text-foreground" : ""}`} />
+              <span
+                className={`text-[10px] font-medium uppercase tracking-wide ${
+                  active ? "text-foreground" : ""
+                }`}
+              >
+                {label}
+              </span>
+              {active && (
+                <span className="absolute top-0 h-0.5 w-12 rounded-b-full bg-foreground/80" />
+              )}
+            </button>
+          )
+        })}
+      </nav>
     </main>
   )
 }
