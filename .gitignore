@@ -9,7 +9,6 @@ test-results/
 
 # Local tool config
 .claude/
-pnpm-workspace.yaml
 
 # Mobile sideload generated artifacts (templates are committed; outputs are not)
 mobile/android/twa-manifest.json

@@ -1,0 +1,7 @@
+# pnpm 11+ requires explicit acknowledgement of packages with native
+# install scripts. We don't need sharp's native binaries (face-api runs
+# in the browser, not Node) and unrs-resolver is for ESLint internals
+# that work fine without compiled bits — both are explicitly skipped.
+allowBuilds:
+  sharp: false
+  unrs-resolver: false
