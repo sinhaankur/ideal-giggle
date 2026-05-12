@@ -1,7 +1,15 @@
 # pnpm 11+ requires explicit acknowledgement of packages with native
-# install scripts. We don't need sharp's native binaries (face-api runs
-# in the browser, not Node) and unrs-resolver is for ESLint internals
-# that work fine without compiled bits — both are explicitly skipped.
+# install scripts. Electron's postinstall is what downloads the actual
+# Electron binary, so it must be allowed. sharp / unrs-resolver are not
+# needed (face-api runs in the browser, not Node) — keep them skipped.
+onlyBuiltDependencies:
+  - electron
+
+ignoredBuiltDependencies:
+  - sharp
+  - unrs-resolver
+
 allowBuilds:
+  electron: true
   sharp: false
   unrs-resolver: false

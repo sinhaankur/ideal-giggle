@@ -54,9 +54,15 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
   useEffect(() => {
     const loadModels = async () => {
       try {
-        const basePath =
-          process.env.NEXT_PUBLIC_BASE_PATH || ""
-        const MODEL_URL = `${basePath}/face-models`
+        // Under Electron the app loads via file://, where a leading "/"
+        // resolves to the filesystem root. Use a relative URL there so the
+        // weights load from the bundled /out folder.
+        const isFileProtocol =
+          typeof window !== "undefined" && window.location.protocol === "file:"
+        const basePath = process.env.NEXT_PUBLIC_BASE_PATH || ""
+        const MODEL_URL = isFileProtocol
+          ? "./face-models"
+          : `${basePath}/face-models`
         await Promise.all([
           faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
           faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),

@@ -286,9 +286,47 @@ Once you've loaded the app at least once, EMPATHEIA continues to work without an
 - **Offline indicator** appears in the chat panel header when `navigator.onLine === false` and surfaces a one-click switch to Ollama if you were on a cloud provider.
 - **Empathy fallback ladder**: when no LLM is reachable, the deterministic empathy engine (Plutchik-grounded emotion analysis + therapy-engine compose path) takes over so the conversation never hits a dead end, even with no network and no model.
 
-## Install as a Native App
+## Download the Desktop App (Electron)
 
-EMPATHEIA is a Progressive Web App and installs on every major OS without an app store. Once installed, it launches in its own window with the app icon, runs offline, and is indistinguishable from a native app.
+In addition to the PWA, EMPATHEIA ships a fully installable Electron desktop build for macOS, Windows, and Linux. The installer bundles the offline app shell (including the face-api weights) so the first launch works without a network round-trip.
+
+| OS | Installer | Notes |
+| --- | --- | --- |
+| macOS (Intel + Apple Silicon) | `EMPATHEIA-<version>-mac-x64.dmg` / `-arm64.dmg` | Unsigned — on first launch, right-click → Open to bypass Gatekeeper, or run `xattr -dr com.apple.quarantine /Applications/EMPATHEIA.app` |
+| Windows 10/11 (x64) | `EMPATHEIA-<version>-win-x64.exe` (NSIS installer) or the `portable.exe` | Unsigned — SmartScreen may prompt; click **More info → Run anyway** |
+| Linux (x64) | `.AppImage` (no install) or `.deb` (`sudo apt install ./EMPATHEIA-*.deb`) | AppImage needs `chmod +x` once |
+
+Grab the latest binaries from the [GitHub Releases page](https://github.com/h99311/ideal-giggle/releases/latest). Tag a new version locally to trigger the build:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The [`release-electron.yml`](.github/workflows/release-electron.yml) workflow then runs the matrix on GitHub-hosted macOS / Windows / Linux runners and attaches the installers to the release.
+
+### Build it yourself
+
+```bash
+pnpm install
+pnpm build:electron              # static export tuned for file:// loading
+pnpm electron:dist               # produces installers for the current OS
+# or target a specific OS:
+pnpm electron:dist:mac
+pnpm electron:dist:win
+pnpm electron:dist:linux
+```
+
+Run the desktop app in dev mode against the hot-reloading Next.js server:
+
+```bash
+pnpm dev              # terminal 1 — Next.js dev server on :3000
+pnpm electron:dev     # terminal 2 — Electron window pointed at localhost
+```
+
+## Install as a Native App (PWA)
+
+EMPATHEIA is also a Progressive Web App and installs on every major OS without an app store. Once installed, it launches in its own window with the app icon, runs offline, and is indistinguishable from a native app.
 
 | OS | How to install |
 | --- | --- |

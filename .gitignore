@@ -7,6 +7,11 @@ out/
 *.tsbuildinfo
 test-results/
 
+# Electron build outputs
+dist-electron/
+build/icon.icns
+build/icon.ico
+
 # Local tool config
 .claude/
 

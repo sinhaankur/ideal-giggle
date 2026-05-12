@@ -1,6 +1,14 @@
 {
-  "name": "my-project",
+  "name": "empatheia",
+  "productName": "EMPATHEIA",
   "version": "0.1.0",
+  "description": "An empathetic AI companion that sees, listens, and understands. Runs offline with a local LLM.",
+  "author": {
+    "name": "EMPATHEIA",
+    "email": "noreply@empatheia.app"
+  },
+  "homepage": "https://h99311.github.io/ideal-giggle/",
+  "main": "electron/main.cjs",
   "license": "SEE LICENSE IN LICENSE",
   "private": true,
   "scripts": {
@@ -12,7 +20,15 @@
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "typecheck": "tsc --noEmit",
-    "check": "pnpm lint && pnpm test && pnpm typecheck && pnpm build"
+    "check": "pnpm lint && pnpm test && pnpm typecheck && pnpm build",
+    "build:electron": "rm -rf app/api && NEXT_TELEMETRY_DISABLED=1 STATIC_EXPORT=true ELECTRON_BUILD=true NEXT_PUBLIC_STATIC_EXPORT=true NEXT_PUBLIC_DEFAULT_PROVIDER=ollama next build",
+    "electron:dev": "NEXT_TELEMETRY_DISABLED=1 ELECTRON_START_URL=http://localhost:3000 electron .",
+    "electron:start": "electron .",
+    "electron:pack": "pnpm build:electron && electron-builder --dir",
+    "electron:dist": "pnpm build:electron && electron-builder",
+    "electron:dist:mac": "pnpm build:electron && electron-builder --mac",
+    "electron:dist:win": "pnpm build:electron && electron-builder --win",
+    "electron:dist:linux": "pnpm build:electron && electron-builder --linux"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.43",
@@ -80,6 +96,8 @@
     "@types/node": "^22",
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
     "eslint": "^9.36.0",
     "eslint-config-next": "16.1.6",
     "postcss": "^8.5",
@@ -91,6 +109,76 @@
     "overrides": {
       "@types/react": "19.2.7",
       "@types/react-dom": "19.2.3"
+    },
+    "onlyBuiltDependencies": [
+      "electron"
+    ],
+    "ignoredBuiltDependencies": [
+      "sharp",
+      "unrs-resolver"
+    ]
+  },
+  "build": {
+    "appId": "app.empatheia.desktop",
+    "productName": "EMPATHEIA",
+    "artifactName": "EMPATHEIA-${version}-${os}-${arch}.${ext}",
+    "asar": true,
+    "directories": {
+      "output": "dist-electron",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron/**/*",
+      "out/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "public/face-models",
+        "to": "face-models"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.lifestyle",
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] },
+        { "target": "zip", "arch": ["x64", "arm64"] }
+      ],
+      "icon": "build/icon.png",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "identity": null
+    },
+    "dmg": {
+      "title": "EMPATHEIA ${version}"
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "EMPATHEIA"
+    },
+    "linux": {
+      "target": [
+        { "target": "AppImage", "arch": ["x64"] },
+        { "target": "deb", "arch": ["x64"] }
+      ],
+      "icon": "build/icon.png",
+      "category": "Utility",
+      "maintainer": "EMPATHEIA"
+    },
+    "publish": {
+      "provider": "github",
+      "releaseType": "release"
     }
   }
 }

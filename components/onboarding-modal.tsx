@@ -2,7 +2,12 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Check, Cloud, Cpu, Download, Sparkles, X } from "lucide-react"
+import { Check, Cloud, Cpu, Download, Monitor, Sparkles, X } from "lucide-react"
+
+// Latest GitHub Release page — desktop installer downloads are attached there
+// by .github/workflows/release-electron.yml when a v* tag is pushed.
+const DESKTOP_RELEASES_URL =
+  "https://github.com/h99311/ideal-giggle/releases/latest"
 
 export type OnboardingPreset = "fast-local" | "balanced-cloud" | "deep-empathy" | "default"
 
@@ -150,6 +155,23 @@ export function OnboardingModal({
               <Download className="h-3.5 w-3.5" />
               First time here? Install + Run Guide
             </Link>
+
+            {/* Hidden inside the Electron build — the desktop installer is for
+                visitors on github.io, not for users already running it. */}
+            {process.env.NEXT_PUBLIC_ELECTRON_BUILD !== "true" && (
+              <a
+                href={DESKTOP_RELEASES_URL}
+                target="_blank"
+                rel="noreferrer noopener"
+                className={`ml-2 mt-3 inline-flex items-center gap-2 rounded border border-border bg-card text-foreground transition-colors hover:bg-accent ${
+                  embedMode ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs"
+                }`}
+                title="Download the installable desktop app (mac / windows / linux)"
+              >
+                <Monitor className="h-3.5 w-3.5" />
+                Get the desktop app
+              </a>
+            )}
 
             <div className="mt-3 grid gap-2">
               <button

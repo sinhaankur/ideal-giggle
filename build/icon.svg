@@ -1,0 +1,71 @@
+<!--
+  EMPATHEIA desktop-app icon.
+
+  Brand: the original empathy "orb" (warm core wrapped in violet halo)
+  carried forward from public/icon.svg, plus three electron-style orbital
+  rings to signal "this is the installable Electron build" rather than the
+  PWA. Tuned for icon rendering — sized to 1024×1024 with a 192px rounded
+  rect so it sits comfortably as a macOS app icon (matches Apple's icon
+  grid, which uses ~22.4% corner radius / 191px on a 1024 canvas).
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="EMPATHEIA">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="38%" r="70%">
+      <stop offset="0%" stop-color="#1f2937" />
+      <stop offset="50%" stop-color="#0a0a0a" />
+      <stop offset="100%" stop-color="#000000" />
+    </radialGradient>
+
+    <radialGradient id="halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"  stop-color="#fbcfe8" stop-opacity="0.95" />
+      <stop offset="55%" stop-color="#a78bfa" stop-opacity="0.85" />
+      <stop offset="100%" stop-color="#312e81" stop-opacity="0.0" />
+    </radialGradient>
+
+    <radialGradient id="core" cx="50%" cy="42%" r="58%">
+      <stop offset="0%"  stop-color="#fff7d6" />
+      <stop offset="55%" stop-color="#fde68a" />
+      <stop offset="100%" stop-color="#f59e0b" stop-opacity="0.85" />
+    </radialGradient>
+
+    <linearGradient id="ringStroke" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"  stop-color="#a78bfa" stop-opacity="0.95" />
+      <stop offset="50%" stop-color="#67e8f9" stop-opacity="0.7" />
+      <stop offset="100%" stop-color="#a78bfa" stop-opacity="0.95" />
+    </linearGradient>
+
+    <radialGradient id="electron" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"  stop-color="#ffffff" />
+      <stop offset="60%" stop-color="#67e8f9" />
+      <stop offset="100%" stop-color="#0891b2" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <!-- Rounded-rect canvas tuned to Apple icon grid (191/1024 ≈ 22.4%). -->
+  <rect width="1024" height="1024" rx="192" ry="192" fill="url(#bg)" />
+
+  <!-- Electron orbital rings, lightly skewed for depth. -->
+  <g transform="translate(512 470)" fill="none" stroke="url(#ringStroke)" stroke-width="6" opacity="0.9">
+    <ellipse rx="360" ry="120" transform="rotate(-22)" />
+    <ellipse rx="360" ry="120" transform="rotate(22)"  />
+    <ellipse rx="360" ry="120" />
+  </g>
+
+  <!-- Empathy halo + warm core (the brand from public/icon.svg, scaled up). -->
+  <circle cx="512" cy="470" r="300" fill="url(#halo)" />
+  <circle cx="512" cy="470" r="156" fill="url(#core)" />
+
+  <!-- Three electrons riding the rings — placed so they read as motion. -->
+  <g>
+    <circle cx="858" cy="350" r="22" fill="url(#electron)" />
+    <circle cx="172" cy="610" r="22" fill="url(#electron)" />
+    <circle cx="512" cy="838" r="22" fill="url(#electron)" />
+  </g>
+
+  <!-- Wordmark. Letter-spacing widened so it stays legible at 32×32. -->
+  <text x="512" y="940" text-anchor="middle"
+        font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+        font-size="108" font-weight="700" letter-spacing="12" fill="#fafafa">
+    EMPATHEIA
+  </text>
+</svg>
