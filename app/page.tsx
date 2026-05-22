@@ -1694,7 +1694,7 @@ export default function CompanionApp() {
       {
         id: crypto.randomUUID(),
         sender: "ai",
-        text: "Before we begin, let's start simple. How are you feeling today?",
+        text: "Hi — I'm really glad you're here. No pressure to say anything big. Just to start: how are you feeling today?",
         timestamp: new Date(),
         emotion: "thinking",
       },
