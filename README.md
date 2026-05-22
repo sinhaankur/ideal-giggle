@@ -116,7 +116,7 @@ For users who can't or don't want to run a local LLM. OpenRouter has a free tier
 Open Settings → Quick Start Presets:
 
 - **Local LLM (Ollama)** — recommended. Auto-detects Ollama on your machine. Zero API setup.
-- **Balanced Cloud** — OpenRouter free tier (`meta-llama/llama-3.2-3b-instruct:free`). Smooth quality with low latency.
+- **Balanced Cloud** — OpenRouter free tier (`openai/gpt-oss-20b:free`). Smooth quality with low latency.
 - **Deep Empathy** — `meta-llama/llama-3.3-70b-instruct:free`. Stronger reflective depth for longer conversations.
 
 ## Setup Checklist Panel

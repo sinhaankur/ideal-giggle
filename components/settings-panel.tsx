@@ -9,11 +9,10 @@ import type { CompanionSettings, AIProvider, Personality, ToneMode } from "@/lib
 // Free models churn fast — when one returns "No endpoints found", swap
 // it for another id from `curl https://openrouter.ai/api/v1/models | jq`.
 const OPENROUTER_MODEL_PRESETS = [
-  "meta-llama/llama-3.2-3b-instruct:free",
+  "openai/gpt-oss-20b:free",
   "meta-llama/llama-3.3-70b-instruct:free",
   "google/gemma-4-26b-a4b-it:free",
   "qwen/qwen3-next-80b-a3b-instruct:free",
-  "openai/gpt-oss-20b:free",
   "z-ai/glm-4.5-air:free",
   "nousresearch/hermes-3-llama-3.1-405b:free",
 ]
@@ -368,7 +367,7 @@ export function SettingsPanel({
                   onSettingsChange({
                     ...settings,
                     provider: "openrouter",
-                    openRouterModel: "meta-llama/llama-3.2-3b-instruct:free",
+                    openRouterModel: "openai/gpt-oss-20b:free",
                     toneMode: "balanced",
                     personality: "warm",
                     temperature: 0.6,

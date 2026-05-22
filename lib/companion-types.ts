@@ -261,7 +261,7 @@ export const DEFAULT_SETTINGS: CompanionSettings = {
   mcpApiKey: "",
   mcpAutoFallback: false,
   openRouterApiKey: "",
-  openRouterModel: "meta-llama/llama-3.2-3b-instruct:free",
+  openRouterModel: "openai/gpt-oss-20b:free",
   rememberSessions: false,
 }
 

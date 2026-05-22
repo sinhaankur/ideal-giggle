@@ -352,7 +352,7 @@ function withQuickPreset(base: CompanionSettings, presetId: QuickPresetId): Comp
     return {
       ...base,
       provider: "openrouter",
-      openRouterModel: "meta-llama/llama-3.2-3b-instruct:free",
+      openRouterModel: "openai/gpt-oss-20b:free",
       toneMode: "balanced",
       personality: "warm",
       temperature: 0.6,
