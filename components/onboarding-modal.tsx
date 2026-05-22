@@ -193,13 +193,16 @@ export function OnboardingModal({
                 onClick={() => onChoosePreset("balanced-cloud")}
                 className="flex items-start gap-2 rounded border border-border bg-background p-3 text-left transition-colors hover:border-muted-foreground/50"
               >
-                <Cloud className="mt-0.5 h-4 w-4 flex-shrink-0 text-sky-400" />
+                <Cloud className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-400" />
                 <div className="flex-1">
-                  <div className={`font-semibold text-foreground ${embedMode ? "text-[13px]" : "text-sm"}`}>
+                  <div className={`flex items-center gap-1.5 font-semibold text-foreground ${embedMode ? "text-[13px]" : "text-sm"}`}>
                     Balanced Cloud
+                    <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-amber-300">
+                      Not Private
+                    </span>
                   </div>
                   <div className={`text-muted-foreground ${embedMode ? "text-[11px]" : "text-xs"}`}>
-                    Smooth quality with low latency via OpenRouter free tier.
+                    Smooth quality via OpenRouter free tier. Your messages travel over the internet to a third-party AI provider.
                   </div>
                 </div>
               </button>
@@ -210,11 +213,14 @@ export function OnboardingModal({
               >
                 <Sparkles className="mt-0.5 h-4 w-4 flex-shrink-0 text-violet-400" />
                 <div className="flex-1">
-                  <div className={`font-semibold text-foreground ${embedMode ? "text-[13px]" : "text-sm"}`}>
+                  <div className={`flex items-center gap-1.5 font-semibold text-foreground ${embedMode ? "text-[13px]" : "text-sm"}`}>
                     Deep Empathy
+                    <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-amber-300">
+                      Not Private
+                    </span>
                   </div>
                   <div className={`text-muted-foreground ${embedMode ? "text-[11px]" : "text-xs"}`}>
-                    Stronger reflective depth for long-form conversations.
+                    Stronger reflective depth for long-form chats. Same cloud round-trip caveat: messages go to a third-party AI.
                   </div>
                 </div>
               </button>

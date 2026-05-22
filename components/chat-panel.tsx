@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect, useCallback, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Send, Mic, MicOff, Volume2, VolumeX, BellOff, AlertTriangle, Wrench, RefreshCw, HeartHandshake, ShieldCheck, WifiOff, Wind, BookOpen } from "lucide-react"
+import { Send, Mic, MicOff, Volume2, VolumeX, BellOff, AlertTriangle, Wrench, RefreshCw, HeartHandshake, ShieldCheck, Cloud, WifiOff, Wind, BookOpen } from "lucide-react"
 import { AIOrb } from "@/components/ai-orb"
 import { MirrorStrip } from "@/components/mirror-strip"
 import { BreathCoach } from "@/components/breath-coach"
@@ -514,21 +514,34 @@ export function ChatPanel({
         <div className="flex items-center gap-2">
           {(() => {
             const isLocalProvider = settings.provider === "ollama"
-            const label = isLocalProvider ? "PRIVATE" : "NOT STORED"
+            const providerName = settings.provider === "openai"
+              ? "OpenAI"
+              : settings.provider === "anthropic"
+                ? "Anthropic (Claude)"
+                : settings.provider === "google"
+                  ? "Google (Gemini)"
+                  : settings.provider === "openrouter"
+                    ? "OpenRouter"
+                    : settings.provider.toUpperCase()
+            const label = isLocalProvider ? "PRIVATE" : "CLOUD · NOT PRIVATE"
             const tooltip = isLocalProvider
-              ? "This conversation runs entirely on your machine via Ollama. Nothing is sent to a server. Nothing is saved by EMPATHEIA."
-              : `EMPATHEIA does not store this conversation. Messages are sent to ${settings.provider.toUpperCase()} for inference and discarded after the response.`
+              ? "This conversation runs entirely on your machine via Ollama. Nothing leaves the device. EMPATHEIA itself never sees your messages."
+              : `Your messages are sent to ${providerName} over the internet for the AI to reply. ${providerName} processes them under their own policy and may retain logs. EMPATHEIA does not store them, but the conversation is NOT private end-to-end. For full privacy, switch to Ollama (PC LLM) in Settings.`
             return (
               <span
                 className={`flex h-6 items-center gap-1 border px-2 text-[11px] uppercase tracking-wide ${
                   isLocalProvider
                     ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
-                    : "border-sky-500/40 bg-sky-500/10 text-sky-300"
+                    : "border-amber-500/50 bg-amber-500/10 text-amber-300"
                 }`}
                 title={tooltip}
                 aria-label={tooltip}
               >
-                <ShieldCheck className="h-3 w-3" />
+                {isLocalProvider ? (
+                  <ShieldCheck className="h-3 w-3" />
+                ) : (
+                  <Cloud className="h-3 w-3" />
+                )}
                 {label}
               </span>
             )
