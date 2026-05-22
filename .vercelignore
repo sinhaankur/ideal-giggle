@@ -1,21 +1,18 @@
-# Common ignores
-node_modules/
-.next/
-out/
-.env*.local
-.DS_Store
-*.tsbuildinfo
-test-results/
-
-# Electron build outputs
+# Electron desktop builds — only for desktop releases, not the web build
 dist-electron/
 build/icon.icns
 build/icon.ico
 
-# Local tool config
-.claude/
+# Local build artifacts (Vercel regenerates these)
+.next/
+out/
 
-# Mobile sideload generated artifacts (templates are committed; outputs are not)
+# Test + tooling outputs
+test-results/
+playwright-report/
+*.tsbuildinfo
+
+# Mobile sideload outputs
 mobile/android/twa-manifest.json
 mobile/android/*.apk
 mobile/android/*.aab
@@ -26,4 +23,3 @@ mobile/ios/package.json
 mobile/ios/package-lock.json
 mobile/ios/node_modules/
 mobile/ios/App/
-.vercel
