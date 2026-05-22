@@ -5,13 +5,17 @@ import Link from "next/link"
 import { Settings, Server, Cloud, Thermometer, User, Sparkles, Cpu, Download } from "lucide-react"
 import type { CompanionSettings, AIProvider, Personality, ToneMode } from "@/lib/companion-types"
 
+// Free-tier model presets verified live against OpenRouter's catalog.
+// Free models churn fast — when one returns "No endpoints found", swap
+// it for another id from `curl https://openrouter.ai/api/v1/models | jq`.
 const OPENROUTER_MODEL_PRESETS = [
-  "qwen/qwen3-4b:free",
+  "meta-llama/llama-3.2-3b-instruct:free",
   "meta-llama/llama-3.3-70b-instruct:free",
-  "deepseek/deepseek-r1-distill-llama-70b:free",
-  "qwen/qwen-2.5-72b-instruct:free",
-  "mistralai/mistral-7b-instruct:free",
-  "google/gemma-2-9b-it:free",
+  "google/gemma-4-26b-a4b-it:free",
+  "qwen/qwen3-next-80b-a3b-instruct:free",
+  "openai/gpt-oss-20b:free",
+  "z-ai/glm-4.5-air:free",
+  "nousresearch/hermes-3-llama-3.1-405b:free",
 ]
 
 // Two-path provider model: Ollama (local PC LLM) or a cloud API.
@@ -364,7 +368,7 @@ export function SettingsPanel({
                   onSettingsChange({
                     ...settings,
                     provider: "openrouter",
-                    openRouterModel: "qwen/qwen3-4b:free",
+                    openRouterModel: "meta-llama/llama-3.2-3b-instruct:free",
                     toneMode: "balanced",
                     personality: "warm",
                     temperature: 0.6,
