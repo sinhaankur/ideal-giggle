@@ -7,6 +7,7 @@ import {
 import { createOpenAI, openai } from "@ai-sdk/openai"
 import { anthropic } from "@ai-sdk/anthropic"
 import { google } from "@ai-sdk/google"
+import { createOpenRouter } from "@openrouter/ai-sdk-provider"
 import { PROVIDER_DEFAULT_MODELS } from "@/lib/companion-types"
 import {
   buildEmpathySystemPrompt,
@@ -117,9 +118,11 @@ export async function POST(req: Request) {
     baseURL: `${trimmedOllamaBase}/v1`,
   })
 
-  const openRouter = createOpenAI({
+  // Dedicated OpenRouter provider — knows OpenRouter's quirks
+  // (model naming, response shape, tool-call format) better than
+  // pointing the generic OpenAI provider at OpenRouter's base URL.
+  const openRouter = createOpenRouter({
     apiKey: openRouterApiKey,
-    baseURL: "https://openrouter.ai/api/v1",
   })
 
   // Per-turn therapy-engine plan: regulation state, arc phase, modality,
@@ -171,7 +174,7 @@ export async function POST(req: Request) {
               : "OpenRouter API key is missing. Add it in Settings or set OPENROUTER_API_KEY."
           )
         }
-        model = openRouter.chat(openRouterModel)
+        model = openRouter(openRouterModel)
         break
       case "openai":
       default:
