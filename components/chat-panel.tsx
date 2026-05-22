@@ -568,18 +568,21 @@ export function ChatPanel({
         </div>
       </div>
 
-      {/* AI Orb Visualization */}
-      <div className="flex items-center justify-center border-b border-border py-6">
-        <AIOrb
-          isListening={isListening}
-          isSpeaking={isSpeaking}
-          emotion={emotion}
-          phase={orbPhase}
-          activityLevel={orbActivity}
-          intensity={orbActivity}
-          reducedMotionEnabled={settings.accessibilityMode}
-          confidence={feltState?.confidence ?? null}
-        />
+      {/* AI Orb Visualization — capped tighter on mobile so it doesn't
+          eat half the viewport before the first message renders. */}
+      <div className="flex items-center justify-center border-b border-border py-4 md:py-6">
+        <div className="w-full max-w-[160px] md:max-w-[220px]">
+          <AIOrb
+            isListening={isListening}
+            isSpeaking={isSpeaking}
+            emotion={emotion}
+            phase={orbPhase}
+            activityLevel={orbActivity}
+            intensity={orbActivity}
+            reducedMotionEnabled={settings.accessibilityMode}
+            confidence={feltState?.confidence ?? null}
+          />
+        </div>
       </div>
 
       {feltState && (
@@ -709,14 +712,14 @@ export function ChatPanel({
       <div className="flex-1 overflow-y-auto px-4 py-3">
         {messages.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground/60">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               Begin Conversation
             </div>
-            <div className="max-w-[240px] text-[11px] leading-relaxed text-muted-foreground/40">
+            <div className="max-w-[280px] text-[12px] leading-relaxed text-foreground/80">
               Share your thoughts, feelings, or whatever is on your mind. I am here to listen and understand.
             </div>
-            <div className="mt-1 hidden max-w-[320px] text-[11px] leading-relaxed text-muted-foreground/50 md:block">
-              <span className="text-muted-foreground/70">←</span> Camera (left) for mood-aware replies. Empathy map (right) <span className="text-muted-foreground/70">→</span> updates as you talk.
+            <div className="mt-1 hidden max-w-[340px] text-[11px] leading-relaxed text-muted-foreground md:block">
+              <span className="text-foreground/70">←</span> Camera (left) for mood-aware replies. Empathy map (right) <span className="text-foreground/70">→</span> updates as you talk.
             </div>
             <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
               <AnimatePresence mode="wait" initial={false}>

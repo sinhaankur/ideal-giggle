@@ -142,6 +142,44 @@ export async function probeLocalLLM(
     )
   }
 
+  // When running through the Next.js server, try the same-origin proxy
+  // first for the Ollama default port — that bypasses browser CORS, so
+  // users running Ollama locally are detected even when they haven't set
+  // OLLAMA_ORIGINS to allow this page's origin (a common failure mode).
+  const isStaticExport = process.env.NEXT_PUBLIC_STATIC_EXPORT === "true"
+  if (!isStaticExport) {
+    const ollamaCandidate = candidates.find((c) => c.name === "Ollama")
+    if (ollamaCandidate) {
+      try {
+        const params = new URLSearchParams({
+          baseUrl: ollamaCandidate.baseUrl,
+          model: preferredModel,
+        })
+        const response = await fetch(`/api/ollama-status?${params.toString()}`, {
+          signal,
+          cache: "no-store",
+        })
+        if (response.ok) {
+          const data = (await response.json()) as Partial<OllamaReachability> & {
+            modelCount?: number
+          }
+          if (data?.reachable) {
+            return {
+              reachable: true,
+              runtimeName: "Ollama",
+              baseUrl: ollamaCandidate.baseUrl,
+              pickedModel:
+                data.pickedModel ?? (data.modelAvailable ? preferredModel : null),
+              modelCount: typeof data.modelCount === "number" ? data.modelCount : 0,
+            }
+          }
+        }
+      } catch {
+        // fall through to browser-direct probes
+      }
+    }
+  }
+
   const results = await Promise.all(
     candidates.map(async (runtime) => {
       const probe = await probeOpenAICompatible(runtime.baseUrl, preferredModel, signal)

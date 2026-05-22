@@ -82,6 +82,16 @@ export function CommandPalette({ open, onClose, sections }: CommandPaletteProps)
     if (node) node.scrollIntoView({ block: "nearest" })
   }, [activeIndex, open])
 
+  // Group filtered results back under their sections for rendering.
+  const grouped = useMemo(() => {
+    const map = new Map<string, CommandItem[]>()
+    flatItems.forEach(({ section, item }) => {
+      if (!map.has(section)) map.set(section, [])
+      map.get(section)!.push(item)
+    })
+    return map
+  }, [flatItems])
+
   if (!open) return null
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -103,16 +113,6 @@ export function CommandPalette({ open, onClose, sections }: CommandPaletteProps)
       onClose()
     }
   }
-
-  // Group filtered results back under their sections for rendering.
-  const grouped = useMemo(() => {
-    const map = new Map<string, CommandItem[]>()
-    flatItems.forEach(({ section, item }) => {
-      if (!map.has(section)) map.set(section, [])
-      map.get(section)!.push(item)
-    })
-    return map
-  }, [flatItems])
 
   let runningIndex = -1
 

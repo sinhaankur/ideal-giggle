@@ -11,8 +11,6 @@
 //
 // Reference: Porges, S. W. (2011). The Polyvagal Theory.
 
-import type { EmotionalReading } from "../emotion-engine"
-import type { UserUnderstanding } from "../communication-engine"
 import type { PlanInput, RegulationState } from "./types"
 
 // Words that strongly signal dorsal collapse — beyond what the Plutchik

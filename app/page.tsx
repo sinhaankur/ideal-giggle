@@ -573,6 +573,10 @@ export default function CompanionApp() {
     at: number
   } | null>(null)
   const ollamaReachableRef = useRef<boolean | null>(null)
+  // Mirror of ollamaReachableRef in state so UI surfaces (onboarding card,
+  // status pills) actually re-render when the probe flips. The ref keeps
+  // the synchronous read for the probe's "did it change?" check.
+  const [ollamaReachable, setOllamaReachable] = useState<boolean | null>(null)
   const autoSelectedOllamaRef = useRef(false)
   const [vaultStatus, setVaultStatus] = useState<"no-vault" | "locked" | "unlocked">("no-vault")
   const [vaultModalMode, setVaultModalMode] = useState<VaultModalMode | null>(null)
@@ -731,6 +735,7 @@ export default function CompanionApp() {
 
       const wasReachable = ollamaReachableRef.current
       ollamaReachableRef.current = result.reachable
+      setOllamaReachable(result.reachable)
 
       // Online transition: some local runtime just appeared.
       if (result.reachable && wasReachable !== true) {
@@ -1088,6 +1093,7 @@ export default function CompanionApp() {
           window.localStorage.removeItem(ollamaAutoDetectDismissedKey)
           autoSelectedOllamaRef.current = false
           ollamaReachableRef.current = null
+          setOllamaReachable(null)
         }
       }
 
@@ -2017,11 +2023,13 @@ export default function CompanionApp() {
       answeredIntroCount,
       introQuestionCount,
       handleIntroAnswerChange,
-      requestMcpFallbackReply,
       llmConnectionError,
       systemHealth,
       isOnline,
       remoteFallbackMessages,
+      elapsedMs,
+      messages,
+      metaHistory,
     ]
   )
 
@@ -2288,7 +2296,7 @@ export default function CompanionApp() {
         onAcceptAgreement={handleAcceptAgreement}
         onChoosePreset={handleChooseQuickPreset}
         embedMode={embedMode}
-        ollamaReachable={ollamaReachableRef.current}
+        ollamaReachable={ollamaReachable}
       />
 
       <CommandPalette
@@ -2607,14 +2615,24 @@ export default function CompanionApp() {
           />
         </section>
 
-        {/* Right Resize Handle */}
+        {/* Right Resize Handle — wider hit area (group) than the visible
+            1px rule so it's actually grabbable; the inner span shows a
+            visible accent on hover/active to confirm grab. */}
         <div
           onMouseDown={() => setIsResizingRightPanel(true)}
-          className="hidden w-1 cursor-col-resize bg-border/70 transition-colors hover:bg-foreground/30 md:block"
+          className="group relative hidden w-2 cursor-col-resize md:flex md:items-center md:justify-center"
           role="separator"
           aria-orientation="vertical"
           aria-label="Resize empathy panel"
-        />
+        >
+          <span
+            className={`h-full w-px transition-colors ${
+              isResizingRightPanel
+                ? "bg-foreground/60"
+                : "bg-border/70 group-hover:bg-foreground/40"
+            }`}
+          />
+        </div>
 
         {/* Right Panel - Empathy Map */}
         <aside
@@ -2648,8 +2666,9 @@ export default function CompanionApp() {
         </aside>
       </div>
 
-      {/* Bottom Status Bar */}
-      <footer className="flex items-center justify-between border-t border-border px-4 py-2 md:px-6">
+      {/* Bottom Status Bar — hidden on mobile because the fixed bottom nav
+          (h-14, z-30) would overlap and clip the copyright row. */}
+      <footer className="hidden items-center justify-between border-t border-border px-4 py-2 md:flex md:px-6">
         <div className="flex items-center gap-3 text-xs text-muted-foreground/70">
           <span>EMPATHEIA — AI Companion</span>
           <a
@@ -2714,7 +2733,7 @@ export default function CompanionApp() {
             <button
               key={id}
               onClick={() => setMobilePanel(id)}
-              className={`flex flex-1 flex-col items-center justify-center gap-0.5 transition-colors ${
+              className={`relative flex flex-1 flex-col items-center justify-center gap-0.5 transition-colors ${
                 active
                   ? "bg-foreground/5 text-foreground"
                   : "text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -2730,7 +2749,7 @@ export default function CompanionApp() {
                 {label}
               </span>
               {active && (
-                <span className="absolute top-0 h-0.5 w-12 rounded-b-full bg-foreground/80" />
+                <span className="pointer-events-none absolute left-1/2 top-0 h-0.5 w-10 -translate-x-1/2 rounded-b-full bg-foreground/80" />
               )}
             </button>
           )

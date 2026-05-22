@@ -226,7 +226,7 @@ export function EmpathyPanel({
         {fallbackPhase >= 3 && <div className="mt-2 text-[11px] text-amber-400">Shadow-work mode active</div>}
       </div>
 
-      <div className="relative flex-1 border border-border bg-card p-3">
+      <div className="relative flex-1 border border-border bg-card px-3 pt-3 pb-6">
         <div className="pointer-events-none absolute inset-x-3 top-1/2 h-px bg-border" />
         <div className="pointer-events-none absolute inset-y-3 left-1/2 w-px bg-border" />
 
@@ -334,9 +334,15 @@ export function EmpathyPanel({
 
         <div className="pointer-events-none absolute left-3 bottom-2 text-[10px] uppercase tracking-wide text-muted-foreground/80">Observed</div>
         <div className="pointer-events-none absolute right-3 bottom-2 text-[10px] uppercase tracking-wide text-muted-foreground/80">Inferred</div>
-        <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-border bg-background px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-foreground">
-          {profile.preferredName}
-        </div>
+        {/* Persona dot at the empathy-map origin. Decorative only — the
+            full name lives in the CANVAS META header above ("Persona: ..."),
+            so we keep this small enough to avoid clipping the THINKS/FEELS
+            column headers (which the old pill-with-text was doing). */}
+        <div
+          className="pointer-events-none absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-border bg-background"
+          title={profile.preferredName}
+          aria-label={`Persona: ${profile.preferredName}`}
+        />
       </div>
 
       {timeline && timeline.length > 0 && (
