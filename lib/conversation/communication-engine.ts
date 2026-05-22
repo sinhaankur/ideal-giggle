@@ -112,11 +112,19 @@ export function articulateQuestion(input: string) {
   return `${withoutTrailingPunctuation}?`
 }
 
+// Soften a question with a gentle invitation phrase without trying to
+// rewrite it as a "share X" embedded clause. The old form produced
+// broken grammar like "share how are you feeling today" because wh-
+// questions need subject/verb inversion to read as a clause, and a
+// regex can't do that reliably. Keeping the question intact reads
+// natural across all phrasings.
 export function articulateOpenPrompt(input: string) {
-  const asQuestion = articulateQuestion(input)
-  const base = asQuestion.replace(/[?]+$/, "").trim()
-  if (!base) return "When you're ready, share what feels most important right now."
-  return `When you're ready, share ${base.charAt(0).toLowerCase()}${base.slice(1)}.`
+  const asQuestion = articulateQuestion(input).trim()
+  if (!asQuestion) return "When you're ready, share what feels most important right now."
+  // Capitalize the first letter for sentence form, then prefix with the
+  // soft invite. The result reads "When you're ready — How are you feeling today?"
+  const capitalized = `${asQuestion.charAt(0).toUpperCase()}${asQuestion.slice(1)}`
+  return `When you're ready — ${capitalized}`
 }
 
 export function getToneModeInstruction(toneMode: ToneMode | string) {

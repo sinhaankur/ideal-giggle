@@ -39,14 +39,23 @@ export function AIOrb({
   const normalizedActivity = Math.max(0.15, Math.min(1, activityLevel ?? intensity))
 
   const emotionConfig = useMemo(() => {
-    const configs: Record<string, { rings: number; speed: number; spread: number }> = {
-      neutral: { rings: 3, speed: 0.8, spread: 1 },
-      happy: { rings: 5, speed: 1.4, spread: 1.3 },
-      sad: { rings: 2, speed: 0.4, spread: 0.7 },
-      angry: { rings: 6, speed: 2.0, spread: 1.5 },
-      fear: { rings: 4, speed: 1.8, spread: 0.9 },
-      surprise: { rings: 5, speed: 1.6, spread: 1.4 },
-      thinking: { rings: 3, speed: 1.0, spread: 1.1 },
+    // rgb tuple is the orb's hue for this emotion. Picked so the colour
+    // reads at a glance without needing the label below: warm = happy/
+    // angry, cool = sad/thinking, violet = fear, cyan = surprise.
+    type Config = {
+      rings: number
+      speed: number
+      spread: number
+      rgb: [number, number, number]
+    }
+    const configs: Record<string, Config> = {
+      neutral:   { rings: 3, speed: 0.8, spread: 1,   rgb: [232, 234, 240] }, // soft white
+      happy:     { rings: 5, speed: 1.4, spread: 1.3, rgb: [251, 191,  36] }, // warm amber
+      sad:       { rings: 2, speed: 0.4, spread: 0.7, rgb: [ 96, 165, 250] }, // cool blue
+      angry:     { rings: 6, speed: 2.0, spread: 1.5, rgb: [251, 113, 133] }, // coral
+      fear:      { rings: 4, speed: 1.8, spread: 0.9, rgb: [167, 139, 250] }, // violet
+      surprise:  { rings: 5, speed: 1.6, spread: 1.4, rgb: [ 34, 211, 238] }, // cyan
+      thinking:  { rings: 3, speed: 1.0, spread: 1.1, rgb: [148, 163, 184] }, // slate
     }
     return configs[emotion] || configs.neutral
   }, [emotion])
@@ -86,7 +95,26 @@ export function AIOrb({
     resize()
     window.addEventListener("resize", resize)
 
+    let tabVisible =
+      typeof document === "undefined" ? true : document.visibilityState !== "hidden"
+    const onVisibility = () => {
+      tabVisible = document.visibilityState !== "hidden"
+      // Resume the loop the moment the tab comes back so the orb doesn't
+      // sit frozen for the first frame after focus.
+      if (tabVisible && !(reducedMotionEnabled && prefersReducedMotion)) {
+        cancelAnimationFrame(animationRef.current)
+        animationRef.current = requestAnimationFrame(draw)
+      }
+    }
+    document.addEventListener("visibilitychange", onVisibility)
+
     const draw = () => {
+      // Free perf: skip the draw when the tab is hidden. The wrapper rAF
+      // re-schedules so we resume cheaply when the tab returns (above).
+      if (!tabVisible) {
+        animationRef.current = requestAnimationFrame(draw)
+        return
+      }
       if (!(reducedMotionEnabled && prefersReducedMotion)) {
         timeRef.current += 0.016
       }
@@ -99,11 +127,15 @@ export function AIOrb({
 
       ctx.clearRect(0, 0, w, h)
 
-      // Outer ambient glow
+      const [er, eg, eb] = emotionConfig.rgb
+      const rgba = (a: number) => `rgba(${er}, ${eg}, ${eb}, ${a})`
+
+      // Outer ambient glow — tinted by emotion so the orb's vibe reads
+      // at a glance without users having to parse the label.
       const ambientRadius = Math.min(w, h) * 0.45
       const ambientGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, ambientRadius)
-      ambientGrad.addColorStop(0, `rgba(255, 255, 255, ${0.03 + normalizedActivity * 0.05})`)
-      ambientGrad.addColorStop(0.5, `rgba(200, 200, 200, ${0.02 + normalizedActivity * 0.03})`)
+      ambientGrad.addColorStop(0, rgba(0.04 + normalizedActivity * 0.06))
+      ambientGrad.addColorStop(0.5, rgba(0.02 + normalizedActivity * 0.03))
       ambientGrad.addColorStop(1, "rgba(0, 0, 0, 0)")
       ctx.beginPath()
       ctx.arc(cx, cy, ambientRadius, 0, Math.PI * 2)
@@ -125,30 +157,44 @@ export function AIOrb({
                   : 0.8
       const coreSize = 24 + Math.sin(t * emotionConfig.speed * phaseBeatSpeed) * 6 * normalizedActivity
       const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreSize)
-      coreGrad.addColorStop(0, `rgba(255, 255, 255, ${0.85 + normalizedActivity * 0.15})`)
-      coreGrad.addColorStop(0.4, `rgba(220, 220, 220, ${0.6})`)
-      coreGrad.addColorStop(0.8, `rgba(180, 180, 180, ${0.2})`)
-      coreGrad.addColorStop(1, "rgba(150, 150, 150, 0)")
+      // Inner hot spot stays bright white so the orb reads as luminous;
+      // outer falloff blends into the emotion's tint.
+      coreGrad.addColorStop(0, `rgba(255, 255, 255, ${0.9 + normalizedActivity * 0.1})`)
+      coreGrad.addColorStop(0.35, rgba(0.7))
+      coreGrad.addColorStop(0.8, rgba(0.2))
+      coreGrad.addColorStop(1, rgba(0))
       ctx.beginPath()
       ctx.arc(cx, cy, coreSize, 0, Math.PI * 2)
       ctx.fillStyle = coreGrad
       ctx.fill()
 
-      // Orbital rings
+      // Orbital rings — phase decides the *direction* of travel so the
+      // user can read state directionally (listening = inward, speaking
+      // = outward, thinking = rotational).
       const { rings, speed, spread } = emotionConfig
+      const phaseSign =
+        resolvedPhase === "listening"
+          ? -1                         // rings collapse inward (intake)
+          : resolvedPhase === "speaking"
+            ? 1                        // rings expand outward (emit)
+            : 0                        // ambient
+      const ringDrift = phaseSign * (Math.sin(t * 1.4) * 0.5 + 0.5) * 6 * normalizedActivity
+
       for (let i = 0; i < rings; i++) {
-        const ringRadius = 35 + i * 18 * spread
-        const phase = t * speed + (i * Math.PI * 2) / rings
-        const wobble = Math.sin(phase) * 4 * normalizedActivity
-        const ringOpacity =
-          0.12 +
-          (resolvedPhase === "listening" ? 0.23 : 0) +
-          (resolvedPhase === "speaking" ? 0.2 : 0) +
-          (resolvedPhase === "thinking" ? 0.14 : 0) +
-          (resolvedPhase === "engaged" ? 0.1 : 0)
+        const ringRadius = 35 + i * 18 * spread + ringDrift
+        const ringPhase = t * speed + (i * Math.PI * 2) / rings
+        const wobble = Math.sin(ringPhase) * 4 * normalizedActivity
+        const phaseBoost =
+          resolvedPhase === "listening" ? 0.25
+          : resolvedPhase === "speaking" ? 0.22
+          : resolvedPhase === "thinking" ? 0.16
+          : resolvedPhase === "engaged"  ? 0.1
+          : resolvedPhase === "composing" ? 0.08
+          : 0
+        const ringOpacity = Math.max(0.04, 0.18 + phaseBoost - i * 0.03)
 
         ctx.beginPath()
-        ctx.strokeStyle = `rgba(255, 255, 255, ${ringOpacity - i * 0.03})`
+        ctx.strokeStyle = rgba(ringOpacity)
         ctx.lineWidth =
           1 +
           (resolvedPhase === "speaking"
@@ -158,7 +204,7 @@ export function AIOrb({
               : 0)
 
         for (let a = 0; a < Math.PI * 2; a += 0.02) {
-          const deform = Math.sin(a * 3 + phase) * wobble + Math.cos(a * 2 - phase * 0.7) * wobble * 0.5
+          const deform = Math.sin(a * 3 + ringPhase) * wobble + Math.cos(a * 2 - ringPhase * 0.7) * wobble * 0.5
           const r = ringRadius + deform
           const x = cx + Math.cos(a) * r
           const y = cy + Math.sin(a) * r
@@ -192,14 +238,14 @@ export function AIOrb({
 
         ctx.beginPath()
         ctx.arc(px, py, size, 0, Math.PI * 2)
-        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`
+        ctx.fillStyle = rgba(alpha)
         ctx.fill()
       }
 
       // Voice waveform overlay when speaking
       if (resolvedPhase === "speaking") {
         ctx.beginPath()
-        ctx.strokeStyle = `rgba(255, 255, 255, 0.3)`
+        ctx.strokeStyle = rgba(0.35)
         ctx.lineWidth = 1.5
         for (let x = cx - 60; x <= cx + 60; x++) {
           const norm = (x - (cx - 60)) / 120
@@ -216,7 +262,7 @@ export function AIOrb({
         const listenPulse = Math.sin(t * 4) * 0.5 + 0.5
         ctx.beginPath()
         ctx.arc(cx, cy, 90 + listenPulse * 10, 0, Math.PI * 2)
-        ctx.strokeStyle = `rgba(255, 255, 255, ${0.08 + listenPulse * 0.08})`
+        ctx.strokeStyle = rgba(0.1 + listenPulse * 0.1)
         ctx.lineWidth = 1
         ctx.setLineDash([4, 8])
         ctx.stroke()
@@ -225,12 +271,16 @@ export function AIOrb({
 
       if (resolvedPhase === "thinking") {
         ctx.beginPath()
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.16)"
+        ctx.strokeStyle = rgba(0.18)
         ctx.lineWidth = 1
         ctx.setLineDash([2, 7])
+        // Rotate the dash phase so the dashed ring looks like it's
+        // spinning — distinctive thinking motion that reads at a glance.
+        ctx.lineDashOffset = -t * 24
         ctx.arc(cx, cy, 74 + Math.sin(t * 1.8) * 3, 0, Math.PI * 2)
         ctx.stroke()
         ctx.setLineDash([])
+        ctx.lineDashOffset = 0
       }
 
       if (!(reducedMotionEnabled && prefersReducedMotion)) {
@@ -242,6 +292,7 @@ export function AIOrb({
 
     return () => {
       window.removeEventListener("resize", resize)
+      document.removeEventListener("visibilitychange", onVisibility)
       cancelAnimationFrame(animationRef.current)
     }
   }, [emotion, emotionConfig, normalizedActivity, prefersReducedMotion, reducedMotionEnabled, resolvedPhase])

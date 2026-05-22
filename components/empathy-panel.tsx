@@ -236,8 +236,8 @@ export function EmpathyPanel({
               <MessageSquare className="h-2.5 w-2.5" />
               Says
             </div>
-            <div className="grid flex-1 auto-rows-min grid-cols-2 gap-2 overflow-y-auto pr-1">
-              {saysNotes.length === 0 && <div className="col-span-2 text-[11px] italic text-muted-foreground/40">Observed speech snippets...</div>}
+            <div className="grid flex-1 auto-rows-min grid-cols-1 gap-2 overflow-y-auto pr-1">
+              {saysNotes.length === 0 && <div className="text-[11px] italic text-muted-foreground/40">Observed speech snippets...</div>}
               <AnimatePresence initial={false}>
                 {saysNotes.map((item, index) => (
                   <motion.div
@@ -247,7 +247,7 @@ export function EmpathyPanel({
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.85, transition: { duration: 0.18 } }}
                     transition={{ type: "spring", stiffness: 280, damping: 22 }}
-                    className={`min-h-14 border border-amber-200/60 bg-amber-100/80 p-2 text-[10px] leading-snug text-zinc-900 shadow ${stickRotation(index)}`}
+                    className={`min-h-14 break-words border border-amber-200/60 bg-amber-100/80 p-2 text-[10px] leading-snug text-zinc-900 shadow ${stickRotation(index)}`}
                   >
                     {item.text}
                   </motion.div>
@@ -261,8 +261,8 @@ export function EmpathyPanel({
               <Brain className="h-2.5 w-2.5" />
               Thinks
             </div>
-            <div className="grid flex-1 auto-rows-min grid-cols-2 gap-2 overflow-y-auto pr-1">
-              {thinksNotes.length === 0 && <div className="col-span-2 text-[11px] italic text-muted-foreground/40">Inferred beliefs and assumptions...</div>}
+            <div className="grid flex-1 auto-rows-min grid-cols-1 gap-2 overflow-y-auto pr-1">
+              {thinksNotes.length === 0 && <div className="text-[11px] italic text-muted-foreground/40">Inferred beliefs and assumptions...</div>}
               <AnimatePresence initial={false}>
                 {thinksNotes.map((item, index) => (
                   <motion.div
@@ -272,7 +272,7 @@ export function EmpathyPanel({
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.85, transition: { duration: 0.18 } }}
                     transition={{ type: "spring", stiffness: 280, damping: 22 }}
-                    className={`min-h-14 border border-amber-200/60 bg-amber-100/80 p-2 text-[10px] leading-snug text-zinc-900 shadow ${stickRotation(index + 1)}`}
+                    className={`min-h-14 break-words border border-amber-200/60 bg-amber-100/80 p-2 text-[10px] leading-snug text-zinc-900 shadow ${stickRotation(index + 1)}`}
                   >
                     {item.text}
                   </motion.div>
@@ -286,8 +286,8 @@ export function EmpathyPanel({
               <HandMetal className="h-2.5 w-2.5" />
               Does
             </div>
-            <div className="grid flex-1 auto-rows-min grid-cols-2 gap-2 overflow-y-auto pr-1">
-              {doesNotes.length === 0 && <div className="col-span-2 text-[11px] italic text-muted-foreground/40">Observed behavior and actions...</div>}
+            <div className="grid flex-1 auto-rows-min grid-cols-1 gap-2 overflow-y-auto pr-1">
+              {doesNotes.length === 0 && <div className="text-[11px] italic text-muted-foreground/40">Observed behavior and actions...</div>}
               <AnimatePresence initial={false}>
                 {doesNotes.map((item, index) => (
                   <motion.div
@@ -297,7 +297,7 @@ export function EmpathyPanel({
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.85, transition: { duration: 0.18 } }}
                     transition={{ type: "spring", stiffness: 280, damping: 22 }}
-                    className={`min-h-14 border border-amber-200/60 bg-amber-100/80 p-2 text-[10px] leading-snug text-zinc-900 shadow ${stickRotation(index + 2)}`}
+                    className={`min-h-14 break-words border border-amber-200/60 bg-amber-100/80 p-2 text-[10px] leading-snug text-zinc-900 shadow ${stickRotation(index + 2)}`}
                   >
                     {item.text}
                   </motion.div>
@@ -311,8 +311,8 @@ export function EmpathyPanel({
               <Heart className="h-2.5 w-2.5" />
               Feels
             </div>
-            <div className="grid flex-1 auto-rows-min grid-cols-2 gap-2 overflow-y-auto pr-1">
-              {feelsNotes.length === 0 && <div className="col-span-2 text-[11px] italic text-muted-foreground/40">Inferred emotional state...</div>}
+            <div className="grid flex-1 auto-rows-min grid-cols-1 gap-2 overflow-y-auto pr-1">
+              {feelsNotes.length === 0 && <div className="text-[11px] italic text-muted-foreground/40">Inferred emotional state...</div>}
               <AnimatePresence initial={false}>
                 {feelsNotes.map((item, index) => (
                   <motion.div
@@ -322,7 +322,7 @@ export function EmpathyPanel({
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.85, transition: { duration: 0.18 } }}
                     transition={{ type: "spring", stiffness: 280, damping: 22 }}
-                    className={`min-h-14 border border-amber-200/60 bg-amber-100/80 p-2 text-[10px] leading-snug text-zinc-900 shadow ${stickRotation(index + 3)}`}
+                    className={`min-h-14 break-words border border-amber-200/60 bg-amber-100/80 p-2 text-[10px] leading-snug text-zinc-900 shadow ${stickRotation(index + 3)}`}
                   >
                     {item.text}
                   </motion.div>

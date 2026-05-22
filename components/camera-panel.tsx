@@ -10,6 +10,37 @@ import {
   type RawFaceDetection,
 } from "@/lib/face/depth-engine"
 
+// face-api detector tuned for a single user in front of a webcam. The
+// default inputSize is 416 which is overkill — 224 is ~3x faster and
+// still catches a single face filling the frame. scoreThreshold trades
+// some recall for stable detections (no flicker on partial occlusions).
+const FACE_DETECTOR_OPTIONS = new faceapi.TinyFaceDetectorOptions({
+  inputSize: 224,
+  scoreThreshold: 0.5,
+})
+
+// Min interval between detection passes. 2 fps is more than enough for
+// emotion-aware chat — the UI smooths over the gaps and 500 ms+ pause
+// gives the JS thread room to render and stream tokens.
+const DETECTION_INTERVAL_MS = 500
+
+// Loaded once per session, shared across mounts so toggling the panel
+// doesn't re-load weights from disk.
+let faceModelsLoadedPromise: Promise<void> | null = null
+function loadFaceModelsOnce(): Promise<void> {
+  if (faceModelsLoadedPromise) return faceModelsLoadedPromise
+  const isFileProtocol =
+    typeof window !== "undefined" && window.location.protocol === "file:"
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH || ""
+  const MODEL_URL = isFileProtocol ? "./face-models" : `${basePath}/face-models`
+  faceModelsLoadedPromise = Promise.all([
+    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+    faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
+  ]).then(() => undefined)
+  return faceModelsLoadedPromise
+}
+
 interface CameraPanelProps {
   onEmotionDetected: (emotion: Emotion) => void
   selectedDeviceId: string
@@ -45,45 +76,21 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
   })
   const [modelsLoaded, setModelsLoaded] = useState(false)
   const streamRef = useRef<MediaStream | null>(null)
-  const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const detectionTimerRef = useRef<number | null>(null)
+  const detectionInFlightRef = useRef(false)
+  const detectionCancelledRef = useRef(false)
   const depthEngineRef = useRef<FaceDepthEngine>(new FaceDepthEngine())
   const [depthReading, setDepthReading] = useState<FaceReading | null>(null)
 
-  // Load face-api models. Served from /face-models/ in /public so emotion
-  // detection works offline and on first paint without a CDN round-trip.
-  useEffect(() => {
-    const loadModels = async () => {
-      try {
-        // Under Electron the app loads via file://, where a leading "/"
-        // resolves to the filesystem root. Use a relative URL there so the
-        // weights load from the bundled /out folder.
-        const isFileProtocol =
-          typeof window !== "undefined" && window.location.protocol === "file:"
-        const basePath = process.env.NEXT_PUBLIC_BASE_PATH || ""
-        const MODEL_URL = isFileProtocol
-          ? "./face-models"
-          : `${basePath}/face-models`
-        await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-          faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-          faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
-        ])
-        setModelsLoaded(true)
-      } catch (err) {
-        console.error("Failed to load face-api models:", err)
-        setModelsLoaded(true) // Continue anyway
-      }
-    }
-
-    loadModels()
-  }, [])
-
-  // Get user location
-  useEffect(() => {
+  // Geolocation is opt-in now. Auto-prompting on mount was hostile —
+  // users got a permission dialog before they'd done anything, and the
+  // location wasn't even feeding chat. Click "Share location" to enable.
+  const requestLocation = useCallback(() => {
     if (!navigator.geolocation) {
       setLocation((prev) => ({ ...prev, error: "Geolocation not supported" }))
       return
     }
+    setLocation((prev) => ({ ...prev, error: null }))
 
     navigator.geolocation.getCurrentPosition(
       async (position) => {
@@ -95,7 +102,6 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
           accuracy: Math.round(accuracy),
         }))
 
-        // Reverse geocode to get city and country
         try {
           const response = await fetch(
             `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
@@ -111,14 +117,13 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
         }
       },
       (err) => {
-        const errorMessage = 
-          err instanceof GeolocationPositionError 
-            ? err.message 
-            : typeof err === 'object' && err !== null && 'message' in err
-            ? (err as any).message
-            : "Failed to get geolocation"
+        const errorMessage =
+          err instanceof GeolocationPositionError
+            ? err.message
+            : typeof err === "object" && err !== null && "message" in err
+              ? (err as { message?: string }).message ?? "Failed to get geolocation"
+              : "Failed to get geolocation"
         setLocation((prev) => ({ ...prev, error: errorMessage }))
-        console.error("Geolocation error:", err)
       }
     )
   }, [])
@@ -170,13 +175,14 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
 
     try {
       const video = videoRef.current
-      const detections = await faceapi
-        .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
+      // Single-face detector is ~2x faster than detectAllFaces for the
+      // selfie scenario where we always pick the first detection anyway.
+      const detection = await faceapi
+        .detectSingleFace(video, FACE_DETECTOR_OPTIONS)
         .withFaceLandmarks()
         .withFaceExpressions()
 
-      if (detections.length > 0) {
-        const detection = detections[0]
+      if (detection) {
         const box = detection.detection.box
 
         // Face-centered framing: move viewport center toward detected face center.
@@ -243,10 +249,32 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
     }
   }, [modelsLoaded, onEmotionDetected])
 
+  // Recursive scheduler: only fires the next detection after the previous
+  // finishes (avoids queue buildup on slow devices) and pauses entirely
+  // when the tab is backgrounded.
+  const scheduleNextDetection = useCallback(() => {
+    if (detectionCancelledRef.current) return
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+      // Cheap idle re-check while tab is hidden — no GPU/CPU work.
+      detectionTimerRef.current = window.setTimeout(scheduleNextDetection, 1000)
+      return
+    }
+    detectionTimerRef.current = window.setTimeout(async () => {
+      if (detectionInFlightRef.current || detectionCancelledRef.current) return
+      detectionInFlightRef.current = true
+      try {
+        await detectFacialExpression()
+      } finally {
+        detectionInFlightRef.current = false
+        scheduleNextDetection()
+      }
+    }, DETECTION_INTERVAL_MS)
+  }, [detectFacialExpression])
+
   const startCamera = useCallback(async () => {
     try {
       setError(null)
-      
+
       if (!videoRef.current) {
         setError("Video element not found")
         return
@@ -265,17 +293,23 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
         audio: true,
       }
 
-      // Use specific device if selected
       if (selectedDeviceId) {
-        (constraints.video as any).deviceId = { exact: selectedDeviceId }
+        (constraints.video as MediaTrackConstraints).deviceId = { exact: selectedDeviceId }
       }
 
+      // Kick off model load + camera stream in parallel — the user no
+      // longer pays for face-api download on page load if they never
+      // start the camera.
+      const modelLoad = loadFaceModelsOnce()
+        .then(() => setModelsLoaded(true))
+        .catch((err) => {
+          console.error("Failed to load face-api models:", err)
+          setModelsLoaded(true) // proceed; the chat works without face detection
+        })
+
       const stream = await navigator.mediaDevices.getUserMedia(constraints)
-      
-      // Ensure the video element is ready
       videoRef.current.srcObject = stream
-      
-      // Wait for the video to be loadable
+
       await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error("Video load timeout")), 5000)
         const onLoadedMetadata = () => {
@@ -288,11 +322,12 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
 
       streamRef.current = stream
       setIsActive(true)
+      detectionCancelledRef.current = false
 
-      // Real-time facial expression detection
-      if (modelsLoaded) {
-        detectionIntervalRef.current = setInterval(detectFacialExpression, 500)
-      }
+      // Wait for models so the first detection isn't a no-op; then start
+      // the recursive scheduler.
+      await modelLoad
+      scheduleNextDetection()
     } catch (err) {
       const errorMsg =
         err instanceof Error ? err.message : "Failed to start camera and microphone"
@@ -300,13 +335,13 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
       console.error("Camera start error:", err)
       setIsActive(false)
     }
-  }, [selectedDeviceId, modelsLoaded, detectFacialExpression])
+  }, [selectedDeviceId, scheduleNextDetection])
 
   const stopCamera = useCallback(() => {
-    // Clear detection interval
-    if (detectionIntervalRef.current) {
-      clearInterval(detectionIntervalRef.current)
-      detectionIntervalRef.current = null
+    detectionCancelledRef.current = true
+    if (detectionTimerRef.current !== null) {
+      window.clearTimeout(detectionTimerRef.current)
+      detectionTimerRef.current = null
     }
 
     // Stop all tracks in the stream
@@ -378,26 +413,38 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
         </div>
       )}
 
-      {/* Location Info */}
-      <div className="flex items-center gap-2 rounded border border-border bg-card p-3">
-        <MapPin className="h-4 w-4 text-foreground" />
-        <div className="flex flex-col text-sm">
-          {location.city && location.country ? (
-            <>
-              <span className="font-medium text-foreground">
-                {location.city}, {location.country}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {location.latitude?.toFixed(4)}, {location.longitude?.toFixed(4)}
-                {location.accuracy && ` ±${location.accuracy}m`}
-              </span>
-            </>
-          ) : location.error ? (
-            <span className="text-xs text-muted-foreground">Location: {location.error}</span>
-          ) : (
-            <span className="text-xs text-muted-foreground">Fetching location...</span>
-          )}
+      {/* Location Info — opt-in. We don't auto-prompt for geolocation on
+          mount anymore (it was surprising and the value isn't used by the
+          chat engine yet, only displayed). */}
+      <div className="flex items-center justify-between gap-2 rounded border border-border bg-card p-3">
+        <div className="flex items-center gap-2">
+          <MapPin className="h-4 w-4 text-foreground" />
+          <div className="flex flex-col text-sm">
+            {location.city && location.country ? (
+              <>
+                <span className="font-medium text-foreground">
+                  {location.city}, {location.country}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {location.latitude?.toFixed(4)}, {location.longitude?.toFixed(4)}
+                  {location.accuracy && ` ±${location.accuracy}m`}
+                </span>
+              </>
+            ) : location.error ? (
+              <span className="text-xs text-muted-foreground">Location: {location.error}</span>
+            ) : (
+              <span className="text-xs text-muted-foreground">Location off</span>
+            )}
+          </div>
         </div>
+        {!location.city && (
+          <button
+            onClick={requestLocation}
+            className="rounded border border-border bg-background px-2 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent"
+          >
+            Share location
+          </button>
+        )}
       </div>
 
       {/* Camera viewport */}
