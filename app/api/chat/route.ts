@@ -1,5 +1,4 @@
 import {
-  consumeStream,
   convertToModelMessages,
   streamText,
   type UIMessage,
@@ -208,8 +207,13 @@ export async function POST(req: Request) {
     )
   }
 
+  // Stream tokens straight through to the client as they arrive from the
+  // model. Earlier this route had `consumeSseStream: consumeStream` which
+  // buffers the entire model response server-side before replying —
+  // that always exceeded Vercel Hobby's 10 s function cap on slow free
+  // OpenRouter models, leaving the client with just a "start" event and
+  // nothing else. Direct streaming starts emitting tokens within ~1 s.
   return result.toUIMessageStreamResponse({
     originalMessages: messages,
-    consumeSseStream: consumeStream,
   })
 }
