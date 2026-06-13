@@ -207,10 +207,25 @@ export class FaceDepthEngine {
     if (!ctx) return 0.5
     if (!video.videoWidth || !video.videoHeight) return 0.5
 
-    const sx = box ? box.x : 0
-    const sy = box ? box.y : 0
-    const sw = box ? box.width : video.videoWidth
-    const sh = box ? box.height : video.videoHeight
+    const frameW = video.videoWidth
+    const frameH = video.videoHeight
+
+    // Clamp to intrinsic video pixels so drawImage never samples outside
+    // the decoded frame when detectors emit edge-touching/overflow boxes.
+    const rawX = box ? box.x : 0
+    const rawY = box ? box.y : 0
+    const rawW = box ? box.width : frameW
+    const rawH = box ? box.height : frameH
+
+    const x1 = Math.max(0, Math.min(frameW, rawX))
+    const y1 = Math.max(0, Math.min(frameH, rawY))
+    const x2 = Math.max(0, Math.min(frameW, rawX + rawW))
+    const y2 = Math.max(0, Math.min(frameH, rawY + rawH))
+
+    const sx = Math.floor(x1)
+    const sy = Math.floor(y1)
+    const sw = Math.max(1, Math.floor(x2 - x1))
+    const sh = Math.max(1, Math.floor(y2 - y1))
 
     try {
       ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height)
