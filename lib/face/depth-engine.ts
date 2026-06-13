@@ -102,7 +102,7 @@ const EMOTION_MAP: Record<keyof RawExpressionScores, Emotion> = {
   sad: "sad",
   angry: "angry",
   fearful: "fear",
-  disgusted: "sad",
+  disgusted: "angry",
   surprised: "surprise",
 }
 
