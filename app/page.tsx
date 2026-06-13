@@ -625,6 +625,9 @@ export default function CompanionApp() {
   const [agreementChecked, setAgreementChecked] = useState(false)
   const [errorSummaryCopiedAt, setErrorSummaryCopiedAt] = useState<number | null>(null)
   const [llmConnectionError, setLlmConnectionError] = useState("")
+  const [runtimeSource, setRuntimeSource] = useState<
+    "unknown" | "ollama" | "webllm" | "remote" | "fallback"
+  >("unknown")
   const [ollamaTransition, setOllamaTransition] = useState<{
     kind: "online" | "offline"
     model: string | null
@@ -1272,6 +1275,7 @@ export default function CompanionApp() {
     // Clear stale connection diagnostics when switching providers so the new
     // provider isn't immediately marked as in fallback by a previous error.
     setLlmConnectionError("")
+    setRuntimeSource("unknown")
   }, [settings.provider])
 
   const handleConnectLlmApi = useCallback(() => {
@@ -2040,6 +2044,7 @@ export default function CompanionApp() {
             },
           ])
           setLlmConnectionError("")
+          setRuntimeSource("ollama")
         } catch (error) {
           const detail =
             error instanceof Error ? error.message : "Ollama direct call failed"
@@ -2077,6 +2082,7 @@ export default function CompanionApp() {
               },
             ])
             setLlmConnectionError("")
+            setRuntimeSource("webllm")
             return
           }
 
@@ -2112,6 +2118,7 @@ export default function CompanionApp() {
               mode: "fallback",
             },
           ])
+          setRuntimeSource("fallback")
         }
         return
       }
@@ -2119,6 +2126,7 @@ export default function CompanionApp() {
       // Send via AI SDK for remote and Ollama providers
       try {
         await sendMessage({ text })
+        setRuntimeSource(settings.provider === "ollama" ? "ollama" : "remote")
       } catch (error) {
         const message = error instanceof Error ? error.message : "LLM request failed"
 
@@ -2175,6 +2183,7 @@ export default function CompanionApp() {
             ]
           })
           setLlmConnectionError("")
+          setRuntimeSource("webllm")
           return
         }
 
@@ -2220,6 +2229,7 @@ export default function CompanionApp() {
             },
           ]
         })
+        setRuntimeSource("fallback")
       }
     },
     [
@@ -2805,6 +2815,7 @@ export default function CompanionApp() {
             isLoading={isLoading}
             emotion={currentEmotion}
             settings={settings}
+            runtimeSource={runtimeSource}
             connectionError={llmConnectionError}
             systemHealth={systemHealth}
             introProgress={{ answered: answeredIntroCount, total: introQuestionCount }}
