@@ -313,7 +313,7 @@ In addition to the PWA, EMPATHEIA ships a fully installable Electron desktop bui
 | Windows 10/11 (x64) | `EMPATHEIA-<version>-win-x64.exe` (NSIS installer) or the `portable.exe` | Unsigned — SmartScreen may prompt; click **More info → Run anyway** |
 | Linux (x64) | `.AppImage` (no install) or `.deb` (`sudo apt install ./EMPATHEIA-*.deb`) | AppImage needs `chmod +x` once |
 
-Grab the latest binaries from the [GitHub Releases page](https://github.com/h99311/ideal-giggle/releases/latest). Tag a new version locally to trigger the build:
+Grab the latest binaries from the [GitHub Releases page](https://github.com/sinhaankur/ideal-giggle/releases/latest). Tag a new version locally to trigger the build:
 
 ```bash
 git tag v0.1.0

@@ -7,7 +7,7 @@
     "name": "EMPATHEIA",
     "email": "noreply@empatheia.app"
   },
-  "homepage": "https://h99311.github.io/ideal-giggle/",
+  "homepage": "https://sinhaankur.github.io/ideal-giggle/",
   "main": "electron/main.cjs",
   "license": "SEE LICENSE IN LICENSE",
   "private": true,

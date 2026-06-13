@@ -7,7 +7,7 @@ import { Check, Cloud, Cpu, Download, Feather, Monitor, Sparkles, X } from "luci
 // Latest GitHub Release page — desktop installer downloads are attached there
 // by .github/workflows/release-electron.yml when a v* tag is pushed.
 const DESKTOP_RELEASES_URL =
-  "https://github.com/h99311/ideal-giggle/releases/latest"
+  "https://github.com/sinhaankur/ideal-giggle/releases/latest"
 
 export type OnboardingPreset = "fast-local" | "lite-empathy" | "balanced-cloud" | "deep-empathy" | "default"
 
