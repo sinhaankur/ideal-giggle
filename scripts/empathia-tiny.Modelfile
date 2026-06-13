@@ -15,7 +15,7 @@
 # docs/empathy-engine.md, so this small model and the deterministic engine
 # speak with one voice.
 
-FROM tinyllama:1.1b-chat-v1.0-q4_K_M
+FROM tinyllama
 
 # Warmer, less repetitive, short reflective turns.
 PARAMETER temperature 0.7
