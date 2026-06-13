@@ -175,12 +175,12 @@ const DEEP_DISCOVERY_MATRIX: Record<DepthTierId, Array<{ id: string; q: string; 
     },
     {
       id: "surface_trigger",
-      q: "What was the specific external event that pulled you out of your flow?",
+      q: "Is there something in particular that's been on your mind lately?",
       cat: "DOES",
     },
     {
       id: "surface_body",
-      q: "What changed in your body right after that event?",
+      q: "When you think about that, where do you notice it in your body?",
       cat: "FEELS",
     },
   ],
@@ -324,6 +324,46 @@ function buildAnswerAdaptivePrompt(answer: string, fallbackPrompt: string) {
   const words = normalized.split(/\s+/).filter(Boolean)
   const clipped = words.slice(0, 10).join(" ")
   return `I hear "${clipped}${words.length > 10 ? "..." : ""}". When you're ready, go one layer deeper into what matters most in that.`
+}
+
+// Onboarding turns should feel like a warm human opening the conversation, not
+// a form. We give a short, sentiment-aware acknowledgment (no verbatim echo of
+// the user's words), then ask the *actual* next intro question with a gentle
+// lead-in. `stepIndex` rotates the phrasing so two turns never read the same.
+const INTRO_ACK_NEGATIVE = [
+  "Thank you for trusting me with that.",
+  "That sounds like it's been weighing on you.",
+  "I'm really glad you said that out loud.",
+]
+const INTRO_ACK_POSITIVE = [
+  "I love that you're noticing this.",
+  "There's some real energy in how you put that.",
+  "That's a good thing to be aware of.",
+]
+const INTRO_ACK_NEUTRAL = [
+  "Thanks for sharing that with me.",
+  "Okay — I'm with you.",
+  "Got it, that helps me understand.",
+]
+const INTRO_LEAD_INS = [
+  "Whenever you're ready,",
+  "If it feels okay,",
+  "No rush, but when you can,",
+]
+
+function buildOnboardingTurn(sentimentScore: number, nextQuestion: string, stepIndex: number) {
+  const bank =
+    sentimentScore < -0.25
+      ? INTRO_ACK_NEGATIVE
+      : sentimentScore > 0.25
+        ? INTRO_ACK_POSITIVE
+        : INTRO_ACK_NEUTRAL
+  const ack = bank[stepIndex % bank.length]
+  const lead = INTRO_LEAD_INS[stepIndex % INTRO_LEAD_INS.length]
+
+  const question = articulateQuestion(nextQuestion)
+  const softened = `${lead} ${question.charAt(0).toLowerCase()}${question.slice(1)}`
+  return `${ack} ${softened}`
 }
 
 function getToneModeInstruction(toneMode: CompanionSettings["toneMode"]) {
@@ -1853,20 +1893,13 @@ export default function CompanionApp() {
 
         const nextIndex = introIndex + 1
         const nextPrompt = INTRO_CHAT_QUESTIONS[nextIndex]?.question
-        const reflectiveBridge =
-          analysis.sentimentScore < -0.25
-            ? "That sounds emotionally heavy."
-            : analysis.sentimentScore > 0.25
-              ? "I can hear momentum in the way you describe this."
-              : "I hear you clearly."
-        const contextBridge = currentIntroQuestion?.followUp || "Stay with this for one more layer."
         setOnboardingChatMessages((prev) => [
           ...prev,
           {
             id: crypto.randomUUID(),
             text: nextPrompt
-              ? `${reflectiveBridge} ${contextBridge} ${buildAnswerAdaptivePrompt(text, nextPrompt)}`
-              : "Thank you for sharing that. Opening up like this can be hard, and you are doing enough. We can move one step at a time from here - when you're ready, share the part that feels most alive right now.",
+              ? buildOnboardingTurn(analysis.sentimentScore, nextPrompt, introIndex)
+              : "Thank you for sharing all of that — opening up like this isn't easy, and you've done plenty. From here we can go at your pace. When you're ready, tell me whatever feels most alive for you right now.",
             sender: "ai",
             timestamp: new Date(),
             emotion: "thinking",
