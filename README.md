@@ -131,6 +131,7 @@ The left panel includes a Setup Checklist section.
 
 A short list of models that work well with the empathy stack:
 
+- `empathia-tiny` (lightweight) — ~600–700MB, empathy-tuned TinyLlama-1.1B preset; built locally from a Modelfile (see below)
 - `llama3.2` (default) — 2GB, strong instruction-following and emotional nuance
 - `llama3.2:1b` — 1.3GB, faster on lower-end CPUs
 - `gemma2:2b` — 1.6GB, warmer / more creative tone
@@ -143,6 +144,51 @@ ollama pull llama3.2
 ```
 
 Then set the model id in Settings → Ollama, or stick with `llama3.2` (the default).
+You can also pick **Lite Empathy (TinyLlama)** from the Quick Start presets.
+
+### Lite Empathy preset (TinyLlama)
+
+`empathia-tiny` is a small, fast, empathy-focused model — a fluency upgrade over
+the deterministic engine without the footprint of a full local model. It is
+built locally from [scripts/empathia-tiny.Modelfile](scripts/empathia-tiny.Modelfile),
+whose system prompt mirrors the Runtime Interpretation Rules in
+[docs/empathy-engine.md](docs/empathy-engine.md):
+
+```bash
+ollama create empathia-tiny -f scripts/empathia-tiny.Modelfile
+```
+
+In Docker/compose, set `OLLAMA_MODEL=empathia-tiny` and startup builds it for you.
+See [docs/tiny-empathy-model.md](docs/tiny-empathy-model.md) for the full design.
+
+#### How it works by default
+
+`empathia-tiny` is a **preset on the existing Ollama path**, not a separate
+runtime. In one line: it's stock **TinyLlama-1.1B-Chat (Q4)** wrapped with an
+empathy system prompt and tuned sampling, served through Ollama.
+
+- **It is not the default model.** `OLLAMA_MODEL` still defaults to `llama3.2`.
+  TinyLlama is the lighter option you opt into — by picking **Lite Empathy
+  (TinyLlama)** in onboarding/Settings, or by setting `OLLAMA_MODEL=empathia-tiny`.
+- **Selecting the preset** pins `provider: ollama` and `ollamaModel: empathia-tiny`.
+  From there, chat requests use the normal Ollama plumbing
+  ([lib/api/ollama-direct.ts](lib/api/ollama-direct.ts) in the browser, or the
+  `/api/chat` proxy server-side) — the same path as any other Ollama model.
+- **The empathy behavior is baked into the Modelfile**, not configured per user:
+  the `SYSTEM` prompt + `temperature` / `repeat_penalty` / `num_ctx` params ship
+  inside `empathia-tiny` when you `ollama create` it.
+- **If Ollama isn't running or the model isn't built, nothing breaks.** The
+  deterministic empathy engine handles replies; TinyLlama sits *above* that
+  fallback on the provider ladder.
+
+What this preset is **not** (these live in
+[docs/tiny-empathy-model.md](docs/tiny-empathy-model.md) as future work, not in
+the codebase yet):
+
+- a *fine-tuned* empathy model — `empathia-tiny` is generic TinyLlama following
+  the system prompt, not a model trained on empathy data (see doc §4);
+- an *in-browser* model — it runs via Ollama on your machine, not WebLLM/WebGPU
+  in the browser (see doc §2b).
 
 ## Camera Mood Analysis
 
@@ -296,7 +342,7 @@ In addition to the PWA, EMPATHEIA ships a fully installable Electron desktop bui
 | Windows 10/11 (x64) | `EMPATHEIA-<version>-win-x64.exe` (NSIS installer) or the `portable.exe` | Unsigned — SmartScreen may prompt; click **More info → Run anyway** |
 | Linux (x64) | `.AppImage` (no install) or `.deb` (`sudo apt install ./EMPATHEIA-*.deb`) | AppImage needs `chmod +x` once |
 
-Grab the latest binaries from the [GitHub Releases page](https://github.com/h99311/ideal-giggle/releases/latest). Tag a new version locally to trigger the build:
+Grab the latest binaries from the [GitHub Releases page](https://github.com/sinhaankur/ideal-giggle/releases/latest). Tag a new version locally to trigger the build:
 
 ```bash
 git tag v0.1.0

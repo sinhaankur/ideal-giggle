@@ -120,7 +120,7 @@ app.whenReady().then(() => {
           {
             label: 'EMPATHEIA on GitHub',
             click: () =>
-              shell.openExternal('https://github.com/h99311/ideal-giggle'),
+              shell.openExternal('https://github.com/sinhaankur/ideal-giggle'),
           },
         ],
       },
