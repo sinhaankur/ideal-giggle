@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Check, Cloud, Cpu, Download, Monitor, Sparkles, X } from "lucide-react"
+import { Check, Cloud, Cpu, Download, Feather, Monitor, Sparkles, X } from "lucide-react"
 
 // Latest GitHub Release page — desktop installer downloads are attached there
 // by .github/workflows/release-electron.yml when a v* tag is pushed.
 const DESKTOP_RELEASES_URL =
   "https://github.com/h99311/ideal-giggle/releases/latest"
 
-export type OnboardingPreset = "fast-local" | "balanced-cloud" | "deep-empathy" | "default"
+export type OnboardingPreset = "fast-local" | "lite-empathy" | "balanced-cloud" | "deep-empathy" | "default"
 
 interface OnboardingModalProps {
   hasAgreed: boolean
@@ -185,6 +185,21 @@ export function OnboardingModal({
                   </div>
                   <div className={`text-muted-foreground ${embedMode ? "text-[11px]" : "text-xs"}`}>
                     Runs on your PC via Ollama. Private, free, no API key, no cloud round-trip.
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => onChoosePreset("lite-empathy")}
+                className="flex items-start gap-2 rounded border border-border bg-background p-3 text-left transition-colors hover:border-muted-foreground/50"
+              >
+                <Feather className="mt-0.5 h-4 w-4 flex-shrink-0 text-sky-400" />
+                <div className="flex-1">
+                  <div className={`font-semibold text-foreground ${embedMode ? "text-[13px]" : "text-sm"}`}>
+                    Lite Empathy (TinyLlama)
+                  </div>
+                  <div className={`text-muted-foreground ${embedMode ? "text-[11px]" : "text-xs"}`}>
+                    Lightweight local model (~600 MB) tuned for warm, reflective replies. Same private Ollama path, smaller download.
                   </div>
                 </div>
               </button>

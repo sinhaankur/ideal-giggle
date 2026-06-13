@@ -83,8 +83,12 @@ services:
     environment:
       OLLAMA_HOST: http://ollama:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
+      # Where ollama-init.sh looks for the empathy preset Modelfile (used when
+      # OLLAMA_MODEL=empathia-tiny).
+      OLLAMA_MODELFILE: /usr/local/share/empathia-tiny.Modelfile
     volumes:
       - ./scripts/ollama-init.sh:/usr/local/bin/ollama-init.sh:ro
+      - ./scripts/empathia-tiny.Modelfile:/usr/local/share/empathia-tiny.Modelfile:ro
     entrypoint: ["/bin/sh", "/usr/local/bin/ollama-init.sh"]
     restart: "no"
 

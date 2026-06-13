@@ -131,6 +131,7 @@ The left panel includes a Setup Checklist section.
 
 A short list of models that work well with the empathy stack:
 
+- `empathia-tiny` (lightweight) — ~600–700MB, empathy-tuned TinyLlama-1.1B preset; built locally from a Modelfile (see below)
 - `llama3.2` (default) — 2GB, strong instruction-following and emotional nuance
 - `llama3.2:1b` — 1.3GB, faster on lower-end CPUs
 - `gemma2:2b` — 1.6GB, warmer / more creative tone
@@ -143,6 +144,22 @@ ollama pull llama3.2
 ```
 
 Then set the model id in Settings → Ollama, or stick with `llama3.2` (the default).
+You can also pick **Lite Empathy (TinyLlama)** from the Quick Start presets.
+
+### Lite Empathy preset (TinyLlama)
+
+`empathia-tiny` is a small, fast, empathy-focused model — a fluency upgrade over
+the deterministic engine without the footprint of a full local model. It is
+built locally from [scripts/empathia-tiny.Modelfile](scripts/empathia-tiny.Modelfile),
+whose system prompt mirrors the Runtime Interpretation Rules in
+[docs/empathy-engine.md](docs/empathy-engine.md):
+
+```bash
+ollama create empathia-tiny -f scripts/empathia-tiny.Modelfile
+```
+
+In Docker/compose, set `OLLAMA_MODEL=empathia-tiny` and startup builds it for you.
+See [docs/tiny-empathy-model.md](docs/tiny-empathy-model.md) for the full design.
 
 ## Camera Mood Analysis
 

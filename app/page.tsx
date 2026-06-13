@@ -330,9 +330,26 @@ function getToneModeInstruction(toneMode: CompanionSettings["toneMode"]) {
   return getToneModeInstructionFromEngine(toneMode)
 }
 
-type QuickPresetId = "fast-local" | "balanced-cloud" | "deep-empathy"
+type QuickPresetId = "fast-local" | "lite-empathy" | "balanced-cloud" | "deep-empathy"
 
 function withQuickPreset(base: CompanionSettings, presetId: QuickPresetId): CompanionSettings {
+  if (presetId === "lite-empathy") {
+    // Same local-Ollama path as "fast-local", but pinned to the lightweight
+    // empathy-tuned TinyLlama preset (see scripts/empathia-tiny.Modelfile).
+    // ~600-700 MB at Q4 — a fluency upgrade over the deterministic engine
+    // without the footprint of a full local model.
+    return {
+      ...base,
+      provider: "ollama",
+      ollamaModel: "empathia-tiny",
+      toneMode: "casual",
+      personality: "warm",
+      temperature: 0.7,
+      maxOutputTokens: 260,
+      mcpAutoFallback: true,
+    }
+  }
+
   if (presetId === "fast-local") {
     // Pin to Ollama as the local provider. The periodic Ollama probe will
     // surface a connection error if the daemon isn't running; the heuristic
@@ -658,7 +675,12 @@ export default function CompanionApp() {
     if (!agreed) return
 
     const savedPreset = window.localStorage.getItem(quickPresetStorageKey)
-    if (savedPreset === "fast-local" || savedPreset === "balanced-cloud" || savedPreset === "deep-empathy") {
+    if (
+      savedPreset === "fast-local" ||
+      savedPreset === "lite-empathy" ||
+      savedPreset === "balanced-cloud" ||
+      savedPreset === "deep-empathy"
+    ) {
       setSettings((prev) => withQuickPreset(prev, savedPreset))
       setShowQuickStartModal(false)
       return
@@ -1085,10 +1107,11 @@ export default function CompanionApp() {
       if (typeof window !== "undefined") {
         window.localStorage.setItem(quickPresetStorageKey, preset)
 
-        // Choosing "fast-local" opts in to runtime provider negotiation:
-        // clear any prior explicit/dismiss flags so the Ollama probe can
-        // promote the session to a local daemon when one is reachable.
-        if (preset === "fast-local") {
+        // The local presets ("fast-local" / "lite-empathy") opt in to runtime
+        // provider negotiation: clear any prior explicit/dismiss flags so the
+        // Ollama probe can promote the session to a local daemon when one is
+        // reachable.
+        if (preset === "fast-local" || preset === "lite-empathy") {
           window.localStorage.removeItem(providerExplicitStorageKey)
           window.localStorage.removeItem(ollamaAutoDetectDismissedKey)
           autoSelectedOllamaRef.current = false

@@ -366,6 +366,23 @@ export function SettingsPanel({
                 onClick={() =>
                   onSettingsChange({
                     ...settings,
+                    provider: "ollama",
+                    ollamaModel: "empathia-tiny",
+                    toneMode: "casual",
+                    personality: "warm",
+                    temperature: 0.7,
+                    maxOutputTokens: 260,
+                  })
+                }
+                className="rounded border border-border px-3 py-2 text-left text-sm transition-colors hover:border-muted-foreground/40"
+              >
+                <div className="font-semibold text-foreground">Lite Empathy (TinyLlama)</div>
+                <div className="text-xs text-muted-foreground">Lightweight local model (~600 MB), empathy-tuned. Build with scripts/empathia-tiny.Modelfile.</div>
+              </button>
+              <button
+                onClick={() =>
+                  onSettingsChange({
+                    ...settings,
                     provider: "openrouter",
                     openRouterModel: "openai/gpt-oss-20b:free",
                     toneMode: "balanced",
