@@ -4,8 +4,9 @@ export type Personality = "warm" | "analytical" | "playful" | "professional"
 
 export type ToneMode = "casual" | "balanced" | "deep"
 
-// Two clean paths, no in-browser WebLLM:
-//   "ollama" — a local LLM running on the user's own PC
+// Two clean primary paths:
+//   "ollama" — local LLM on the user's machine (with optional browser
+//               WebLLM fallback when Ollama is unreachable)
 //   "openai" | "anthropic" | "google" | "openrouter" — cloud API
 export type AIProvider = "openai" | "anthropic" | "google" | "ollama" | "openrouter"
 
