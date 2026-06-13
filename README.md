@@ -161,6 +161,35 @@ ollama create empathia-tiny -f scripts/empathia-tiny.Modelfile
 In Docker/compose, set `OLLAMA_MODEL=empathia-tiny` and startup builds it for you.
 See [docs/tiny-empathy-model.md](docs/tiny-empathy-model.md) for the full design.
 
+#### How it works by default
+
+`empathia-tiny` is a **preset on the existing Ollama path**, not a separate
+runtime. In one line: it's stock **TinyLlama-1.1B-Chat (Q4)** wrapped with an
+empathy system prompt and tuned sampling, served through Ollama.
+
+- **It is not the default model.** `OLLAMA_MODEL` still defaults to `llama3.2`.
+  TinyLlama is the lighter option you opt into — by picking **Lite Empathy
+  (TinyLlama)** in onboarding/Settings, or by setting `OLLAMA_MODEL=empathia-tiny`.
+- **Selecting the preset** pins `provider: ollama` and `ollamaModel: empathia-tiny`.
+  From there, chat requests use the normal Ollama plumbing
+  ([lib/api/ollama-direct.ts](lib/api/ollama-direct.ts) in the browser, or the
+  `/api/chat` proxy server-side) — the same path as any other Ollama model.
+- **The empathy behavior is baked into the Modelfile**, not configured per user:
+  the `SYSTEM` prompt + `temperature` / `repeat_penalty` / `num_ctx` params ship
+  inside `empathia-tiny` when you `ollama create` it.
+- **If Ollama isn't running or the model isn't built, nothing breaks.** The
+  deterministic empathy engine handles replies; TinyLlama sits *above* that
+  fallback on the provider ladder.
+
+What this preset is **not** (these live in
+[docs/tiny-empathy-model.md](docs/tiny-empathy-model.md) as future work, not in
+the codebase yet):
+
+- a *fine-tuned* empathy model — `empathia-tiny` is generic TinyLlama following
+  the system prompt, not a model trained on empathy data (see doc §4);
+- an *in-browser* model — it runs via Ollama on your machine, not WebLLM/WebGPU
+  in the browser (see doc §2b).
+
 ## Camera Mood Analysis
 
 - Start camera from the left panel
