@@ -59,6 +59,7 @@ import {
   probeLocalLLM,
   runtimeNameFromBaseUrl,
 } from "@/lib/api/ollama-direct"
+import { isWebLLMSupported, sendWebLLMDirect } from "@/lib/api/webllm-direct"
 import { OnboardingModal } from "@/components/onboarding-modal"
 import { CommandPalette, type CommandSection } from "@/components/command-palette"
 import { useOnlineStatus } from "@/hooks/use-online-status"
@@ -1458,6 +1459,66 @@ export default function CompanionApp() {
   )
   const samanthaGuidance = `${getDeepPrompt(currentSummary, sessionDepth, depthState.tier, emotionalVelocity)} Next mirror question: ${suggestedNext.question}${feltState ? ` Current felt-state read: ${summarizeFeltState(feltState)}.` : ""}`
 
+  const requestBrowserWebLLMReply = useCallback(
+    async ({
+      text,
+      sentimentEmotion,
+      responsePlan,
+      history,
+    }: {
+      text: string
+      sentimentEmotion: Emotion
+      responsePlan: ResponsePlan | null
+      history: Message[]
+    }) => {
+      if (settings.provider !== "ollama" || !isWebLLMSupported()) {
+        return null
+      }
+
+      try {
+        const conversation = history.slice(-settings.contextMessages).map((m) => ({
+          role: m.sender === "user" ? ("user" as const) : ("assistant" as const),
+          content: m.text,
+        }))
+
+        return await sendWebLLMDirect({
+          model: settings.ollamaModel,
+          system: buildSystemPrompt(
+            settings.name,
+            settings.personality,
+            settings.toneMode,
+            sentimentEmotion,
+            empathyProfile,
+            empathyCode,
+            samanthaGuidance,
+            text,
+            responsePlan
+          ),
+          messages: conversation,
+          temperature: settings.temperature,
+          topP: settings.topP,
+          maxTokens: settings.maxOutputTokens,
+        })
+      } catch {
+        return null
+      }
+    },
+    [
+      settings.provider,
+      settings.contextMessages,
+      settings.ollamaModel,
+      settings.name,
+      settings.personality,
+      settings.toneMode,
+      settings.temperature,
+      settings.topP,
+      settings.maxOutputTokens,
+      empathyProfile,
+      empathyCode,
+      samanthaGuidance,
+    ]
+  )
+
   // Live "What I'm tracking" timeline — every time the four-quadrant
   // empathy data gains an entry, append it here with a timestamp so the
   // empathy panel can render the engine's running thoughts as a feed.
@@ -1982,6 +2043,43 @@ export default function CompanionApp() {
         } catch (error) {
           const detail =
             error instanceof Error ? error.message : "Ollama direct call failed"
+
+          const browserReply = await requestBrowserWebLLMReply({
+            text,
+            sentimentEmotion,
+            responsePlan,
+            history: [...remoteFallbackMessages, userMessage],
+          })
+
+          if (browserReply) {
+            const extracted = extractDataUpdate(browserReply.text)
+            const metaExtracted = extractMetaBlock(extracted.cleanText)
+            if (extracted.update) {
+              const nextData = applyDataUpdateBlock(empathyDataRef.current, extracted.update)
+              setEmpathyData(nextData)
+              empathyDataRef.current = nextData
+            }
+            applyMetaSignal(metaExtracted.meta, setSessionDepthLevel, setCurrentStep, setConversationSentimentScore)
+            if (metaExtracted.meta) {
+              setMetaHistory((prev) => [...prev.slice(-19), metaExtracted.meta!])
+            }
+
+            setRemoteFallbackMessages((prev) => [
+              ...prev,
+              {
+                id: crypto.randomUUID(),
+                text:
+                  metaExtracted.cleanText ||
+                  "I am here with you. Could you tell me a little more?",
+                sender: "ai",
+                timestamp: new Date(),
+                emotion: sentimentEmotion,
+              },
+            ])
+            setLlmConnectionError("")
+            return
+          }
+
           setLlmConnectionError(detail)
 
           const baseFallback = buildLocalCompanionReply(
@@ -2023,6 +2121,63 @@ export default function CompanionApp() {
         await sendMessage({ text })
       } catch (error) {
         const message = error instanceof Error ? error.message : "LLM request failed"
+
+        const userMessage: Message = {
+          id: crypto.randomUUID(),
+          text,
+          sender: "user",
+          timestamp: new Date(),
+          emotion: sentimentEmotion,
+        }
+        const hasMatchingUserTail =
+          remoteFallbackMessages[remoteFallbackMessages.length - 1]?.sender === "user" &&
+          remoteFallbackMessages[remoteFallbackMessages.length - 1]?.text === text
+        const historyForBrowser = hasMatchingUserTail
+          ? [...remoteFallbackMessages]
+          : [...remoteFallbackMessages, userMessage]
+
+        const browserReply = await requestBrowserWebLLMReply({
+          text,
+          sentimentEmotion,
+          responsePlan,
+          history: historyForBrowser,
+        })
+
+        if (browserReply) {
+          const extracted = extractDataUpdate(browserReply.text)
+          const metaExtracted = extractMetaBlock(extracted.cleanText)
+          if (extracted.update) {
+            const nextData = applyDataUpdateBlock(empathyDataRef.current, extracted.update)
+            setEmpathyData(nextData)
+            empathyDataRef.current = nextData
+          }
+          applyMetaSignal(metaExtracted.meta, setSessionDepthLevel, setCurrentStep, setConversationSentimentScore)
+          if (metaExtracted.meta) {
+            setMetaHistory((prev) => [...prev.slice(-19), metaExtracted.meta!])
+          }
+
+          setRemoteFallbackMessages((prev) => {
+            const withUserTurn =
+              prev[prev.length - 1]?.sender === "user" && prev[prev.length - 1]?.text === text
+                ? prev
+                : [...prev, userMessage]
+            return [
+              ...withUserTurn,
+              {
+                id: crypto.randomUUID(),
+                text:
+                  metaExtracted.cleanText ||
+                  "I am here with you. Could you tell me a little more?",
+                sender: "ai",
+                timestamp: new Date(),
+                emotion: sentimentEmotion,
+              },
+            ]
+          })
+          setLlmConnectionError("")
+          return
+        }
+
         setLlmConnectionError(message)
 
         const baseFallback = buildLocalCompanionReply(text, analysis.sentimentScore, suggestedNext.question, {
@@ -2083,6 +2238,7 @@ export default function CompanionApp() {
       systemHealth,
       isOnline,
       remoteFallbackMessages,
+      requestBrowserWebLLMReply,
       elapsedMs,
       messages,
       metaHistory,
