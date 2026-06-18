@@ -1,9 +1,9 @@
 "use client"
 
 import { useRef, useState, useEffect, useCallback } from "react"
-import { Camera, CameraOff, Video, MonitorSmartphone, MapPin } from "lucide-react"
+import { Camera, CameraOff, Video, MonitorSmartphone, MapPin, ZoomIn } from "lucide-react"
 import * as faceapi from "face-api.js"
-import type { Emotion, FacialExpression, LocationData } from "@/lib/companion-types"
+import type { Emotion, FacialExpression, FaceSignal, LocationData } from "@/lib/companion-types"
 import {
   FaceDepthEngine,
   type FaceReading,
@@ -42,7 +42,10 @@ function loadFaceModelsOnce(): Promise<void> {
 }
 
 interface CameraPanelProps {
-  onEmotionDetected: (emotion: Emotion) => void
+  // The second arg carries the quality-aware signal (confidence, engagement)
+  // so the mood engine can weight the face read. Optional so existing callers
+  // that only want the coarse emotion still type-check.
+  onEmotionDetected: (emotion: Emotion, signal?: FaceSignal) => void
   selectedDeviceId: string
   onDeviceChange: (deviceId: string) => void
 }
@@ -53,6 +56,11 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
   const [isActive, setIsActive] = useState(false)
   const [faceTrackingEnabled, setFaceTrackingEnabled] = useState(true)
   const [faceTarget, setFaceTarget] = useState({ x: 50, y: 50, zoom: 1 })
+  // Auto-zoom follows the face ("if needed" — it zooms in more when the face
+  // is small/far). When off, the user's manual zoom takes over for a fixed
+  // framing. Manual zoom is also the fallback when face tracking is disabled.
+  const [autoZoomEnabled, setAutoZoomEnabled] = useState(true)
+  const [manualZoom, setManualZoom] = useState(1)
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [currentEmotion, setCurrentEmotion] = useState<Emotion>("neutral")
   const [error, setError] = useState<string | null>(null)
@@ -192,7 +200,11 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
         const nextX = clamp(((box.x + box.width / 2) / videoWidth) * 100, 20, 80)
         const nextY = clamp(((box.y + box.height / 2) / videoHeight) * 100, 20, 80)
         const faceWidthRatio = box.width / videoWidth
-        const nextZoom = clamp(0.5 / Math.max(faceWidthRatio, 0.18), 1, 1.7)
+        // Auto-zoom: pull in more when the face is small/far ("if needed").
+        // When auto is off, ease toward the user's manual zoom instead.
+        const nextZoom = autoZoomEnabled
+          ? clamp(0.5 / Math.max(faceWidthRatio, 0.18), 1, 1.7)
+          : manualZoom
 
         setFaceTarget((prev) => ({
           x: prev.x * 0.7 + nextX * 0.3,
@@ -230,9 +242,14 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
         setFacialExpression(reading.expressions)
         setCurrentEmotion(reading.emotion)
         // Only emit upstream when the frame quality is good enough — this
-        // is what was making the chat see flickery emotion changes.
+        // is what was making the chat see flickery emotion changes. We pass
+        // the quality-aware signal too so the mood engine can weight the read.
         if (reading.frameQuality !== "poor") {
-          onEmotionDetected(reading.emotion)
+          onEmotionDetected(reading.emotion, {
+            emotion: reading.emotion,
+            confidence: reading.confidence,
+            engagement: reading.engagement.score,
+          })
         }
       } else {
         const reading = depthEngineRef.current.ingest(null, video)
@@ -247,7 +264,7 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
     } catch (err) {
       console.error("Facial detection error:", err)
     }
-  }, [modelsLoaded, onEmotionDetected])
+  }, [modelsLoaded, onEmotionDetected, autoZoomEnabled, manualZoom])
 
   // Recursive scheduler: only fires the next detection after the previous
   // finishes (avoids queue buildup on slow devices) and pauses entirely
@@ -391,7 +408,14 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
   }
 
   const videoObjectPosition = faceTrackingEnabled ? `${faceTarget.x}% ${faceTarget.y}%` : "50% 50%"
-  const videoTransform = faceTrackingEnabled && facialExpression.detection ? `scale(${faceTarget.zoom.toFixed(3)})` : "scale(1)"
+  // Effective zoom: auto-zoom rides the smoothed faceTarget while tracking a
+  // face; otherwise the manual slider drives it directly (so it responds even
+  // with tracking off or no face in frame).
+  const effectiveZoom =
+    autoZoomEnabled && faceTrackingEnabled && facialExpression.detection
+      ? faceTarget.zoom
+      : manualZoom
+  const videoTransform = `scale(${effectiveZoom.toFixed(3)})`
 
   return (
     <div className="flex flex-col gap-4">
@@ -617,7 +641,7 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
         <div className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground">
           FACE TRACKING
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setFaceTrackingEnabled((prev) => !prev)}
             className="rounded border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
@@ -625,14 +649,55 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
             {faceTrackingEnabled ? "Tracking On" : "Tracking Off"}
           </button>
           <button
-            onClick={() => setFaceTarget({ x: 50, y: 50, zoom: 1 })}
+            onClick={() => setAutoZoomEnabled((prev) => !prev)}
+            className={`rounded border px-3 py-1.5 text-xs font-medium transition-colors ${
+              autoZoomEnabled
+                ? "border-sky-500/40 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20"
+                : "border-border bg-background text-foreground hover:bg-accent"
+            }`}
+            title="When on, the camera zooms to keep your face framed (only as needed)"
+          >
+            {autoZoomEnabled ? "Auto-Zoom On" : "Auto-Zoom Off"}
+          </button>
+          <button
+            onClick={() => {
+              setFaceTarget({ x: 50, y: 50, zoom: 1 })
+              setManualZoom(1)
+            }}
             className="rounded border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
           >
             Recenter
           </button>
         </div>
+
+        {/* Manual zoom — active when auto-zoom is off, so the user sets a
+            fixed framing. Hidden while auto-zoom drives the zoom itself. */}
+        {!autoZoomEnabled && (
+          <div className="mt-3">
+            <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
+              <span className="inline-flex items-center gap-1">
+                <ZoomIn className="h-3 w-3" />
+                Zoom
+              </span>
+              <span className="font-mono text-foreground">{manualZoom.toFixed(1)}×</span>
+            </div>
+            <input
+              type="range"
+              min={1}
+              max={3}
+              step={0.1}
+              value={manualZoom}
+              onChange={(e) => setManualZoom(Number(e.target.value))}
+              className="w-full accent-sky-400"
+              aria-label="Camera zoom level"
+            />
+          </div>
+        )}
+
         <p className="mt-2 text-[11px] text-muted-foreground">
-          Keeps camera framing centered on your face when detection is active.
+          {autoZoomEnabled
+            ? "Keeps you framed and zooms in only when your face is small or far."
+            : "Set a fixed zoom level. Turn Auto-Zoom on to let the camera follow your face."}
         </p>
       </div>
 

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Eye, Pencil, Check, X } from "lucide-react"
+import { Eye, ScanFace, Pencil, Check, X } from "lucide-react"
 import type { FeltState } from "@/lib/conversation/communication-engine"
 
 interface MirrorStripProps {
@@ -54,12 +54,26 @@ export function MirrorStrip({ state, onCorrect, reducedMotion }: MirrorStripProp
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-muted-foreground">
-          <Eye className="h-3 w-3" />
-          <span className="uppercase tracking-wide">What I am hearing</span>
+          {state.faceContributed ? (
+            <ScanFace className="h-3 w-3 text-sky-300/80" />
+          ) : (
+            <Eye className="h-3 w-3" />
+          )}
+          <span className="uppercase tracking-wide">
+            {state.faceContributed ? "Reading your words + face" : "What I am hearing"}
+          </span>
           <span
             className={`h-1.5 w-1.5 rounded-full ${CONFIDENCE_DOT[state.confidence]}`}
-            title={`Confidence: ${state.confidence}`}
-            aria-label={`Confidence: ${state.confidence}`}
+            title={
+              state.faceContributed
+                ? `Reading your words and your face together · confidence: ${state.confidence}`
+                : `Confidence: ${state.confidence}`
+            }
+            aria-label={
+              state.faceContributed
+                ? `Reading words and face together, confidence: ${state.confidence}`
+                : `Confidence: ${state.confidence}`
+            }
           />
         </div>
         {!editing && onCorrect && (
