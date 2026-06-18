@@ -79,6 +79,11 @@ const SettingsPanel = dynamic(() => import("@/components/settings-panel").then((
 
 const SetupChecklist = dynamic(() => import("@/components/setup-checklist").then((mod) => mod.SetupChecklist))
 
+const AmbientPianoControl = dynamic(
+  () => import("@/components/ambient-piano-control").then((mod) => mod.AmbientPianoControl),
+  { ssr: false }
+)
+
 function applyDataUpdateBlock(existing: EmpathyData, update: Partial<Record<keyof EmpathyData, string>>): EmpathyData {
   const next: EmpathyData = {
     says: [...existing.says],
@@ -3139,6 +3144,25 @@ export default function CompanionApp() {
             settings={settings}
             runtime={{ isLoading, llmConnectionError } as any}
           />
+
+          {/* Generative ambient piano. Ducks while a reply is incoming (likely
+              to be spoken) and during heavy/crisis-adjacent moments, so it
+              never competes with the companion or intrude when it matters. Mood
+              tracks the session intention and the felt-state read. */}
+          <div className="mt-4">
+            <AmbientPianoControl
+              duck={isLoading || feltState?.load === "high"}
+              mood={
+                sessionIntention === "calmer" || feltState?.load === "high"
+                  ? "calm"
+                  : sessionIntention === "connected"
+                    ? "tender"
+                    : sessionIntention === "lighter"
+                      ? "light"
+                      : "neutral"
+              }
+            />
+          </div>
 
         </aside>
 
