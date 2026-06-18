@@ -121,10 +121,18 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const [input, setInput] = useState("")
   const [isListening, setIsListening] = useState(false)
+  // Whether this browser exposes the Web Speech API at all (Firefox doesn't),
+  // so we can hide the mic rather than offer a button that silently no-ops.
+  const [speechSupported, setSpeechSupported] = useState(false)
+  // Transient, human-readable mic error (permission denied, no speech, etc.).
+  const [micError, setMicError] = useState("")
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const recognitionRef = useRef<any>(null)
+  // Snapshot of the input when listening starts, so the live transcript is
+  // appended to what the user already typed instead of replacing it.
+  const inputBeforeListenRef = useRef("")
   const inputRef = useRef<HTMLInputElement>(null)
   const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
   const activeSpeechTextRef = useRef("")
@@ -189,41 +197,87 @@ export function ChatPanel({
 
   // Setup speech recognition
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const win = window as Window & {
-        SpeechRecognition?: new () => any
-        webkitSpeechRecognition?: new () => any
-      }
+    if (typeof window === "undefined") return
+    const win = window as Window & {
+      SpeechRecognition?: new () => any
+      webkitSpeechRecognition?: new () => any
+    }
 
-      const SpeechRecognition = win.SpeechRecognition || win.webkitSpeechRecognition
-      if (!SpeechRecognition) return
+    const SpeechRecognition = win.SpeechRecognition || win.webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      setSpeechSupported(false)
+      return
+    }
+    setSpeechSupported(true)
 
-      const recognition = new SpeechRecognition()
-      recognition.continuous = false
-      recognition.interimResults = true
-      recognition.lang = "en-US"
+    const recognition = new SpeechRecognition()
+    recognition.continuous = false
+    recognition.interimResults = true
+    recognition.lang = "en-US"
 
-      recognition.onresult = (event: any) => {
-        const transcript = Array.from(event.results)
-          .map((result: any) => result[0].transcript)
-          .join("")
-        setInput(transcript)
-        if (event.results[0].isFinal) {
-          setIsListening(false)
-        }
-      }
+    // Let the engine drive the listening state so the UI can't desync from
+    // what the recognizer is actually doing.
+    recognition.onstart = () => {
+      setMicError("")
+      setIsListening(true)
+    }
 
-      recognition.onerror = () => {
+    recognition.onresult = (event: any) => {
+      const transcript = Array.from(event.results)
+        .map((result: any) => result[0].transcript)
+        .join("")
+      // Append the live transcript to whatever was already typed, with a
+      // space if needed, instead of clobbering it.
+      const base = inputBeforeListenRef.current
+      const joiner = base && !base.endsWith(" ") ? " " : ""
+      setInput(`${base}${joiner}${transcript}`)
+      if (event.results[event.results.length - 1].isFinal) {
         setIsListening(false)
       }
+    }
 
-      recognition.onend = () => {
-        setIsListening(false)
+    recognition.onerror = (event: any) => {
+      // Map the most common SpeechRecognition error codes to plain language.
+      const code = event?.error
+      if (code === "not-allowed" || code === "service-not-allowed") {
+        setMicError("Microphone access is blocked. Allow it in your browser to use voice input.")
+      } else if (code === "no-speech") {
+        setMicError("I didn't catch anything — try speaking again.")
+      } else if (code === "audio-capture") {
+        setMicError("No microphone found.")
+      } else if (code !== "aborted") {
+        setMicError("Voice input hit a snag. You can keep typing.")
       }
+      setIsListening(false)
+    }
 
-      recognitionRef.current = recognition
+    recognition.onend = () => {
+      setIsListening(false)
+    }
+
+    recognitionRef.current = recognition
+
+    return () => {
+      // Detach handlers and stop any in-flight session on unmount.
+      try {
+        recognition.onstart = null
+        recognition.onresult = null
+        recognition.onerror = null
+        recognition.onend = null
+        recognition.abort()
+      } catch {
+        // ignore — recognition may not have started
+      }
+      recognitionRef.current = null
     }
   }, [])
+
+  // Auto-clear a mic error after a few seconds so it doesn't linger.
+  useEffect(() => {
+    if (!micError) return
+    const timer = window.setTimeout(() => setMicError(""), 5000)
+    return () => window.clearTimeout(timer)
+  }, [micError])
 
   const toggleListening = useCallback(() => {
     if (!recognitionRef.current) return
@@ -231,10 +285,19 @@ export function ChatPanel({
       recognitionRef.current.stop()
       setIsListening(false)
     } else {
-      recognitionRef.current.start()
-      setIsListening(true)
+      // Snapshot current input so the transcript appends rather than replaces,
+      // then start. onstart flips isListening; if start() throws (e.g. already
+      // running), surface it instead of leaving the UI in a wrong state.
+      inputBeforeListenRef.current = input
+      setMicError("")
+      try {
+        recognitionRef.current.start()
+      } catch {
+        setMicError("Couldn't start voice input. Try again in a moment.")
+        setIsListening(false)
+      }
     }
-  }, [isListening])
+  }, [isListening, input])
 
   const stopSpeaking = useCallback(() => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return
@@ -371,8 +434,18 @@ export function ChatPanel({
   const handleSend = () => {
     const text = input.trim()
     if (!text || isLoading) return
+    // Stop any active dictation so it doesn't append onto the cleared input.
+    if (isListening && recognitionRef.current) {
+      try {
+        recognitionRef.current.stop()
+      } catch {
+        // ignore
+      }
+      setIsListening(false)
+    }
     onSendMessage(text)
     setInput("")
+    inputBeforeListenRef.current = ""
     inputRef.current?.focus()
     setPromptSeed((seed) => seed + 1)
   }
@@ -1035,18 +1108,31 @@ export function ChatPanel({
             </motion.div>
           )}
         </AnimatePresence>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={toggleListening}
-            className={`flex h-8 w-8 items-center justify-center border transition-colors ${
-              isListening
-                ? "border-foreground bg-foreground text-background"
-                : "border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground"
-            }`}
-            aria-label={isListening ? "Stop listening" : "Start voice input"}
+        {micError && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mb-2 flex items-center gap-2 rounded border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] leading-snug text-amber-200"
           >
-            {isListening ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
-          </button>
+            <MicOff className="h-3.5 w-3.5 flex-shrink-0" />
+            <span>{micError}</span>
+          </div>
+        )}
+        <div className="flex items-center gap-2">
+          {speechSupported && (
+            <button
+              onClick={toggleListening}
+              className={`flex h-8 w-8 items-center justify-center border transition-colors ${
+                isListening
+                  ? "animate-pulse border-foreground bg-foreground text-background"
+                  : "border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground"
+              }`}
+              aria-label={isListening ? "Stop listening" : "Start voice input"}
+              title={isListening ? "Listening… click to stop" : "Speak instead of typing"}
+            >
+              {isListening ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
+            </button>
+          )}
 
           <input
             ref={inputRef}
