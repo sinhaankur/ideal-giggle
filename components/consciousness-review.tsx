@@ -1,8 +1,9 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { MessageSquare, Brain, HandMetal, Heart, X, Check, Trash2, Plus } from "lucide-react"
+import { MessageSquare, Brain, HandMetal, Heart, X, Check, Trash2, Plus, Sparkles } from "lucide-react"
 import type { EmpathyData } from "@/lib/companion-types"
+import { evaluateTraits } from "@/lib/conversation/trait-evaluation"
 
 // "See & correct your consciousness."
 //
@@ -68,6 +69,13 @@ export function ConsciousnessReview({
     () => draft.says.length + draft.thinks.length + draft.does.length + draft.feels.length,
     [draft]
   )
+
+  // Durable patterns inferred from the (live, editable) map. Derived, not
+  // stored — so editing the map above updates these in real time.
+  const traits = useMemo(() => evaluateTraits({ empathyData: draft }), [draft])
+  // Observations the person rejected ("that's not me") — hidden locally.
+  const [rejectedTraits, setRejectedTraits] = useState<Set<string>>(new Set())
+  const visibleTraits = traits.filter((t) => !rejectedTraits.has(t.id))
 
   if (!open) return null
 
@@ -177,6 +185,43 @@ export function ConsciousnessReview({
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Durable patterns — descriptive reflections, each rejectable.
+              Only shown once there's enough evidence to say anything. */}
+          {visibleTraits.length > 0 && (
+            <div className="mt-5 border-t border-border pt-4">
+              <div className="mb-2 flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-violet-300" />
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-foreground">
+                  Patterns I&apos;ve come to notice
+                </span>
+              </div>
+              <p className="mb-2 text-[10px] leading-snug text-muted-foreground/80">
+                Tentative reflections from how you&apos;ve shown up over time — not labels. If one isn&apos;t you, wave it off.
+              </p>
+              <div className="flex flex-col gap-2">
+                {visibleTraits.map((t) => (
+                  <div
+                    key={t.id}
+                    className="flex items-start gap-2 rounded border border-violet-500/20 bg-violet-500/5 px-2.5 py-1.5"
+                  >
+                    <div className="flex-1">
+                      <div className="text-[12px] leading-snug text-foreground">{t.text}</div>
+                      <div className="mt-0.5 text-[10px] italic text-muted-foreground/70">{t.why}</div>
+                    </div>
+                    <button
+                      onClick={() => setRejectedTraits((prev) => new Set(prev).add(t.id))}
+                      className="rounded border border-border bg-background px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-muted-foreground transition-colors hover:border-rose-500/40 hover:text-rose-300"
+                      aria-label="That's not me"
+                      title="That's not me"
+                    >
+                      not me
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
