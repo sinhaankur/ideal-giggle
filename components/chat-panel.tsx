@@ -8,6 +8,7 @@ import { MirrorStrip } from "@/components/mirror-strip"
 import { BreathCoach } from "@/components/breath-coach"
 import { SummaryCard } from "@/components/summary-card"
 import { ResumeSessionCard } from "@/components/resume-session-card"
+import { getDailyQuote, type DailyQuote } from "@/lib/content/daily-quote"
 import type { SessionMemoryRecord } from "@/lib/vault/encrypted-profile"
 import type { Message, Emotion, CompanionSettings } from "@/lib/companion-types"
 import { detectHarshLanguage } from "@/lib/conversation/language-tone"
@@ -128,6 +129,9 @@ export function ChatPanel({
   const [micError, setMicError] = useState("")
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(true)
+  // Quote of the day. Computed client-side (it depends on the viewer's local
+  // date) and left null until mounted to avoid an SSR/hydration mismatch.
+  const [dailyQuote, setDailyQuote] = useState<DailyQuote | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const recognitionRef = useRef<any>(null)
   // Snapshot of the input when listening starts, so the live transcript is
@@ -194,6 +198,11 @@ export function ChatPanel({
       }
     }
   }, [messages, settings.accessibilityMode])
+
+  // Resolve the day's quote once mounted (depends on local date).
+  useEffect(() => {
+    setDailyQuote(getDailyQuote())
+  }, [])
 
   // Setup speech recognition
   useEffect(() => {
@@ -863,6 +872,19 @@ export function ChatPanel({
             <div className="mt-1 hidden max-w-[340px] text-[11px] leading-relaxed text-muted-foreground md:block">
               <span className="text-foreground/70">←</span> Camera (left) for mood-aware replies. Empathy map (right) <span className="text-foreground/70">→</span> updates as you talk.
             </div>
+
+            {dailyQuote && (
+              <div className="mt-5 max-w-[300px] border-t border-border/60 pt-4">
+                <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/60">
+                  Quote of the day
+                </div>
+                <p className="text-[12px] italic leading-relaxed text-foreground/75">
+                  {dailyQuote.line1}
+                  <br />
+                  {dailyQuote.line2}
+                </p>
+              </div>
+            )}
             <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
               <AnimatePresence mode="wait" initial={false}>
                 <motion.div
