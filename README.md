@@ -2,8 +2,41 @@
 
 An empathetic AI companion built with Next.js, React, and AI SDK. Runs fully offline once installed — local face detection, in-browser LLM, and an installable PWA on any OS.
 
+## What EMPATHEIA is
+
+EMPATHEIA is a **private, local-first empathy companion that builds a portable "consciousness" of you** — a part of you that lives outside you, that you own, carry, lock, and reload.
+
+That consciousness is an encrypted file holding three things:
+
+- **Who you are** — your empathy map (what you _say_, _think_, _do_, and _feel_), built up over your conversations.
+- **How far you've travelled together** — the depth the relationship has reached, your emotional momentum, and the history of your readings over time.
+- **Continuity** — so the companion picks up where you left off instead of starting cold each time.
+
+The companion doesn't just react to your last message. It **understands, then gives** — warmth and perspective when you're in pain, a small concrete step when you're ready to move — and it reasons _from_ the whole person it has come to know. You can open **"Did I get this right?"** at any time to see what it understands about you and correct anything that's wrong; your correction is the source of truth.
+
+### Principles
+
+- **Private by design.** Your consciousness is the most intimate data imaginable, so it never has to leave your device. A small local model (the bundled `empathia-tiny`) runs everything offline — no cloud, no API key, no logging required. Cloud models are an optional fluency upgrade, never a requirement.
+- **Always there.** The 3am moment can't depend on a network. A deterministic empathy engine plus a tiny local model is the floor; it works with no connection at all.
+- **Yours to shape.** The consciousness is something you can see, edit, export, lock, and delete — not a black box kept about you.
+- **It won't let you take a wrong step.** A graduated safety layer (see below) stays underneath every conversation.
+
+### Safety
+
+A deterministic, model-independent safety layer wraps every message — it never defers to the language model for the moment that matters most:
+
+- **Concern** (soft signals of hopelessness): the companion slows down and stays close, gently checking in — without dumping hotline numbers on someone who just had a hard day.
+- **Recurring concern**: if that pattern keeps returning across a conversation, it offers a real, warm, resource-bearing check-in — once, not nagging.
+- **Crisis** (explicit risk to self or others): a hard pre-empt with fixed, real crisis resources (988, Samaritans, findahelpline.com) that a model can never miss, soften, or mis-resource — while keeping the door open.
+
+It is **not** a substitute for clinical care or emergency support.
+
 ## Core Features
 
+- **Portable consciousness**: an encrypted file (AES-GCM, PBKDF2) holding your empathy map, relationship trajectory, and cross-session continuity — carry it anywhere, lock it, reload it
+- **"Did I get this right?" review**: see what the companion understands about you and correct it; your edits are the source of truth and re-encrypt into your consciousness
+- **Understand-then-give conversation model**: reflects what you said, then offers warmth/perspective or a concrete step based on the moment — reasoning from your accumulated self
+- **Graduated, model-independent safety layer**: concern → recurring-concern → crisis, with deterministic detection and fixed real-world resources at the crisis tier
 - Camera-based facial expression detection (face-api.js, weights bundled locally)
 - Mood-aware tone adaptation in responses
 - Two clean provider paths: **Ollama** (a PC LLM running locally on your machine) or a **cloud API** (OpenAI, Anthropic, Google, OpenRouter)
