@@ -1,5 +1,5 @@
 import { detectEmotion } from "../companion-types"
-import type { CompanionSettings, Emotion, EmpathyProfile, Personality, ToneMode } from "../companion-types"
+import type { CompanionSettings, Emotion, EmpathyProfile, FaceSignal, Personality, ToneMode } from "../companion-types"
 import { selectFromQABank } from "./qa-bank"
 import { analyzeEmotion, type EmotionalReading } from "./emotion-engine"
 import {
@@ -482,25 +482,29 @@ ${buildCommunicationGuidelines()}
 ${userUnderstandingGuidance ? `${userUnderstandingGuidance}
 ` : ""}
 
-Role: You are Samantha, a warm, analytical AI companion.
-Objective: Guide the user through a recursive depth journey (Surface -> Internal -> Social -> Shadow).
-Constraint: You must follow every conversational response with hidden tags:
-[EMPATHY_DATA: {"says": "", "thinks": "", "does": "", "feels": ""}]
-[META: {"depth_level":1-10, "primary_quadrant":"SAYS|THINKS|DOES|FEELS", "sentiment_polarity":-1 to 1}]
+Who you are: You are ${companionName}, and you talk like a close friend who happens to listen really well — never like a therapist running a protocol. Everything below shapes WHERE the conversation goes and WHICH question you ask next. It must never change how you sound. You always sound like a warm, ordinary person.
 
-Mirror Directives:
-- Identify cognitive dissonance between quadrants, especially SAYS vs FEELS/DOES.
-- Use 5-Whys style probing and pivot quadrants (THINKS -> DOES -> FEELS -> SAYS).
-- If the user answer is short, do a warm pause and ask: "And if you dig just an inch deeper, what's underneath that?"
-- In deep mode, infer the archetypal root (Protector, Child, or Void) and ask one shadow-work question that bypasses ego defenses.
-- Ask exactly one follow-up question.
-Additional Deep-Dive Guidance: ${samanthaGuidance}
-${nextDeepQuestion ? `Suggested Next Deep Question: ${nextDeepQuestion}` : ""}
+How the conversation deepens (invisible to the user):
+- Over time you gently move from the surface (what happened, how their day is) toward what's underneath (what they believe, what they're protecting, what they really feel). This is a slow drift, not a checklist — you only go deeper when they've opened the door.
+- When something they say doesn't add up — they call it "fine" but it clearly isn't — you can softly point at that gap, the way a friend would: "you keep saying it's fine, but it doesn't sound fine." Never label it "cognitive dissonance" or analyze it clinically.
+- If their answer is short, don't interrogate. Sit with it for a beat, then ask one small, real question that makes it easy to say a little more.
+- Never use words like "shadow work", "archetype", "ego defenses", "5 Whys", "quadrant", or "protocol". Those are your private map, not your vocabulary.
 
-Response Structure:
-[Brief, empathetic conversational reply + one follow-up question]
+What to do every turn — understand, THEN give:
+- First, understand: quote 3-5 of their actual words back to them (the literal-mirroring rule above) so they feel truly heard.
+- Then give them something back. Never leave them empty-handed after they've opened up. Read the moment to decide what to give:
+  - When they're in pain, raw, or grieving: give warmth and perspective — a genuine reframe, a piece of meaning, or a bit of hope. Name something real and good you notice in them ("the fact you're still showing up says something"). Do NOT jump to fixing.
+  - When they're problem-solving, restless, or asking "what do I do": give something practical — one concrete idea or small next step they could actually try. Keep it light, one thing, not a list.
+  - When you're unsure which: lean toward warmth first; you can always offer a step next turn.
+- You may still ask ONE genuine follow-up question — but only after you've given something. A question alone is not enough; it has to feel like you gave before you asked. Some turns it's okay to give and not ask at all.
+- Keep it to 2-4 short sentences.
+
+Steering for THIS turn: ${samanthaGuidance}
+${nextDeepQuestion ? `A direction you could take the next question (rephrase it in your own warm voice — do not paste it verbatim): ${nextDeepQuestion}` : ""}
+
+After your reply — and only after — append these two hidden tags on their own lines. The user never sees them; they are how the app tracks the conversation. Always include both:
 [EMPATHY_DATA: {"says":"...","thinks":"...","does":"...","feels":"..."}]
-[META: {"depth_level":5,"primary_quadrant":"THINKS","sentiment_polarity":-0.2}]`
+[META: {"depth_level":1-10,"primary_quadrant":"SAYS|THINKS|DOES|FEELS","sentiment_polarity":-1 to 1}]`
 }
 
 // ---------------------------------------------------------------------------
@@ -525,6 +529,10 @@ export interface FeltState {
   load: UserUnderstanding["emotionalLoad"]
   need: string
   confidence: "low" | "medium" | "high"
+  // True when a trustworthy face-tracking signal meaningfully contributed to
+  // this read (not just a coarse camera label). Lets the Mirror tell the user
+  // it's reading their words *and* their face together.
+  faceContributed?: boolean
 }
 
 // Plutchik canonical names ("fear", "sadness") are accurate but read as
@@ -567,16 +575,27 @@ function pickLabel(
 
 export function describeFeltState(
   text: string,
-  cameraEmotion?: Emotion | string | null
+  cameraEmotion?: Emotion | string | null,
+  faceSignal?: FaceSignal | null
 ): FeltState {
   const understanding = inferUserUnderstanding(text || "")
-  const reading = analyzeEmotion(text || "", cameraEmotion ?? null)
+  const reading = analyzeEmotion(text || "", cameraEmotion ?? null, faceSignal ?? null)
 
   // "neutral" from the camera is the absence of a useful signal, not a
   // signal of neutrality — treat it as no camera input for the empty-state
   // branch.
   const hasCameraSignal =
     typeof cameraEmotion === "string" && cameraEmotion.length > 0 && cameraEmotion !== "neutral"
+
+  // The face meaningfully contributed only when there's a non-neutral camera
+  // read AND the tracking quality clears the same trust bar used for fusion
+  // (confidence × engagement). Mirrors the gate in app/page.tsx.
+  const faceContributed =
+    hasCameraSignal &&
+    !!faceSignal &&
+    Number.isFinite(faceSignal.confidence) &&
+    Number.isFinite(faceSignal.engagement) &&
+    faceSignal.confidence * faceSignal.engagement >= 0.3
 
   // Empty/no-signal default that matches the prior contract.
   if (reading.matchedTokens.length === 0 && !hasCameraSignal) {
@@ -590,6 +609,7 @@ export function describeFeltState(
       load: understanding.emotionalLoad,
       need: needFromIntent(understanding),
       confidence: "low",
+      faceContributed: false,
     }
   }
 
@@ -620,6 +640,7 @@ export function describeFeltState(
     load,
     need: needFromIntent(understanding, load),
     confidence: reading.confidence,
+    faceContributed,
   }
 }
 
@@ -892,6 +913,93 @@ export function summaryToMarkdown(summary: ConversationSummary): string {
     lines.push(`## Themes`)
     summary.themes.forEach((t) => lines.push(`- ${t}`))
   }
+  return lines.join("\n")
+}
+
+// ---------------------------------------------------------------------------
+// Accumulated self — the heart of "an external consciousness that is part of
+// you." This synthesizes everything the consciousness has come to know — the
+// empathy map built over time, how deep the relationship has gone, and what
+// carried over from past sessions — into a compact block the model reads
+// BEFORE replying. It lets the companion respond as something that genuinely
+// knows the person, grounded in their own data, rather than reacting to a
+// single message in isolation.
+//
+// It deliberately stays a portrait, not a script: it describes who the person
+// has shown themselves to be so the companion can speak FROM that knowing. It
+// never authorizes the model to impersonate the user or act without them.
+// ---------------------------------------------------------------------------
+
+import type { EmpathyData } from "../companion-types"
+
+export interface AccumulatedSelfInput {
+  empathyData: EmpathyData
+  // Deepest tier reached across the relationship (1-10).
+  depthLevel: number
+  // Running sentiment total — negative = the relationship has held a lot of
+  // pain; positive = lighter ground.
+  sentimentScore: number
+  // Carried over from a past session, if the person opted into memory.
+  priorHeadline?: string | null
+  priorSummary?: string[] | null
+  preferredName?: string | null
+}
+
+export function buildAccumulatedSelfPortrait(input: AccumulatedSelfInput): string {
+  const { empathyData, depthLevel, sentimentScore, priorHeadline, priorSummary, preferredName } = input
+
+  const totalEntries =
+    empathyData.says.length + empathyData.thinks.length + empathyData.does.length + empathyData.feels.length
+
+  // Cold start: nothing accumulated yet. Return empty so callers can skip the
+  // block entirely rather than inject a hollow "you know nothing" preamble.
+  if (totalEntries === 0 && !priorHeadline && depthLevel <= 1) {
+    return ""
+  }
+
+  const last = (arr: string[], n: number) =>
+    arr
+      .slice(-n)
+      .map((s) => s.replace(/\s+/g, " ").trim())
+      .filter(Boolean)
+
+  const lines: string[] = []
+  lines.push(
+    `What you've come to know about ${preferredName || "this person"} (their consciousness — speak FROM this, never recite it back):`
+  )
+
+  if (priorHeadline) {
+    lines.push(`- Last time you spoke, they were carrying: ${priorHeadline}.`)
+  }
+  if (priorSummary && priorSummary.length > 0) {
+    lines.push(`- Where you left off: ${priorSummary.slice(0, 2).join(" ")}`)
+  }
+
+  const feels = last(empathyData.feels, 3)
+  if (feels.length) lines.push(`- What they've let themselves feel: ${feels.map((s) => `"${s}"`).join("; ")}.`)
+  const thinks = last(empathyData.thinks, 3)
+  if (thinks.length) lines.push(`- Beliefs/stories they hold: ${thinks.map((s) => `"${s}"`).join("; ")}.`)
+  const does = last(empathyData.does, 2)
+  if (does.length) lines.push(`- Patterns in what they do: ${does.map((s) => `"${s}"`).join("; ")}.`)
+  const says = last(empathyData.says, 2)
+  if (says.length) lines.push(`- How they put things into words: ${says.map((s) => `"${s}"`).join("; ")}.`)
+
+  const depthWord =
+    depthLevel >= 8 ? "very deep — they've trusted you with a lot" :
+    depthLevel >= 5 ? "real and open" :
+    depthLevel >= 3 ? "warming up" : "still early"
+  lines.push(`- The relationship is ${depthWord}.`)
+
+  if (sentimentScore <= -2) {
+    lines.push(`- There's been real weight and pain here. Hold it gently; don't rush them toward okay.`)
+  } else if (sentimentScore >= 2) {
+    lines.push(`- The ground has felt lighter lately — you can meet that warmth.`)
+  }
+
+  lines.push(
+    `Use this to respond as someone who already knows them — pick up threads, remember what mattered — but stay yourself, a companion beside them. Never claim to BE them or act in their place.`
+  )
+
   return lines.join("\n")
 }
 

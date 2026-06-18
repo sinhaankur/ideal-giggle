@@ -58,6 +58,17 @@ export interface Message {
   mode?: "fallback" | "mcp-fallback"
 }
 
+// A quality-aware read from the face-tracking engine, emitted alongside the
+// coarse Emotion so the mood engine can fuse it as a confidence-weighted
+// signal rather than a fixed nudge. `confidence` is the smoothed expression
+// score (0-1); `engagement` is how present/frontal the face is (0-1). A dim,
+// half-off-camera glance carries far less weight than a clear, engaged read.
+export interface FaceSignal {
+  emotion: Emotion
+  confidence: number
+  engagement: number
+}
+
 export interface EmpathyData {
   says: string[]
   thinks: string[]
@@ -74,6 +85,10 @@ export interface EmpathyMetaRecord {
   depth: number
   primaryQuadrant: "SAYS" | "THINKS" | "DOES" | "FEELS"
   sentimentPolarity: number
+  // ISO timestamp stamped when this reading was captured. Optional because
+  // the raw [META] block the model emits carries no time; the client stamps
+  // it at capture so the consciousness timeline reflects real per-turn times.
+  at?: string
 }
 
 export interface HeuristicSummary {

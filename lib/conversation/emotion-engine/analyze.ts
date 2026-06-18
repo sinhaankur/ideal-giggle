@@ -101,7 +101,30 @@ const CAMERA_TO_PLUTCHIK: Record<string, PlutchikPrimary | null> = {
   neutral: null,
 }
 
+// Baseline nudge for a coarse camera emotion with no quality info. When a
+// quality-aware FaceSignal is supplied, the nudge scales between a floor and
+// CAMERA_NUDGE_MAX by the read's confidence × engagement — a clear, engaged
+// face pulls meaningfully harder than a dim, half-off-camera glance.
 const CAMERA_NUDGE_WEIGHT = 0.4
+const CAMERA_NUDGE_FLOOR = 0.15
+const CAMERA_NUDGE_MAX = 1.1
+
+// Structural shape of the face-tracking signal (matches FaceSignal in
+// companion-types). Kept local so the engine stays dependency-light.
+interface FaceSignalLike {
+  confidence: number
+  engagement: number
+}
+
+// Map a face signal's quality to an effective nudge weight. Low quality barely
+// registers; high quality can rival a clearly-stated text emotion.
+function faceNudgeWeight(signal: FaceSignalLike | null | undefined): number {
+  if (!signal) return CAMERA_NUDGE_WEIGHT
+  const conf = Number.isFinite(signal.confidence) ? Math.max(0, Math.min(1, signal.confidence)) : 0
+  const eng = Number.isFinite(signal.engagement) ? Math.max(0, Math.min(1, signal.engagement)) : 0
+  const quality = conf * eng
+  return CAMERA_NUDGE_FLOOR + quality * (CAMERA_NUDGE_MAX - CAMERA_NUDGE_FLOOR)
+}
 
 interface MatchedRange {
   token: string
@@ -208,7 +231,11 @@ function computeModifierAdjustments(
   return result
 }
 
-export function analyzeEmotion(text: string, cameraEmotion?: string | null): EmotionalReading {
+export function analyzeEmotion(
+  text: string,
+  cameraEmotion?: string | null,
+  faceSignal?: FaceSignalLike | null
+): EmotionalReading {
   const tokens = tokenize(text || "")
   const matches = greedyMatchPhrases(tokens)
   const adjustments = computeModifierAdjustments(tokens, matches)
@@ -241,12 +268,16 @@ export function analyzeEmotion(text: string, cameraEmotion?: string | null): Emo
     matchedTokens.push({ token: match.token, primary, intensity: match.intensity })
   })
 
-  // Soft camera nudge. Doesn't dominate text signal but breaks ties.
+  // Confidence-weighted camera fusion. With no quality info this is the old
+  // soft tie-breaker; with a FaceSignal, a strong/engaged read pulls harder
+  // and a weak one barely registers — but it still never solely dominates a
+  // clearly-stated text emotion (the text matches accumulate independently).
   if (cameraEmotion) {
     const camPrim = CAMERA_TO_PLUTCHIK[cameraEmotion.toLowerCase()] ?? null
     if (camPrim) {
-      accumulators[camPrim].weight += CAMERA_NUDGE_WEIGHT
-      accumulators[camPrim].intensityHits.mid += CAMERA_NUDGE_WEIGHT
+      const nudge = faceNudgeWeight(faceSignal)
+      accumulators[camPrim].weight += nudge
+      accumulators[camPrim].intensityHits.mid += nudge
     }
   }
 

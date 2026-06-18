@@ -101,6 +101,38 @@ describe("describeFeltState", () => {
     expect(state.confidence).toBe("low")
     expect(summarizeFeltState(state)).toBe("settling in")
   })
+
+  it("marks faceContributed when a trustworthy face signal backs a non-neutral read", () => {
+    const state = describeFeltState("I feel a bit low today", "sad", {
+      emotion: "sad",
+      confidence: 0.9,
+      engagement: 0.9,
+    })
+    expect(state.faceContributed).toBe(true)
+  })
+
+  it("does not mark faceContributed for a weak/low-quality face signal", () => {
+    const state = describeFeltState("I feel a bit low today", "sad", {
+      emotion: "sad",
+      confidence: 0.2,
+      engagement: 0.2,
+    })
+    expect(state.faceContributed).toBe(false)
+  })
+
+  it("does not mark faceContributed when the camera is neutral", () => {
+    const state = describeFeltState("I feel a bit low today", "neutral", {
+      emotion: "neutral",
+      confidence: 0.95,
+      engagement: 0.95,
+    })
+    expect(state.faceContributed).toBe(false)
+  })
+
+  it("does not mark faceContributed when no face signal is supplied", () => {
+    const state = describeFeltState("I feel a bit low today", "sad")
+    expect(state.faceContributed).toBe(false)
+  })
 })
 
 describe("suggestPromptsFromFeltState", () => {

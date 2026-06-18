@@ -106,4 +106,41 @@ describe("Plutchik dyad table", () => {
     expect(b?.name).toBe("love")
     expect(a).toBe(b)
   })
+
+  describe("confidence-weighted camera fusion", () => {
+    it("weights a high-quality face read harder than a low-quality one", () => {
+      const strong = analyzeEmotion("", "sad", { confidence: 0.9, engagement: 0.9 })
+      const weak = analyzeEmotion("", "sad", { confidence: 0.2, engagement: 0.2 })
+      expect(strong.primary.name).toBe("sadness")
+      expect(weak.primary.name).toBe("sadness")
+      // The same camera emotion should pull meaningfully harder when the read
+      // is clear and engaged.
+      expect(strong.primary.weight).toBeGreaterThan(weak.primary.weight)
+    })
+
+    it("falls back to the legacy fixed nudge when no signal is supplied", () => {
+      const reading = analyzeEmotion("", "angry")
+      expect(reading.primary.name).toBe("anger")
+      expect(reading.primary.weight).toBeGreaterThan(0)
+    })
+
+    it("does not let even a strong face read override a clearly-stated text emotion", () => {
+      // Text says joy; camera says sadness with max quality. Joy should still win.
+      const reading = analyzeEmotion("I am so happy and grateful", "sad", {
+        confidence: 1,
+        engagement: 1,
+      })
+      expect(reading.primary.name).toBe("joy")
+    })
+
+    it("ignores out-of-range or malformed signal values safely", () => {
+      const reading = analyzeEmotion("", "fear", {
+        confidence: Number.NaN,
+        engagement: 5,
+      })
+      // Should not throw and should still register the camera primary.
+      expect(reading.primary.name).toBe("fear")
+      expect(Number.isFinite(reading.primary.weight)).toBe(true)
+    })
+  })
 })
