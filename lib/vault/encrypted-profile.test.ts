@@ -4,6 +4,7 @@ import {
   decryptVault,
   isEncryptedEnvelope,
   unlockVault,
+  VAULT_VERSION,
   type VaultPayload,
 } from "./encrypted-profile"
 import { DEFAULT_EMPATHY_PROFILE } from "../companion-types"
@@ -29,7 +30,10 @@ describe("vault round-trip", () => {
     const envelope = JSON.parse(envelopeJson)
 
     expect(isEncryptedEnvelope(envelope)).toBe(true)
-    expect(envelope.v).toBe(1)
+    // Newly written envelopes carry the current version (now 2 with the
+    // consciousness block). Assert against the constant so future bumps don't
+    // re-break this test.
+    expect(envelope.v).toBe(VAULT_VERSION)
     expect(envelope.kdf).toBe("pbkdf2-sha256")
     expect(envelope.salt).toBeTruthy()
     expect(envelope.iv).toBeTruthy()
@@ -51,6 +55,19 @@ describe("vault round-trip", () => {
 
   it("rejects passphrases shorter than 8 characters at encrypt time", async () => {
     await expect(encryptVault(samplePayload, "short")).rejects.toThrow(/at least 8/i)
+  })
+
+  it("still decrypts a legacy v1 envelope under the current version", async () => {
+    // Backward-compat guarantee: bumping VAULT_VERSION to 2 (consciousness
+    // block) must never lock out files written at v1. Encrypt, then forge the
+    // stored version back to 1 to simulate an older file.
+    const passphrase = "correct horse battery staple"
+    const envelopeJson = await encryptVault(samplePayload, passphrase)
+    const envelope = JSON.parse(envelopeJson)
+    envelope.v = 1
+
+    const decrypted = await decryptVault(envelope, passphrase)
+    expect(decrypted).toEqual(samplePayload)
   })
 })
 

@@ -1,6 +1,10 @@
 import type { EmpathyProfile, EmpathyData } from "@/lib/companion-types"
 
-export const VAULT_VERSION = 1
+// v2 added the optional `consciousness` block (relationship trajectory).
+// The field is optional, so v1 envelopes still decrypt cleanly — we accept
+// any version in SUPPORTED_VAULT_VERSIONS for reads and write the latest.
+export const VAULT_VERSION = 2
+const SUPPORTED_VAULT_VERSIONS = new Set([1, 2])
 const KDF = "pbkdf2-sha256"
 const ITERATIONS = 600_000
 const MIN_ACCEPTED_ITERATIONS = 1_000
@@ -22,6 +26,34 @@ export interface SessionMemoryRecord {
   turns: SessionMemoryTurn[]
 }
 
+// One depth/sentiment reading the model emitted via its hidden [META] tag,
+// timestamped so a reloaded soul file can replay the trajectory rather than
+// starting cold at tier 1. Mirrors EmpathyMetaRecord in companion-types with
+// an added `at` so the timeline survives serialization.
+export interface ConsciousnessMetaPoint {
+  depth: number
+  primaryQuadrant: "SAYS" | "THINKS" | "DOES" | "FEELS"
+  sentimentPolarity: number
+  at: string
+}
+
+// The "consciousness" of the soul file: the lived trajectory of the
+// relationship, not just its current snapshot. EmpathyData/profile say *who*
+// the person is; this says *how far they've travelled* — the depth they've
+// reached, the emotional momentum, and the reading history. Reloading a soul
+// file with this block lets the companion resume the person where they left
+// off instead of re-climbing from the surface.
+export interface ConsciousnessState {
+  // Deepest tier reached (1-10), so the companion doesn't reset to small talk.
+  sessionDepthLevel: number
+  // Running sentiment polarity total across the relationship.
+  conversationSentimentScore: number
+  // Rolling window of the most recent [META] readings (capped on write).
+  metaHistory: ConsciousnessMetaPoint[]
+  // When this trajectory was last advanced.
+  updatedAt: string
+}
+
 export interface VaultPayload {
   profile: EmpathyProfile
   empathyData: EmpathyData
@@ -31,6 +63,10 @@ export interface VaultPayload {
   // Settings). Capped to a small rolling window — see RECENT_TURN_CAP in
   // app/page.tsx — so the encrypted envelope stays small.
   sessionMemory?: SessionMemoryRecord
+  // Optional. The relationship trajectory (depth, momentum, reading history).
+  // Absent in v1 soul files written before this field existed — readers must
+  // treat it as "start fresh trajectory" when missing.
+  consciousness?: ConsciousnessState
 }
 
 export interface VaultEnvelope {
@@ -153,7 +189,7 @@ export async function unlockVault(
   envelope: VaultEnvelope,
   passphrase: string
 ): Promise<{ payload: VaultPayload; handle: VaultKeyHandle }> {
-  if (envelope.v !== VAULT_VERSION) {
+  if (!SUPPORTED_VAULT_VERSIONS.has(envelope.v)) {
     throw new Error(`Unsupported vault version: ${envelope.v}`)
   }
   if (envelope.kdf !== KDF) {
