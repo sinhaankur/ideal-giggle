@@ -64,6 +64,7 @@ import {
 } from "@/lib/api/ollama-direct"
 import { isWebLLMSupported, sendWebLLMDirect } from "@/lib/api/webllm-direct"
 import { assessCrisis, assessConversationSafety, type CrisisSeverity } from "@/lib/safety/crisis-safety"
+import { sessionIntentionDirective, SESSION_INTENTIONS, type SessionIntentionId } from "@/lib/conversation/session-intention"
 import { OnboardingModal } from "@/components/onboarding-modal"
 import { CommandPalette, type CommandSection } from "@/components/command-palette"
 import { useOnlineStatus } from "@/hooks/use-online-status"
@@ -692,6 +693,11 @@ export default function CompanionApp() {
   // into the model's guidance so its own reply leans toward a gentle check-in.
   // Cleared once a non-concern turn passes.
   const [safetyConcernGuidance, setSafetyConcernGuidance] = useState("")
+  // The person's session intention ("how do you want to feel by the end?").
+  // Steers the companion's whole approach for the session. Null until chosen;
+  // the picker can also be dismissed without choosing.
+  const [sessionIntention, setSessionIntention] = useState<SessionIntentionId | null>(null)
+  const [intentionPickerDismissed, setIntentionPickerDismissed] = useState(false)
 
   const empathyDataRef = useRef<EmpathyData>({
     says: [],
@@ -1604,7 +1610,8 @@ export default function CompanionApp() {
     [empathyData, sessionDepthLevel, totalSentimentScore, storedSessionMemory, empathyProfile]
   )
 
-  const samanthaGuidance = `${safetyConcernGuidance ? `${safetyConcernGuidance}\n\n` : ""}${accumulatedSelf ? `${accumulatedSelf}\n\n` : ""}${getDeepPrompt(currentSummary, sessionDepth, depthState.tier, emotionalVelocity)} Next mirror question: ${suggestedNext.question}${feltState ? ` Current felt-state read: ${summarizeFeltState(feltState)}.` : ""}`
+  const intentionDirective = sessionIntentionDirective(sessionIntention)
+  const samanthaGuidance = `${safetyConcernGuidance ? `${safetyConcernGuidance}\n\n` : ""}${intentionDirective ? `${intentionDirective}\n\n` : ""}${accumulatedSelf ? `${accumulatedSelf}\n\n` : ""}${getDeepPrompt(currentSummary, sessionDepth, depthState.tier, emotionalVelocity)} Next mirror question: ${suggestedNext.question}${feltState ? ` Current felt-state read: ${summarizeFeltState(feltState)}.` : ""}`
 
   const requestBrowserWebLLMReply = useCallback(
     async ({
@@ -1727,6 +1734,34 @@ export default function CompanionApp() {
     vaultStatus === "no-vault" &&
     !saveConsciousnessDismissed &&
     userTurnCount >= 6
+
+  // The session-intention picker ("how do you want to feel by the end?")
+  // appears once the intro chat is done and the real conversation is just
+  // beginning — early enough to steer the session, but not before the person
+  // has settled in. Hidden once they choose or dismiss it.
+  const showIntentionPicker =
+    hasAgreed &&
+    answeredIntroCount >= introQuestionCount &&
+    sessionIntention === null &&
+    !intentionPickerDismissed &&
+    userTurnCount <= 2
+
+  // Choosing a session intention sets the steering and acknowledges it warmly
+  // in chat so the person feels the companion took it on board.
+  const handleChooseIntention = useCallback((id: SessionIntentionId) => {
+    setSessionIntention(id)
+    const acks: Record<SessionIntentionId, string> = {
+      calmer: "Okay — let's slow this down together. No rush at all.",
+      unstuck: "Got it. Let's find where the knot is, and a way to loosen it.",
+      heard: "I'm here for exactly that. Say whatever you need — I'm listening.",
+      connected: "I'm really glad you're here. Let's just be in this together.",
+      lighter: "Let's see if we can find a little air in this. I'm with you.",
+    }
+    setRemoteFallbackMessages((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), text: acks[id], sender: "ai", timestamp: new Date(), emotion: "thinking" },
+    ])
+  }, [])
 
   const dismissSaveConsciousnessPrompt = useCallback(() => {
     setSaveConsciousnessDismissed(true)
@@ -3131,6 +3166,32 @@ export default function CompanionApp() {
             mobilePanel === "chat" ? "block" : "hidden md:flex"
           }`}
         >
+          {showIntentionPicker && (
+            <div
+              className="flex flex-wrap items-center gap-2 border-b border-sky-500/30 bg-sky-500/5 px-4 py-2.5 text-[11px] text-sky-100"
+              role="group"
+              aria-label="Set how you want to feel by the end of this session"
+            >
+              <span className="mr-1 text-muted-foreground">How do you want to feel by the end?</span>
+              {SESSION_INTENTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  onClick={() => handleChooseIntention(opt.id)}
+                  className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-0.5 text-[11px] text-sky-100 transition-colors hover:border-sky-400/60 hover:bg-sky-500/20"
+                  title={opt.prompt}
+                >
+                  {opt.label}
+                </button>
+              ))}
+              <button
+                onClick={() => setIntentionPickerDismissed(true)}
+                className="ml-auto rounded border border-current/30 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-muted-foreground transition-colors hover:bg-foreground/10"
+              >
+                Skip
+              </button>
+            </div>
+          )}
+
           {showSaveConsciousnessPrompt && (
             <div
               className="flex flex-wrap items-center justify-between gap-3 border-b border-violet-500/40 bg-violet-500/10 px-4 py-2.5 text-[11px] text-violet-200"
