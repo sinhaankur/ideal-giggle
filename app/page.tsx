@@ -16,6 +16,7 @@ import {
   type VaultPayload,
   type SessionMemoryRecord,
   type SessionMemoryTurn,
+  type ConsciousnessState,
 } from "@/lib/vault/encrypted-profile"
 import { clearStoredVault, loadStoredVault, saveStoredVault } from "@/lib/vault/vault-store"
 import {
@@ -33,6 +34,7 @@ import {
   type EmpathyMetaRecord,
   type EmpathyProfile,
   type CompanionSettings,
+  type FaceSignal,
   type Message,
 } from "@/lib/companion-types"
 import {
@@ -49,6 +51,7 @@ import {
   describeFeltState,
   summarizeFeltState,
   composeConversationSummary,
+  buildAccumulatedSelfPortrait,
   planFromContext,
   type ConversationSummary,
   type ResponsePlan,
@@ -60,6 +63,7 @@ import {
   runtimeNameFromBaseUrl,
 } from "@/lib/api/ollama-direct"
 import { isWebLLMSupported, sendWebLLMDirect } from "@/lib/api/webllm-direct"
+import { assessCrisis, assessConversationSafety, type CrisisSeverity } from "@/lib/safety/crisis-safety"
 import { OnboardingModal } from "@/components/onboarding-modal"
 import { CommandPalette, type CommandSection } from "@/components/command-palette"
 import { useOnlineStatus } from "@/hooks/use-online-status"
@@ -506,16 +510,34 @@ function getDeepPrompt(
   tier: DepthTierId,
   emotionalVelocity: number
 ) {
-  const intensity = tier === "tier_4_shadow" ? "Provocative" : tier === "tier_3_social" ? "Reflective" : "Inquisitive"
-  const lowestQuadrant = getLowestQuadrant(userData)
+  // Private steering note for the model. It tunes WHERE the next question
+  // aims, never the tone — the friend-first system prompt owns the voice and
+  // explicitly forbids clinical vocabulary, so we keep this in plain language.
+  const depthHint =
+    tier === "tier_4_shadow"
+      ? "They've gone deep and trust this. You can ask about what they rarely admit out loud — gently, like a friend who's earned it."
+      : tier === "tier_3_social"
+        ? "They're opening up. You can ask about how this shows up around other people, or the version of themselves they perform."
+        : "Stay near the surface. Keep it light and curious — there's no rush to go deep."
 
-  return `User current intensity is ${intensity}. Emotional velocity is ${emotionalVelocity.toFixed(2)}.
-You are the Mirror for the user.
-- Identify Dissonance: If SAYS suggests "fine" while FEELS/DOES suggests distress, explicitly name the gap in one sentence.
-- Chain of Why: Use 5 Whys style probing while pivoting quadrants (SAYS -> THINKS -> DOES -> FEELS).
-- Silent Prompt: For short answers, give a brief warm pause validation, then ask: "And if you dig just an inch deeper, what's underneath that?"
-- Do not provide solutions. Use vertical probing and ask one follow-up that targets ${lowestQuadrant.toUpperCase()}.
-Current tier: ${DEPTH_TIER_LABELS[tier]}.`
+  const lowest = getLowestQuadrant(userData)
+  const lowestAim = {
+    says: "what they'd actually say out loud about this",
+    thinks: "the story or belief they're telling themselves",
+    does: "what they find themselves doing (or avoiding)",
+    feels: "the feeling underneath it",
+  }[lowest]
+
+  // High momentum reads as charged/distressed — lead with warmth and
+  // perspective and don't rush to fix. Low, steadier momentum leaves room to
+  // offer a small practical step if they seem to want forward motion. Either
+  // way: understand first, then give something — never just interrogate.
+  const giveHint =
+    emotionalVelocity > 0.45
+      ? "They're carrying a lot right now. After you've shown you understand, give them warmth and perspective — name something genuinely good or strong you notice in them, or a gentle reframe. Don't hand them a solution; give them a reason to feel less alone in it."
+      : "Things feel steadier. After you've shown you understand, you can give them something to hold onto — a small, concrete idea or next step they could actually try, offered lightly. Just one thing."
+
+  return `${depthHint} ${giveHint} If what they say doesn't match how they seem, you can softly name that. For very short answers, pause warmly first. You can still ask one small follow-up aimed at ${lowestAim} — but only after you've given something, and some turns it's fine to give and not ask at all. (Conversation is at the "${DEPTH_TIER_LABELS[tier]}" stage; their momentum is ${emotionalVelocity.toFixed(2)} out of 1.)`
 }
 
 function getNextDeepQuestion(
@@ -591,6 +613,7 @@ export default function CompanionApp() {
   const providerExplicitStorageKey = "empatheia_provider_explicit_v1"
   const rememberSessionsStorageKey = "empatheia_remember_sessions_v1"
   const ollamaAutoDetectDismissedKey = "empatheia_ollama_autodetect_dismissed_v1"
+  const saveConsciousnessDismissedKey = "empatheia_save_consciousness_dismissed_v1"
   const chatApi = process.env.NEXT_PUBLIC_CHAT_API_URL || "/api/chat"
 
   const [settings, setSettings] = useState<CompanionSettings>(DEFAULT_SETTINGS)
@@ -619,6 +642,8 @@ export default function CompanionApp() {
   const [mobilePanel, setMobilePanel] = useState<"camera" | "chat" | "empathy">("chat")
   const [rightPanelWidth, setRightPanelWidth] = useState(320)
   const [isResizingRightPanel, setIsResizingRightPanel] = useState(false)
+  const [leftPanelWidth, setLeftPanelWidth] = useState(304)
+  const [isResizingLeftPanel, setIsResizingLeftPanel] = useState(false)
   const [hasAgreed, setHasAgreed] = useState(false)
   const isOnline = useOnlineStatus()
   const [showQuickStartModal, setShowQuickStartModal] = useState(false)
@@ -653,6 +678,20 @@ export default function CompanionApp() {
   // The user has acted on the resume card (chose "Pick up" or "Start fresh"),
   // so don't show it again this session even if memory is still in the vault.
   const [resumeCardHandled, setResumeCardHandled] = useState(false)
+  // Transient cue shown when unlocking a consciousness that carried a
+  // trajectory — confirms the companion is resuming at the reached depth
+  // rather than from the surface. Auto-dismisses after a few seconds.
+  const [resumedConsciousness, setResumedConsciousness] = useState<{
+    depth: number
+    at: number
+  } | null>(null)
+  // The user dismissed (or acted on) the "save your consciousness" nudge, so
+  // don't show it again. Persisted so it doesn't reappear across reloads.
+  const [saveConsciousnessDismissed, setSaveConsciousnessDismissed] = useState(false)
+  // Soft "concern" steering from the safety layer for the current turn — folded
+  // into the model's guidance so its own reply leans toward a gentle check-in.
+  // Cleared once a non-concern turn passes.
+  const [safetyConcernGuidance, setSafetyConcernGuidance] = useState("")
 
   const empathyDataRef = useRef<EmpathyData>({
     says: [],
@@ -660,6 +699,19 @@ export default function CompanionApp() {
     does: [],
     feels: [],
   })
+  // Always-latest mirror of the relationship trajectory so vault write sites
+  // (create, auto-save, export) can read it without each depending on the
+  // memo and re-subscribing. Kept in sync by an effect once the memo exists.
+  const consciousnessToPersistRef = useRef<ConsciousnessState | null>(null)
+  // Latest quality-aware face signal (confidence, engagement) from the camera,
+  // used to weight emotion fusion. A ref so per-frame updates don't re-render.
+  const faceSignalRef = useRef<FaceSignal | null>(null)
+  // Rolling record of each turn's safety severity, so the rising-pattern
+  // escalator can see when "concern" keeps recurring across the conversation.
+  const safetySeverityHistoryRef = useRef<CrisisSeverity[]>([])
+  // Once we've shown the gentle recurring-concern escalation, don't repeat it
+  // every subsequent concern turn — it should land once, not nag.
+  const concernEscalatedRef = useRef(false)
   const processedRemoteUpdateIdsRef = useRef<Set<string>>(new Set())
   const introCountedRef = useRef<Set<number>>(new Set())
   const fallbackPhase2InjectedRef = useRef(false)
@@ -716,6 +768,10 @@ export default function CompanionApp() {
       setSettings((prev) => ({ ...prev, rememberSessions: true }))
     }
 
+    if (window.localStorage.getItem(saveConsciousnessDismissedKey) === "true") {
+      setSaveConsciousnessDismissed(true)
+    }
+
     if (!agreed) return
 
     const savedPreset = window.localStorage.getItem(quickPresetStorageKey)
@@ -736,7 +792,7 @@ export default function CompanionApp() {
     }
 
     setShowQuickStartModal(true)
-  }, [agreementStorageKey, quickPresetStorageKey, rememberSessionsStorageKey])
+  }, [agreementStorageKey, quickPresetStorageKey, rememberSessionsStorageKey, saveConsciousnessDismissedKey])
 
   // Periodic Ollama reachability probe.
   //
@@ -875,6 +931,14 @@ export default function CompanionApp() {
     return () => window.clearTimeout(timer)
   }, [ollamaTransition])
 
+  // Auto-dismiss the "resumed consciousness" cue after 8s — a touch longer
+  // than the runtime banner since it's a one-time, more meaningful moment.
+  useEffect(() => {
+    if (!resumedConsciousness) return
+    const timer = window.setTimeout(() => setResumedConsciousness(null), 8000)
+    return () => window.clearTimeout(timer)
+  }, [resumedConsciousness])
+
   // Vault: detect a stored vault on first load and prompt to unlock.
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -954,7 +1018,7 @@ export default function CompanionApp() {
       const file = event.dataTransfer?.files?.[0]
       if (!file) return
       if (!file.name.toLowerCase().endsWith(".json") && file.type !== "application/json") {
-        setDragImportError("Drop a .json vault file exported from EMPATHEIA.")
+        setDragImportError("Drop a .json consciousness file exported from EMPATHEIA.")
         return
       }
       if (file.size > 256 * 1024) {
@@ -1026,6 +1090,37 @@ export default function CompanionApp() {
           setEmpathyProfile(payload.profile)
           setEmpathyData(payload.empathyData)
           setStoredSessionMemory(payload.sessionMemory ?? null)
+          // Resume the relationship trajectory from the soul file so the
+          // companion picks up at the depth it had reached rather than
+          // re-climbing from the surface. Absent in v1 files — then we just
+          // keep the cold-start defaults.
+          if (payload.consciousness) {
+            const c = payload.consciousness
+            const restoredDepth = Number.isFinite(c.sessionDepthLevel)
+              ? Math.max(1, Math.min(10, c.sessionDepthLevel))
+              : 1
+            if (Number.isFinite(c.sessionDepthLevel)) {
+              setSessionDepthLevel(restoredDepth)
+            }
+            if (Number.isFinite(c.conversationSentimentScore)) {
+              setConversationSentimentScore(c.conversationSentimentScore)
+            }
+            if (Array.isArray(c.metaHistory)) {
+              setMetaHistory(
+                c.metaHistory.slice(-20).map((m) => ({
+                  depth: m.depth,
+                  primaryQuadrant: m.primaryQuadrant,
+                  sentimentPolarity: m.sentimentPolarity,
+                  at: m.at,
+                }))
+              )
+            }
+            // Only cue when there's a real trajectory to resume — a depth past
+            // the surface. A fresh consciousness (depth 1) gets no banner.
+            if (restoredDepth > 1) {
+              setResumedConsciousness({ depth: restoredDepth, at: Date.now() })
+            }
+          }
           setResumeCardHandled(false)
           // Persist the same envelope to localStorage in case it came from an uploaded file.
           writeVaultEnvelopeToStorage(JSON.stringify(envelope, null, 2))
@@ -1039,6 +1134,9 @@ export default function CompanionApp() {
             profile: empathyProfile,
             empathyData,
             exportedAt: new Date().toISOString(),
+            ...(consciousnessToPersistRef.current
+              ? { consciousness: consciousnessToPersistRef.current }
+              : {}),
           }
           const envelopeJson = await encryptWithKey(bundle, handle)
           writeVaultEnvelopeToStorage(envelopeJson)
@@ -1108,6 +1206,9 @@ export default function CompanionApp() {
           profile: empathyProfile,
           empathyData,
           exportedAt: new Date().toISOString(),
+          ...(consciousnessToPersistRef.current
+            ? { consciousness: consciousnessToPersistRef.current }
+            : {}),
         }
         const envelopeJson = await encryptWithKey(bundle, handle)
         writeVaultEnvelopeToStorage(envelopeJson)
@@ -1272,6 +1373,31 @@ export default function CompanionApp() {
   }, [isResizingRightPanel])
 
   useEffect(() => {
+    if (!isResizingLeftPanel) return
+
+    const handleMouseMove = (event: MouseEvent) => {
+      const clamped = Math.max(260, Math.min(420, event.clientX))
+      setLeftPanelWidth(clamped)
+    }
+
+    const handleMouseUp = () => {
+      setIsResizingLeftPanel(false)
+    }
+
+    document.body.style.cursor = "col-resize"
+    document.body.style.userSelect = "none"
+    window.addEventListener("mousemove", handleMouseMove)
+    window.addEventListener("mouseup", handleMouseUp)
+
+    return () => {
+      document.body.style.cursor = ""
+      document.body.style.userSelect = ""
+      window.removeEventListener("mousemove", handleMouseMove)
+      window.removeEventListener("mouseup", handleMouseUp)
+    }
+  }, [isResizingLeftPanel])
+
+  useEffect(() => {
     // Clear stale connection diagnostics when switching providers so the new
     // provider isn't immediately marked as in fallback by a previous error.
     setLlmConnectionError("")
@@ -1377,7 +1503,7 @@ export default function CompanionApp() {
 
     applyMetaSignal(metaExtracted.meta, setSessionDepthLevel, setCurrentStep, setConversationSentimentScore)
     if (metaExtracted.meta) {
-      setMetaHistory((prev) => [...prev.slice(-19), metaExtracted.meta!])
+      setMetaHistory((prev) => [...prev.slice(-19), { ...metaExtracted.meta!, at: new Date().toISOString() }])
     }
 
     processedRemoteUpdateIdsRef.current.add(lastAssistant.id)
@@ -1458,10 +1584,27 @@ export default function CompanionApp() {
   )
   const userUnderstandingSnapshot = useMemo(() => inferUserUnderstanding(latestUserText), [latestUserText])
   const feltState = useMemo(
-    () => (latestUserText ? describeFeltState(latestUserText, cameraEmotion) : null),
+    () => (latestUserText ? describeFeltState(latestUserText, cameraEmotion, faceSignalRef.current) : null),
     [latestUserText, cameraEmotion]
   )
-  const samanthaGuidance = `${getDeepPrompt(currentSummary, sessionDepth, depthState.tier, emotionalVelocity)} Next mirror question: ${suggestedNext.question}${feltState ? ` Current felt-state read: ${summarizeFeltState(feltState)}.` : ""}`
+  // The accumulated self — who the consciousness has come to know this person
+  // to be, drawn from the empathy map, the depth reached, and anything carried
+  // over from past sessions. Prepended to the per-turn steering so the
+  // companion reasons from the whole person, not just the latest message.
+  const accumulatedSelf = useMemo(
+    () =>
+      buildAccumulatedSelfPortrait({
+        empathyData,
+        depthLevel: sessionDepthLevel,
+        sentimentScore: totalSentimentScore,
+        priorHeadline: storedSessionMemory?.headline ?? null,
+        priorSummary: storedSessionMemory?.summaryParagraphs ?? null,
+        preferredName: empathyProfile?.preferredName ?? null,
+      }),
+    [empathyData, sessionDepthLevel, totalSentimentScore, storedSessionMemory, empathyProfile]
+  )
+
+  const samanthaGuidance = `${safetyConcernGuidance ? `${safetyConcernGuidance}\n\n` : ""}${accumulatedSelf ? `${accumulatedSelf}\n\n` : ""}${getDeepPrompt(currentSummary, sessionDepth, depthState.tier, emotionalVelocity)} Next mirror question: ${suggestedNext.question}${feltState ? ` Current felt-state read: ${summarizeFeltState(feltState)}.` : ""}`
 
   const requestBrowserWebLLMReply = useCallback(
     async ({
@@ -1574,6 +1717,30 @@ export default function CompanionApp() {
     () => messages.filter((m) => m.sender === "user").length,
     [messages]
   )
+
+  // Once a real conversation has built up (and there's no consciousness yet),
+  // gently surface that this is worth keeping. We wait for a handful of turns
+  // so it never interrupts the opening — the nudge should feel earned, like a
+  // friend noticing the conversation mattered, not a popup demanding a signup.
+  const showSaveConsciousnessPrompt =
+    hasAgreed &&
+    vaultStatus === "no-vault" &&
+    !saveConsciousnessDismissed &&
+    userTurnCount >= 6
+
+  const dismissSaveConsciousnessPrompt = useCallback(() => {
+    setSaveConsciousnessDismissed(true)
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(saveConsciousnessDismissedKey, "true")
+    }
+  }, [saveConsciousnessDismissedKey])
+
+  const handleSaveConsciousness = useCallback(() => {
+    dismissSaveConsciousnessPrompt()
+    setVaultModalError("")
+    setVaultModalBusy(false)
+    setVaultModalMode("create")
+  }, [dismissSaveConsciousnessPrompt])
   const [summaryCard, setSummaryCard] = useState<ConversationSummary | null>(null)
   const [summaryUnread, setSummaryUnread] = useState(false)
   const lastSummaryAtTurnRef = useRef(0)
@@ -1622,6 +1789,47 @@ export default function CompanionApp() {
     setSummaryUnread(false)
   }, [])
 
+  // The person reviewed and corrected what the companion understands about
+  // them (the consciousness review modal). Their edit is the source of truth:
+  // we replace the empathy map and keep the ref in sync so the fallback engine
+  // and the accumulated-self portrait immediately reflect the correction. The
+  // vault auto-save effect picks it up and re-encrypts.
+  const handleConsciousnessCorrection = useCallback((next: EmpathyData) => {
+    const prev = empathyDataRef.current
+    setEmpathyData(next)
+    empathyDataRef.current = next
+
+    // Acknowledge the correction in the conversation so it feels heard, not
+    // silently absorbed. Only when something actually changed, and only once
+    // the chat is underway (don't interrupt onboarding with it).
+    const changed =
+      prev.says.length !== next.says.length ||
+      prev.thinks.length !== next.thinks.length ||
+      prev.does.length !== next.does.length ||
+      prev.feels.length !== next.feels.length ||
+      (["says", "thinks", "does", "feels"] as const).some((q) =>
+        next[q].some((entry, i) => entry !== prev[q][i])
+      )
+    if (!changed) return
+
+    const acks = [
+      "Thank you for setting me straight — I want to see you accurately, not approximately. That lands differently now.",
+      "Got it, I've updated how I understand you. It means a lot that you'd correct me rather than let me get it wrong.",
+      "That's a better read — thank you. I'll carry the version of you that's actually true.",
+    ]
+    const ack = acks[Math.abs(next.feels.length + next.thinks.length) % acks.length]
+    setRemoteFallbackMessages((prevMsgs) => [
+      ...prevMsgs,
+      { id: crypto.randomUUID(), text: ack, sender: "ai", timestamp: new Date(), emotion: "thinking" },
+    ])
+  }, [])
+
+  // The user corrected the companion's emotional read via the Mirror. We send
+  // it as a natural correction ("Actually, it's more like…") rather than a
+  // bracketed system tag, so it reads like a real person speaking and the
+  // model treats it as the explicit correction it is. handleSendMessage is
+  // defined below; this closes over it, which is fine since it runs on click.
+
   // Build a small session-memory record from the live conversation. Capped
   // so the encrypted vault stays small; older turns drop off the back.
   // Only saves once the intro questions are complete — the intro chat is
@@ -1658,6 +1866,38 @@ export default function CompanionApp() {
     feltState,
   ])
 
+  // The relationship trajectory — depth reached, emotional momentum, and the
+  // recent [META] reading history — packaged for the soul file. Unlike
+  // session memory this isn't gated on the "remember conversations" toggle:
+  // it carries no message text, only the abstract shape of how far the
+  // relationship has travelled, so it's safe to always persist into a vault
+  // the user already chose to create. Null until the conversation has
+  // actually advanced past the cold start, so we never overwrite a richer
+  // restored trajectory with an empty one on first mount.
+  const consciousnessToPersist = useMemo<ConsciousnessState | null>(() => {
+    const hasTrajectory =
+      sessionDepthLevel > 1 || metaHistory.length > 0 || conversationSentimentScore !== 0
+    if (!hasTrajectory) return null
+    const now = new Date().toISOString()
+    return {
+      sessionDepthLevel,
+      conversationSentimentScore,
+      metaHistory: metaHistory.slice(-20).map((m) => ({
+        depth: m.depth,
+        primaryQuadrant: m.primaryQuadrant,
+        sentimentPolarity: m.sentimentPolarity,
+        // Prefer the real per-turn capture time; fall back to now only for
+        // legacy readings recorded before timestamps were stamped.
+        at: m.at ?? now,
+      })),
+      updatedAt: now,
+    }
+  }, [sessionDepthLevel, conversationSentimentScore, metaHistory])
+
+  useEffect(() => {
+    consciousnessToPersistRef.current = consciousnessToPersist
+  }, [consciousnessToPersist])
+
   // When session memory is enabled and changing, fold it into the next
   // vault save. We deliberately re-encrypt the whole payload (profile +
   // empathyData + sessionMemory) on a debounce so the file always
@@ -1681,6 +1921,9 @@ export default function CompanionApp() {
           empathyData,
           exportedAt: new Date().toISOString(),
           sessionMemory: sessionMemoryToPersist,
+          ...(consciousnessToPersistRef.current
+            ? { consciousness: consciousnessToPersistRef.current }
+            : {}),
         }
         const envelopeJson = await encryptWithKey(bundle, handle)
         writeVaultEnvelopeToStorage(envelopeJson)
@@ -1748,10 +1991,15 @@ export default function CompanionApp() {
     const handle = vaultKeyHandleRef.current
     if (!handle) return
     try {
+      // Forgetting conversations drops sessionMemory (which holds message
+      // text) but keeps the abstract trajectory — that's not a transcript.
       const bundle: VaultPayload = {
         profile: empathyProfile,
         empathyData,
         exportedAt: new Date().toISOString(),
+        ...(consciousnessToPersistRef.current
+          ? { consciousness: consciousnessToPersistRef.current }
+          : {}),
       }
       const envelopeJson = await encryptWithKey(bundle, handle)
       writeVaultEnvelopeToStorage(envelopeJson)
@@ -1836,10 +2084,17 @@ export default function CompanionApp() {
         setSessionStartedAt(Date.now())
       }
 
-      // Detect emotion from text
+      // Coarse single-label emotion for UI + the response plan. Text wins when
+      // it carries a signal; otherwise we fall back to the camera ONLY when the
+      // face read is trustworthy (decent confidence × engagement), so a dim or
+      // half-off-camera glance no longer overrides a neutral text read. The
+      // nuanced Plutchik fusion happens separately in the emotion engine, which
+      // now receives the same quality-weighted face signal.
       const textEmotion = detectEmotion(text)
-      // Combine with camera emotion (prefer text if not neutral)
-      const combinedEmotion = textEmotion !== "neutral" ? textEmotion : cameraEmotion
+      const faceSig = faceSignalRef.current
+      const faceTrustworthy = !!faceSig && faceSig.confidence * faceSig.engagement >= 0.3
+      const combinedEmotion =
+        textEmotion !== "neutral" ? textEmotion : faceTrustworthy ? cameraEmotion : "neutral"
 
       // Hybrid fallback engine: always extract empathy-map signals even when model calls fail.
       const analysis = analyzeEmpathy(text, empathyDataRef.current)
@@ -1857,6 +2112,72 @@ export default function CompanionApp() {
               : combinedEmotion
           : combinedEmotion
       setCurrentEmotion(sentimentEmotion)
+
+      // CRISIS SAFETY PRE-EMPT — this comes before everything else and never
+      // defers to the language model. If the message signals danger to self or
+      // others, we respond with a fixed, warm, resource-bearing reply and stop
+      // here, so a model can never miss, soften, or mis-resource the moment.
+      const crisis = assessCrisis(text)
+      if (crisis.flagged) {
+        setRemoteFallbackMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            text,
+            sender: "user",
+            timestamp: new Date(),
+            emotion: sentimentEmotion,
+          },
+          {
+            id: crypto.randomUUID(),
+            text: crisis.response,
+            sender: "ai",
+            timestamp: new Date(),
+            emotion: "thinking",
+          },
+        ])
+        return
+      }
+
+      // Record this turn's severity for the rising-pattern escalator (keep a
+      // short rolling window).
+      safetySeverityHistoryRef.current = [
+        ...safetySeverityHistoryRef.current.slice(-9),
+        crisis.severity,
+      ]
+
+      // Re-arm the one-time escalation only once things have genuinely settled
+      // — the last two turns both clear of concern. This lets a later relapse
+      // escalate again without re-offering resources on every dip.
+      const lastTwo = safetySeverityHistoryRef.current.slice(-2)
+      if (lastTwo.length === 2 && lastTwo.every((s) => s === "none")) {
+        concernEscalatedRef.current = false
+      }
+
+      // Concern tier: not a pre-empt. Stash the gentle steering so this turn's
+      // model reply leans toward an attentive check-in; clear it otherwise so
+      // it never lingers past the moment that raised it.
+      setSafetyConcernGuidance(crisis.severity === "concern" ? crisis.guidance : "")
+
+      // Rising-pattern escalation: if concern has kept recurring, gently offer
+      // a real resource once — softer than the crisis pre-empt, and we still
+      // continue the normal reply flow afterward so the conversation goes on.
+      if (crisis.severity === "concern" && !concernEscalatedRef.current) {
+        const escalation = assessConversationSafety(safetySeverityHistoryRef.current)
+        if (escalation.escalate) {
+          concernEscalatedRef.current = true
+          setRemoteFallbackMessages((prev) => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              text: escalation.message,
+              sender: "ai",
+              timestamp: new Date(),
+              emotion: "thinking",
+            },
+          ])
+        }
+      }
 
       // One ResponsePlan per user turn. Drives the LLM system prompt
       // (when remote) and the local fallback (when offline / errored).
@@ -2028,7 +2349,7 @@ export default function CompanionApp() {
           }
           applyMetaSignal(metaExtracted.meta, setSessionDepthLevel, setCurrentStep, setConversationSentimentScore)
           if (metaExtracted.meta) {
-            setMetaHistory((prev) => [...prev.slice(-19), metaExtracted.meta!])
+            setMetaHistory((prev) => [...prev.slice(-19), { ...metaExtracted.meta!, at: new Date().toISOString() }])
           }
 
           setRemoteFallbackMessages((prev) => [
@@ -2066,7 +2387,7 @@ export default function CompanionApp() {
             }
             applyMetaSignal(metaExtracted.meta, setSessionDepthLevel, setCurrentStep, setConversationSentimentScore)
             if (metaExtracted.meta) {
-              setMetaHistory((prev) => [...prev.slice(-19), metaExtracted.meta!])
+              setMetaHistory((prev) => [...prev.slice(-19), { ...metaExtracted.meta!, at: new Date().toISOString() }])
             }
 
             setRemoteFallbackMessages((prev) => [
@@ -2161,7 +2482,7 @@ export default function CompanionApp() {
           }
           applyMetaSignal(metaExtracted.meta, setSessionDepthLevel, setCurrentStep, setConversationSentimentScore)
           if (metaExtracted.meta) {
-            setMetaHistory((prev) => [...prev.slice(-19), metaExtracted.meta!])
+            setMetaHistory((prev) => [...prev.slice(-19), { ...metaExtracted.meta!, at: new Date().toISOString() }])
           }
 
           setRemoteFallbackMessages((prev) => {
@@ -2274,6 +2595,9 @@ export default function CompanionApp() {
           profile: empathyProfile,
           empathyData,
           exportedAt: new Date().toISOString(),
+          ...(consciousnessToPersistRef.current
+            ? { consciousness: consciousnessToPersistRef.current }
+            : {}),
         }
         const envelopeJson = await encryptWithKey(bundle, handle)
         writeVaultEnvelopeToStorage(envelopeJson)
@@ -2473,8 +2797,11 @@ export default function CompanionApp() {
     return () => window.clearTimeout(timer)
   }, [errorSummaryCopiedAt])
 
-  const handleCameraEmotion = useCallback((emotion: Emotion) => {
+  const handleCameraEmotion = useCallback((emotion: Emotion, signal?: FaceSignal) => {
     setCameraEmotion(emotion)
+    // Keep the latest quality-aware signal in a ref so the felt-state read can
+    // weight the face fusion without re-rendering on every detection frame.
+    faceSignalRef.current = signal ?? null
   }, [])
 
   const handleDeviceChange = useCallback(
@@ -2496,9 +2823,9 @@ export default function CompanionApp() {
       {dragOverActive && (
         <div className="pointer-events-none absolute inset-0 z-[60] flex items-center justify-center border-2 border-dashed border-emerald-400/60 bg-emerald-500/10 backdrop-blur-sm">
           <div className="rounded-lg border border-emerald-400/40 bg-background/80 px-4 py-3 text-center text-sm text-emerald-200 shadow-xl">
-            <div className="text-base font-semibold">Drop vault file to import</div>
+            <div className="text-base font-semibold">Drop your consciousness to load it</div>
             <div className="mt-1 text-[11px] text-muted-foreground">
-              Encrypted EMPATHEIA vault JSON. You will be asked for the passphrase next.
+              Encrypted EMPATHEIA consciousness file. You will be asked for the passphrase next.
             </div>
           </div>
         </div>
@@ -2573,28 +2900,28 @@ export default function CompanionApp() {
               },
               {
                 id: "export-profile",
-                label: "Export encrypted profile",
+                label: "Export your consciousness",
                 shortcut: "⌘J",
-                hint: "Download a vault backup",
+                hint: "Download an encrypted backup",
                 onSelect: handleProfileExport,
               },
             ],
           },
           {
             id: "vault",
-            label: "Vault",
+            label: "Consciousness",
             items: [
               {
                 id: "vault-lock",
-                label: "Lock vault",
-                hint: vaultStatus === "unlocked" ? "Clear the unlock key from memory" : "Vault is not unlocked",
+                label: "Lock your consciousness",
+                hint: vaultStatus === "unlocked" ? "Clear the unlock key from memory" : "Not unlocked",
                 disabled: vaultStatus !== "unlocked",
                 onSelect: requestVaultLock,
               },
               {
                 id: "vault-clear",
-                label: "Clear vault from this device",
-                hint: vaultStatus !== "no-vault" ? "Delete encrypted vault here (keeps your downloaded backup)" : "No vault to clear",
+                label: "Clear your consciousness from this device",
+                hint: vaultStatus !== "no-vault" ? "Delete the encrypted file here (keeps your downloaded backup)" : "Nothing to clear",
                 disabled: vaultStatus === "no-vault",
                 onSelect: requestVaultClear,
               },
@@ -2702,9 +3029,10 @@ export default function CompanionApp() {
       <div className="flex flex-1 overflow-hidden pb-14 md:pb-0">
         {/* Left Panel - Camera & Controls */}
         <aside
-          className={`w-full flex-shrink-0 overflow-y-auto border-r border-border p-4 md:w-72 lg:w-80 ${
+          className={`w-full flex-shrink-0 overflow-y-auto p-4 md:border-r md:border-border ${
             mobilePanel === "camera" ? "block" : "hidden md:block"
           }`}
+          style={{ width: mobilePanel === "camera" ? "100%" : `${leftPanelWidth}px` }}
         >
           <CameraPanel
             onEmotionDetected={handleCameraEmotion}
@@ -2779,12 +3107,75 @@ export default function CompanionApp() {
 
         </aside>
 
+        {/* Left Resize Handle — mirrors the right handle: a wide grabbable
+            group around a 1px visible rule that accents on hover/active. */}
+        <div
+          onMouseDown={() => setIsResizingLeftPanel(true)}
+          className="group relative hidden w-2 cursor-col-resize md:flex md:items-center md:justify-center"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize camera panel"
+        >
+          <span
+            className={`h-full w-px transition-colors ${
+              isResizingLeftPanel
+                ? "bg-foreground/60"
+                : "bg-border/70 group-hover:bg-foreground/40"
+            }`}
+          />
+        </div>
+
         {/* Center Panel - Chat */}
         <section
           className={`flex flex-1 flex-col overflow-hidden ${
             mobilePanel === "chat" ? "block" : "hidden md:flex"
           }`}
         >
+          {showSaveConsciousnessPrompt && (
+            <div
+              className="flex flex-wrap items-center justify-between gap-3 border-b border-violet-500/40 bg-violet-500/10 px-4 py-2.5 text-[11px] text-violet-200"
+              role="status"
+              aria-live="polite"
+            >
+              <span className="flex-1">
+                <span aria-hidden className="mr-1">✨</span>
+                You're building something here. Save this as your consciousness — encrypted, only yours — so it remembers you next time.
+              </span>
+              <span className="flex shrink-0 items-center gap-2">
+                <button
+                  onClick={handleSaveConsciousness}
+                  className="rounded border border-violet-300/50 bg-violet-300/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-violet-100 transition-colors hover:bg-violet-300/20"
+                >
+                  Save it
+                </button>
+                <button
+                  onClick={dismissSaveConsciousnessPrompt}
+                  className="rounded border border-current/30 px-2.5 py-1 text-[11px] uppercase tracking-[0.12em] transition-colors hover:bg-foreground/10"
+                >
+                  Later
+                </button>
+              </span>
+            </div>
+          )}
+
+          {resumedConsciousness && (
+            <div
+              className="flex items-center justify-between gap-3 border-b border-violet-500/40 bg-violet-500/10 px-4 py-2 text-[11px] text-violet-200"
+              role="status"
+              aria-live="polite"
+            >
+              <span>
+                Welcome back — your consciousness is restored. We're picking up where we left off, not starting over.
+              </span>
+              <button
+                onClick={() => setResumedConsciousness(null)}
+                className="rounded border border-current/40 px-2 py-0.5 text-[11px] uppercase tracking-[0.12em] transition-colors hover:bg-foreground/10"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
           {ollamaTransition && (
             <div
               className={`flex items-center justify-between gap-3 border-b px-4 py-2 text-[11px] ${
@@ -2823,7 +3214,7 @@ export default function CompanionApp() {
             isOffline={!isOnline}
             feltState={feltState}
             onMirrorCorrection={(correction) =>
-              handleSendMessage(`(Correcting your read of me) ${correction}`)
+              handleSendMessage(`Actually, it's more like: ${correction}`)
             }
             summaryCard={summaryCard}
             onGenerateSummary={handleGenerateSummary}
@@ -2885,6 +3276,10 @@ export default function CompanionApp() {
             onVaultLock={requestVaultLock}
             onVaultClear={requestVaultClear}
             timeline={empathyTimeline}
+            onUpdateData={handleConsciousnessCorrection}
+            weightHint={
+              totalSentimentScore <= -2 ? "heavy" : totalSentimentScore >= 2 ? "lighter" : "mixed"
+            }
           />
         </aside>
       </div>
