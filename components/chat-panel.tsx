@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect, useCallback, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Send, Mic, MicOff, Volume2, VolumeX, BellOff, AlertTriangle, Wrench, RefreshCw, HeartHandshake, ShieldCheck, Cloud, WifiOff, Wind, BookOpen, Cpu } from "lucide-react"
+import { Send, Mic, MicOff, Volume2, VolumeX, BellOff, AlertTriangle, Wrench, RefreshCw, HeartHandshake, ShieldCheck, Cloud, WifiOff, Wind, BookOpen, Cpu, Sparkles } from "lucide-react"
 import { AIOrb } from "@/components/ai-orb"
 import { MirrorStrip } from "@/components/mirror-strip"
 import { BreathCoach } from "@/components/breath-coach"
@@ -11,6 +11,7 @@ import { ResumeSessionCard } from "@/components/resume-session-card"
 import type { SessionMemoryRecord } from "@/lib/vault/encrypted-profile"
 import type { Message, Emotion, CompanionSettings } from "@/lib/companion-types"
 import { detectHarshLanguage } from "@/lib/conversation/language-tone"
+import { splitIntoBeats } from "@/lib/conversation/message-beats"
 import {
   suggestPromptsFromFeltState,
   type ConversationSummary,
@@ -172,9 +173,19 @@ export function ChatPanel({
         setTimeout(() => {
           inputRef.current?.focus()
         }, 100)
+
+        // The last AI reply may render its closing question as a delayed
+        // second beat that grows the bubble after the initial scroll. Follow
+        // it once that beat has arrived so the question never lands off-screen.
+        if (!settings.accessibilityMode && splitIntoBeats(lastMessage.text).length > 1) {
+          const followUp = window.setTimeout(() => {
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+          }, 650)
+          return () => window.clearTimeout(followUp)
+        }
       }
     }
-  }, [messages])
+  }, [messages, settings.accessibilityMode])
 
   // Setup speech recognition
   useEffect(() => {
@@ -813,7 +824,17 @@ export function ChatPanel({
         )}
 
         <AnimatePresence initial={false}>
-        {messages.map((msg) => (
+        {messages.map((msg, index) => {
+          // Group consecutive same-sender messages so a multi-stream
+          // conversation (onboarding → live → fallback) reads as continuous
+          // turns: tighter spacing within a group, and the AI sender header
+          // only on the first message of each run.
+          const prev = index > 0 ? messages[index - 1] : null
+          const isGrouped = prev?.sender === msg.sender
+          // Still show the header when the AI's mode badge changes mid-run
+          // (e.g. switching into local fallback) so that transition stays legible.
+          const showAiHeader = msg.sender === "ai" && (!isGrouped || prev?.mode !== msg.mode)
+          return (
           <motion.div
             key={msg.id}
             layout
@@ -829,7 +850,7 @@ export function ChatPanel({
                 ? { duration: 0.15 }
                 : { type: "spring", stiffness: 320, damping: 28, mass: 0.6 }
             }
-            className={`mb-3 flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
+            className={`${isGrouped ? "mt-0.5" : "mt-3"} flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
           >
             <div
               className={`max-w-[85%] ${
@@ -838,7 +859,7 @@ export function ChatPanel({
                   : "border border-border bg-card text-foreground"
               } px-3 py-2`}
             >
-              {msg.sender === "ai" && (
+              {showAiHeader && (
                 <div className="mb-1 flex items-center gap-2">
                   <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
                     {settings.name}
@@ -860,7 +881,33 @@ export function ChatPanel({
                   )}
                 </div>
               )}
-              <p className="text-[12px] leading-relaxed">{msg.text}</p>
+              {msg.sender === "ai" ? (
+                splitIntoBeats(msg.text).map((beat, beatIndex) => (
+                  <motion.p
+                    key={beatIndex}
+                    // Let the beats arrive in sequence — reflection first, then
+                    // a small breath, then the question — so a reply lands like
+                    // someone speaking in turns rather than all at once. Reduced
+                    // motion shows them together, instantly.
+                    initial={
+                      settings.accessibilityMode || beatIndex === 0
+                        ? false
+                        : { opacity: 0, y: 4 }
+                    }
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={
+                      settings.accessibilityMode
+                        ? { duration: 0 }
+                        : { duration: 0.25, delay: beatIndex * 0.55, ease: "easeOut" }
+                    }
+                    className={`text-[12px] leading-relaxed ${beatIndex > 0 ? "mt-1.5" : ""}`}
+                  >
+                    {beat}
+                  </motion.p>
+                ))
+              ) : (
+                <p className="text-[12px] leading-relaxed">{msg.text}</p>
+              )}
               <div className={`mt-1 flex items-center gap-2 ${msg.sender === "user" ? "justify-end" : "justify-start"}`}>
                 <span className="text-[11px] text-muted-foreground/50">
                   {msg.timestamp.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
@@ -893,7 +940,8 @@ export function ChatPanel({
               </div>
             </div>
           </motion.div>
-        ))}
+          )
+        })}
         </AnimatePresence>
 
         <AnimatePresence>
@@ -910,7 +958,7 @@ export function ChatPanel({
               <div className="border border-border bg-card px-3 py-2">
                 <div className="flex items-center gap-1">
                   <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                    {settings.name} is thinking
+                    {settings.name} {feltState?.load === "high" ? "is here with you" : "is thinking"}
                   </span>
                   <span className="inline-flex gap-0.5">
                     {[0, 1, 2].map((i) => (
@@ -942,14 +990,17 @@ export function ChatPanel({
       <div className="relative border-t border-border px-4 py-3">
         {messages.length > 0 && feltState && input.trim().length === 0 && !isOnboardingActive && (
           <div className="mb-2 flex flex-wrap items-center gap-1.5" data-testid="felt-prompt-strip">
-            <span className="text-[10px] uppercase tracking-wide text-muted-foreground/60">
-              Try
+            <span className="inline-flex items-center gap-1 text-[10px] lowercase tracking-wide text-muted-foreground/70">
+              <Sparkles className="h-3 w-3 text-violet-300/70" />
+              {feltState.primary
+                ? `since you're feeling ${feltState.primary}, maybe`
+                : "if it helps, maybe"}
             </span>
             {quickPrompts.map((prompt, index) => (
               <button
                 key={prompt}
                 onClick={() => applyQuickPrompt(index)}
-                className="rounded border border-border bg-card px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-muted-foreground/50 hover:text-foreground"
+                className="rounded-full border border-violet-500/20 bg-violet-500/5 px-2.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-violet-400/50 hover:bg-violet-500/10 hover:text-foreground"
               >
                 {prompt}
               </button>
