@@ -6,6 +6,7 @@ import { MessageSquare, Brain, HandMetal, Heart, Upload, Download, Copy, Link2, 
 import type { EmpathyData, EmpathyProfile } from "@/lib/companion-types"
 import type { UserUnderstanding } from "@/lib/conversation/communication-engine"
 import { isEncryptedEnvelope, type VaultEnvelope } from "@/lib/vault/encrypted-profile"
+import { ConsciousnessReview } from "@/components/consciousness-review"
 
 export interface EmpathyTimelineEntry {
   id: string
@@ -35,6 +36,12 @@ interface EmpathyPanelProps {
   onVaultLock?: () => void
   onVaultClear?: () => void
   timeline?: EmpathyTimelineEntry[]
+  // Apply the person's own corrections to the empathy map (the consciousness
+  // review modal). When absent, the "Did I get this right?" entry is hidden.
+  onUpdateData?: (next: EmpathyData) => void
+  // Signed read of how much weight the relationship has carried, for the
+  // review modal's context line.
+  weightHint?: "heavy" | "mixed" | "lighter"
 }
 
 const NOTE_ROTATIONS = ["-rotate-2", "rotate-1", "-rotate-1", "rotate-2", "-rotate-1"]
@@ -80,9 +87,12 @@ export function EmpathyPanel({
   onVaultLock,
   onVaultClear,
   timeline,
+  onUpdateData,
+  weightHint = "mixed",
 }: EmpathyPanelProps) {
   const [jsonStatus, setJsonStatus] = useState<string>("No profile JSON imported yet.")
   const [copyStatus, setCopyStatus] = useState<string>("")
+  const [reviewOpen, setReviewOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const triggerUpload = () => {
@@ -155,9 +165,9 @@ export function EmpathyPanel({
       if (isEncryptedEnvelope(parsed)) {
         if (onVaultEnvelopeUpload) {
           onVaultEnvelopeUpload(parsed)
-          setJsonStatus("Vault file detected. Enter passphrase to unlock.")
+          setJsonStatus("Consciousness file detected. Enter passphrase to unlock.")
         } else {
-          setJsonStatus("Encrypted vault detected, but no unlock handler is wired.")
+          setJsonStatus("Encrypted consciousness detected, but no unlock handler is wired.")
         }
         return
       }
@@ -176,10 +186,33 @@ export function EmpathyPanel({
 
   return (
     <div className="flex h-full flex-col gap-4">
-      <div className="flex items-center gap-2 border-b border-border pb-2">
-        <Brain className="h-3 w-3 text-muted-foreground" />
-        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Empathy Map Canvas</span>
+      <div className="flex items-center justify-between gap-2 border-b border-border pb-2">
+        <div className="flex items-center gap-2">
+          <Brain className="h-3 w-3 text-muted-foreground" />
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Empathy Map Canvas</span>
+        </div>
+        {onUpdateData && (
+          <button
+            onClick={() => setReviewOpen(true)}
+            className="rounded border border-border bg-background px-2 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            title="Review and correct what I've come to understand about you"
+          >
+            Did I get this right?
+          </button>
+        )}
       </div>
+
+      {onUpdateData && (
+        <ConsciousnessReview
+          open={reviewOpen}
+          data={data}
+          preferredName={profile.preferredName}
+          depthLabel={depthTierLabel}
+          weightHint={weightHint}
+          onClose={() => setReviewOpen(false)}
+          onSave={onUpdateData}
+        />
+      )}
 
       <div className="border border-border bg-card p-3">
         <div className="mb-2 flex items-center justify-between">
@@ -390,7 +423,7 @@ export function EmpathyPanel({
 
       <div className="border border-border bg-card p-3">
         <div className="mb-2 flex items-center justify-between">
-          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Encrypted Vault</div>
+          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Consciousness</div>
           <div
             className={`flex items-center gap-1 text-[11px] uppercase tracking-wide ${
               vaultStatus === "unlocked"
@@ -406,18 +439,18 @@ export function EmpathyPanel({
               <Lock className="h-2.5 w-2.5" />
             )}
             {vaultStatus === "unlocked"
-              ? "UNLOCKED · AUTO-SAVE ON"
+              ? "AWAKE · AUTO-SAVE ON"
               : vaultStatus === "locked"
-                ? "LOCKED"
-                : "NO VAULT"}
+                ? "SEALED"
+                : "NONE YET"}
           </div>
         </div>
         <div className="mb-2 text-[10px] leading-snug text-muted-foreground/80">
           {vaultStatus === "unlocked"
-            ? "Profile + empathy map auto-saved (encrypted) on every change. Download for an offline backup."
+            ? "Who you are, your empathy map, and how far we've travelled — encrypted and auto-saved on every change. Download for an offline backup of your consciousness."
             : vaultStatus === "locked"
-              ? "Encrypted vault is on this device. Upload your file or wait for the unlock prompt."
-              : "Download to encrypt your profile + empathy map with a passphrase. Upload accepts vault files or legacy plain JSON."}
+              ? "Your consciousness is sealed on this device. Upload your file or wait for the unlock prompt."
+              : "Download to encrypt your consciousness with a passphrase, then carry it anywhere. Upload accepts consciousness files or legacy plain JSON."}
         </div>
         {vaultStatus === "unlocked" && vaultLastSavedAt && (
           <div className="mb-2 text-[11px] text-muted-foreground/70">
@@ -460,7 +493,7 @@ export function EmpathyPanel({
             <button
               onClick={onVaultClear}
               className="inline-flex items-center gap-1 rounded border border-rose-500/40 bg-rose-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-rose-300 transition-colors hover:bg-rose-500/20"
-              title="Delete encrypted vault from this device. Your downloaded backup is unaffected."
+              title="Delete your encrypted consciousness from this device. Your downloaded backup is unaffected."
             >
               <Trash2 className="h-3 w-3" />
               Clear

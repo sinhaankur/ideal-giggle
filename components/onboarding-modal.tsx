@@ -123,10 +123,11 @@ export function OnboardingModal({
         ) : (
           <>
             <h2 className={`mt-2 font-semibold text-foreground ${embedMode ? "text-base" : "text-lg"}`}>
-              Choose your conversation mode
+              Choose how private you want this to be
             </h2>
             <p className={`mt-2 text-muted-foreground ${embedMode ? "text-[12px]" : "text-sm"}`}>
-              Pick one and start chatting. You can change this later in Settings.
+              Your conversations build a consciousness of you. The local options keep it entirely on
+              this device — nothing leaves. Pick one and start chatting; you can change it later in Settings.
             </p>
 
             {/* Live local-runtime status, only shown on step 2 so the user
@@ -175,31 +176,39 @@ export function OnboardingModal({
 
             <div className="mt-3 grid gap-2">
               <button
-                onClick={() => onChoosePreset("fast-local")}
-                className="flex items-start gap-2 rounded border border-border bg-background p-3 text-left transition-colors hover:border-muted-foreground/50"
+                onClick={() => onChoosePreset("lite-empathy")}
+                className="flex items-start gap-2 rounded border border-emerald-500/40 bg-emerald-500/5 p-3 text-left transition-colors hover:border-emerald-500/70"
               >
-                <Cpu className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-400" />
+                <Feather className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-400" />
                 <div className="flex-1">
-                  <div className={`font-semibold text-foreground ${embedMode ? "text-[13px]" : "text-sm"}`}>
-                    Local LLM (Recommended)
+                  <div className={`flex items-center gap-1.5 font-semibold text-foreground ${embedMode ? "text-[13px]" : "text-sm"}`}>
+                    Lite Empathy (TinyLlama)
+                    <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-emerald-300">
+                      Recommended · Private
+                    </span>
                   </div>
                   <div className={`text-muted-foreground ${embedMode ? "text-[11px]" : "text-xs"}`}>
-                    Runs on your PC via Ollama. Private, free, no API key, no cloud round-trip.
+                    A small model (~600 MB) tuned for warm, reflective replies, running entirely on this device.
+                    Your consciousness never leaves your machine — no API key, no cloud, no logging.
                   </div>
                 </div>
               </button>
 
               <button
-                onClick={() => onChoosePreset("lite-empathy")}
+                onClick={() => onChoosePreset("fast-local")}
                 className="flex items-start gap-2 rounded border border-border bg-background p-3 text-left transition-colors hover:border-muted-foreground/50"
               >
-                <Feather className="mt-0.5 h-4 w-4 flex-shrink-0 text-sky-400" />
+                <Cpu className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-400" />
                 <div className="flex-1">
-                  <div className={`font-semibold text-foreground ${embedMode ? "text-[13px]" : "text-sm"}`}>
-                    Lite Empathy (TinyLlama)
+                  <div className={`flex items-center gap-1.5 font-semibold text-foreground ${embedMode ? "text-[13px]" : "text-sm"}`}>
+                    Full Local LLM
+                    <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-emerald-300">
+                      Private
+                    </span>
                   </div>
                   <div className={`text-muted-foreground ${embedMode ? "text-[11px]" : "text-xs"}`}>
-                    Lightweight local model (~600 MB) tuned for warm, reflective replies. Same private Ollama path, smaller download.
+                    A larger local model via Ollama for more depth. Same on-device privacy, but needs a
+                    one-time install and a bigger download.
                   </div>
                 </div>
               </button>

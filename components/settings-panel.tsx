@@ -295,7 +295,7 @@ export function SettingsPanel({
                   // off has to mean off. Confirm before destroying.
                   if (!next && hasSessionMemory) {
                     const ok = window.confirm(
-                      "Disable remembering and delete the existing session memory from your vault?"
+                      "Disable remembering and delete the stored conversations from your consciousness?"
                     )
                     if (!ok) return
                     onForgetSessionMemory?.()
@@ -308,13 +308,13 @@ export function SettingsPanel({
 
             <p className="text-xs text-muted-foreground">
               When on, the last few turns and the most recent reflection summary are stored
-              inside your encrypted vault so the next session can offer to pick up where you
-              left off. Off by default. Memory only persists while the vault is unlocked.
+              inside your encrypted consciousness so the next session can offer to pick up where
+              you left off. Off by default. Memory only persists while your consciousness is unlocked.
             </p>
 
             {vaultStatus !== "unlocked" && (
               <p className="mt-2 text-xs text-amber-300">
-                Unlock or create a vault first — memory needs encryption.
+                Unlock or create your consciousness first — memory needs encryption.
               </p>
             )}
 
