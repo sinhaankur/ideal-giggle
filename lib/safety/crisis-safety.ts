@@ -138,14 +138,41 @@ function containsPhrase(haystack: string, phrases: string[]): boolean {
   return false
 }
 
+// Structured, real, free, confidential crisis resources. Exported so UI
+// surfaces (e.g. an always-available Support panel) render the same vetted
+// lines the conversational safety layer uses — single source of truth.
+export interface CrisisResource {
+  region: string
+  text: string
+  // tel:/sms:/mailto:/https: link when one applies, for click-to-act on mobile.
+  href?: string
+}
+
+export const CRISIS_RESOURCES: CrisisResource[] = [
+  {
+    region: "US & Canada",
+    text: "Call or text 988 (Suicide & Crisis Lifeline), 24/7.",
+    href: "tel:988",
+  },
+  {
+    region: "UK & Ireland",
+    text: "Call Samaritans on 116 123, or email jo@samaritans.org.",
+    href: "tel:116123",
+  },
+  {
+    region: "Anywhere else",
+    text: "findahelpline.com lists free, confidential lines for your country.",
+    href: "https://findahelpline.com",
+  },
+  {
+    region: "Immediate danger",
+    text: "If you might act on this very soon, please treat it as an emergency — your local emergency number or nearest ER.",
+  },
+]
+
 // Shared resource block — real, free, confidential lines. International by
 // design so the response is useful regardless of where the person is.
-const RESOURCES = [
-  "• US & Canada: call or text 988 (Suicide & Crisis Lifeline), 24/7.",
-  "• UK & Ireland: call Samaritans on 116 123, or email jo@samaritans.org.",
-  "• Anywhere else: findahelpline.com lists free, confidential lines for your country.",
-  "• If you might act on this very soon, please treat it as an emergency — your local emergency number or nearest ER.",
-].join("\n")
+const RESOURCES = CRISIS_RESOURCES.map((r) => `• ${r.region}: ${r.text}`).join("\n")
 
 function suicideResponse(): string {
   return [
