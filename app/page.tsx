@@ -3020,6 +3020,11 @@ export default function CompanionApp() {
 
   return (
     <main className="relative flex h-screen flex-col overflow-hidden bg-background">
+      {/* Skip link — first focusable element, jumps keyboard users past the
+          header straight into the conversation. */}
+      <a href="#conversation" className="skip-link">
+        Skip to conversation
+      </a>
       {dragOverActive && (
         <div className="pointer-events-none absolute inset-0 z-[60] flex items-center justify-center border-2 border-dashed border-emerald-400/60 bg-emerald-500/10 backdrop-blur-sm">
           <div className="rounded-lg border border-emerald-400/40 bg-background/80 px-4 py-3 text-center text-sm text-emerald-200 shadow-xl">
@@ -3380,7 +3385,10 @@ export default function CompanionApp() {
 
         {/* Center Panel - Chat */}
         <section
-          className={`flex flex-1 flex-col overflow-hidden ${
+          id="conversation"
+          tabIndex={-1}
+          aria-label="Conversation with EMPATHEIA"
+          className={`flex flex-1 flex-col overflow-hidden focus:outline-none ${
             mobilePanel === "chat" ? "block" : "hidden md:flex"
           }`}
         >
