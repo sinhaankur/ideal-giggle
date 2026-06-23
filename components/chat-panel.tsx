@@ -984,9 +984,11 @@ export function ChatPanel({
                     </span>
                   )}
                   {msg.emotion && (
-                    <span className="text-[11px] uppercase tracking-wide text-muted-foreground/60">
-                      [{msg.emotion}]
-                    </span>
+                    <span
+                      className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40"
+                      title={`feeling: ${msg.emotion}`}
+                      aria-label={`feeling: ${msg.emotion}`}
+                    />
                   )}
                 </div>
               )}

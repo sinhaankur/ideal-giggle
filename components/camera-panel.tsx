@@ -1,7 +1,7 @@
 "use client"
 
 import { useRef, useState, useEffect, useCallback } from "react"
-import { Camera, CameraOff, Video, MonitorSmartphone, MapPin, ZoomIn } from "lucide-react"
+import { Camera, CameraOff, Video, MonitorSmartphone, MapPin, ZoomIn, ChevronDown, SlidersHorizontal } from "lucide-react"
 import * as faceapi from "face-api.js"
 import type { Emotion, FacialExpression, FaceSignal, LocationData } from "@/lib/companion-types"
 import {
@@ -75,6 +75,10 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
   // framing. Manual zoom is also the fallback when face tracking is disabled.
   const [autoZoomEnabled, setAutoZoomEnabled] = useState(true)
   const [manualZoom, setManualZoom] = useState(1)
+  // Diagnostics (expression bars, engagement/pose/blink readouts) are power-
+  // user detail. Hidden by default so the panel stays calm and talk-first;
+  // one toggle reveals the full read for anyone who wants it.
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [currentEmotion, setCurrentEmotion] = useState<Emotion>("neutral")
   const [error, setError] = useState<string | null>(null)
@@ -614,7 +618,27 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
         </div>
       )}
 
-      {isActive && depthReading?.detection && (
+      {/* Advanced read — opt-in. Keeps the default panel calm; reveals the
+          full engagement / pose / blink / expression detail and framing
+          controls on demand. Visible whenever the camera is on so it doesn't
+          flicker away when the face briefly drops out of frame. */}
+      {isActive && (
+        <button
+          onClick={() => setAdvancedOpen((v) => !v)}
+          className="flex items-center justify-between gap-2 rounded border border-border bg-card px-3 py-2 text-left transition-colors hover:bg-accent"
+          aria-expanded={advancedOpen}
+        >
+          <span className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground">
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+            Advanced read
+          </span>
+          <ChevronDown
+            className={`h-4 w-4 text-muted-foreground transition-transform ${advancedOpen ? "rotate-180" : ""}`}
+          />
+        </button>
+      )}
+
+      {isActive && advancedOpen && depthReading?.detection && (
         <div className="grid grid-cols-2 gap-2 rounded border border-border bg-card p-3 text-[11px]">
           <div>
             <div className="text-muted-foreground/70 uppercase tracking-wide text-[10px]">
@@ -657,8 +681,8 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
         </div>
       )}
 
-      {/* Facial Expression Analysis */}
-      {isActive && facialExpression.detection && (
+      {/* Facial Expression Analysis — part of the advanced read. */}
+      {isActive && advancedOpen && facialExpression.detection && (
         <div className="rounded border border-border bg-card p-3">
           <div className="mb-2 text-xs font-semibold text-muted-foreground">
             FACIAL EXPRESSION ANALYSIS
@@ -707,7 +731,9 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
         )}
       </button>
 
-      {/* Face Tracking Controls */}
+      {/* Face Tracking Controls — advanced only. Tracking + auto-zoom are on
+          by default, so a casual user never needs to touch these. */}
+      {isActive && advancedOpen && (
       <div className="rounded border border-border bg-card p-3">
         <div className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground">
           FACE TRACKING
@@ -771,6 +797,7 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
             : "Set a fixed zoom level. Turn Auto-Zoom on to let the camera follow your face."}
         </p>
       </div>
+      )}
 
       {/* Camera Selector */}
       {devices.length > 1 && (
