@@ -9,6 +9,7 @@ import {
   type FaceReading,
   type RawFaceDetection,
 } from "@/lib/face/depth-engine"
+import { LowLightProcessor } from "@/lib/face/low-light"
 
 // face-api detector tuned for a single user in front of a webcam. The
 // default inputSize is 416 which is overkill — 224 is ~3x faster and
@@ -17,6 +18,14 @@ import {
 const FACE_DETECTOR_OPTIONS = new faceapi.TinyFaceDetectorOptions({
   inputSize: 224,
   scoreThreshold: 0.5,
+})
+
+// In low light we accept weaker detections (the brightening pass restores the
+// face, but its confidence still runs lower than in good light), so the user
+// keeps being read instead of dropping to "no face".
+const FACE_DETECTOR_OPTIONS_LOWLIGHT = new faceapi.TinyFaceDetectorOptions({
+  inputSize: 224,
+  scoreThreshold: 0.3,
 })
 
 // Adaptive detection cadence. We run faster when something is changing (the
@@ -96,6 +105,7 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
   const nextIntervalRef = useRef<number>(DETECTION_INTERVAL_IDLE_MS)
   const lastEmotionRef = useRef<Emotion>("neutral")
   const depthEngineRef = useRef<FaceDepthEngine>(new FaceDepthEngine())
+  const lowLightRef = useRef<LowLightProcessor>(new LowLightProcessor())
   const [depthReading, setDepthReading] = useState<FaceReading | null>(null)
 
   // Geolocation is opt-in now. Auto-prompting on mount was hostile —
@@ -191,10 +201,18 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
 
     try {
       const video = videoRef.current
+      // Normalize for low light first: in dim/dark rooms the detector runs
+      // against a brightness-boosted copy of the frame so faces don't vanish.
+      // Bright frames pass through untouched (no extra work).
+      const { source, boosted } = lowLightRef.current.process(video)
+      const detectorOptions = boosted
+        ? FACE_DETECTOR_OPTIONS_LOWLIGHT
+        : FACE_DETECTOR_OPTIONS
+
       // Single-face detector is ~2x faster than detectAllFaces for the
       // selfie scenario where we always pick the first detection anyway.
       const detection = await faceapi
-        .detectSingleFace(video, FACE_DETECTOR_OPTIONS)
+        .detectSingleFace(source, detectorOptions)
         .withFaceLandmarks()
         .withFaceExpressions()
 
@@ -202,8 +220,12 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
         const box = detection.detection.box
 
         // Face-centered framing: move viewport center toward detected face center.
-        const videoWidth = video.videoWidth || 640
-        const videoHeight = video.videoHeight || 480
+        // The detector may run on a downscaled brightened canvas, so frame the
+        // viewport against the source we actually detected on.
+        const videoWidth =
+          source instanceof HTMLCanvasElement ? source.width : video.videoWidth || 640
+        const videoHeight =
+          source instanceof HTMLCanvasElement ? source.height : video.videoHeight || 480
         const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
         const nextX = clamp(((box.x + box.width / 2) / videoWidth) * 100, 20, 80)
         const nextY = clamp(((box.y + box.height / 2) / videoHeight) * 100, 20, 80)
@@ -220,6 +242,17 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
           zoom: prev.zoom * 0.7 + nextZoom * 0.3,
         }))
 
+        // The detector may have run on a downscaled brightened canvas. The
+        // depth engine samples luminance and area against the RAW video, so
+        // map detection coordinates back into raw-video pixel space first.
+        const sx = source instanceof HTMLCanvasElement && source.width
+          ? (video.videoWidth || source.width) / source.width
+          : 1
+        const sy = source instanceof HTMLCanvasElement && source.height
+          ? (video.videoHeight || source.height) / source.height
+          : 1
+        const mapPoint = (p: { x: number; y: number }) => ({ x: p.x * sx, y: p.y * sy })
+
         // Translate face-api detection into the depth engine's structural
         // shape, then ingest. The engine handles smoothing, lighting,
         // head pose, blink rate, and engagement.
@@ -234,14 +267,12 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
             disgusted: detection.expressions.disgusted,
             surprised: detection.expressions.surprised,
           },
-          box: { x: box.x, y: box.y, width: box.width, height: box.height },
+          box: { x: box.x * sx, y: box.y * sy, width: box.width * sx, height: box.height * sy },
           landmarks: {
-            leftEye: landmarks.getLeftEye().map((p: { x: number; y: number }) => ({ x: p.x, y: p.y })),
-            rightEye: landmarks
-              .getRightEye()
-              .map((p: { x: number; y: number }) => ({ x: p.x, y: p.y })),
-            nose: landmarks.getNose().map((p: { x: number; y: number }) => ({ x: p.x, y: p.y })),
-            mouth: landmarks.getMouth().map((p: { x: number; y: number }) => ({ x: p.x, y: p.y })),
+            leftEye: landmarks.getLeftEye().map(mapPoint),
+            rightEye: landmarks.getRightEye().map(mapPoint),
+            nose: landmarks.getNose().map(mapPoint),
+            mouth: landmarks.getMouth().map(mapPoint),
           },
         }
 
@@ -407,6 +438,7 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
     // Reset state
     setIsActive(false)
     depthEngineRef.current.reset()
+    lowLightRef.current.reset()
     setDepthReading(null)
     setFacialExpression({
       neutral: 0,
@@ -576,7 +608,9 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
           <div className="font-semibold uppercase tracking-wide text-[10px] mb-0.5">
             Lighting · {depthReading.lighting.level}
           </div>
-          {depthReading.lighting.recommendation}
+          {depthReading.detection && depthReading.frameQuality === "good"
+            ? "Low light — enhancing the image so I can still read your face. A frontal light would sharpen it further."
+            : depthReading.lighting.recommendation}
         </div>
       )}
 

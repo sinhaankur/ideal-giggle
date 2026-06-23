@@ -422,12 +422,15 @@ export class FaceDepthEngine {
     const emotion: Emotion =
       confidence < floor ? "neutral" : EMOTION_MAP[dominantKey] || "neutral"
 
+    // Frame quality gates whether this read is trustworthy enough to act on.
+    // We no longer auto-fail "dark" frames: the camera panel brightens them
+    // before detection, so a dark room with a clear, confident, frontal face
+    // is still a usable read. We only fail when the face is genuinely too
+    // small, too disengaged, or the read is weak in poor light.
+    const tooSmall = areaRatio < 0.02
+    const weakInPoorLight = lighting.level === "dark" && confidence < 0.4 && !facing
     const frameQuality: FaceReading["frameQuality"] =
-      lighting.level === "dark" || areaRatio < 0.02
-        ? "poor"
-        : engagementScore < 0.4
-          ? "poor"
-          : "good"
+      tooSmall || weakInPoorLight || engagementScore < 0.35 ? "poor" : "good"
 
     return {
       detection: true,
