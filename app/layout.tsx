@@ -41,6 +41,12 @@ export const metadata: Metadata = {
   alternates: {
     canonical: '/',
   },
+  // Google Search Console ownership verification. Set the token via
+  // NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION (Vercel env) — when present it renders
+  // the <meta name="google-site-verification"> tag Search Console looks for.
+  ...(process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION
+    ? { verification: { google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION } }
+    : {}),
   // The app is genuinely useful and safe to surface; allow indexing and rich
   // previews. Individual non-content routes can still opt out locally.
   robots: {

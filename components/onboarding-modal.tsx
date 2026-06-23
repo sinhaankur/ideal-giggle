@@ -2,14 +2,20 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Check, Cloud, Cpu, Download, Feather, Monitor, Sparkles, X } from "lucide-react"
+import { Check, ChevronDown, Cloud, Cpu, Download, Feather, Globe, Monitor, Sparkles, X } from "lucide-react"
 
 // Latest GitHub Release page — desktop installer downloads are attached there
 // by .github/workflows/release-electron.yml when a v* tag is pushed.
 const DESKTOP_RELEASES_URL =
   "https://github.com/sinhaankur/ideal-giggle/releases/latest"
 
-export type OnboardingPreset = "fast-local" | "lite-empathy" | "balanced-cloud" | "deep-empathy" | "default"
+export type OnboardingPreset =
+  | "browser-private"
+  | "fast-local"
+  | "lite-empathy"
+  | "balanced-cloud"
+  | "deep-empathy"
+  | "default"
 
 interface OnboardingModalProps {
   hasAgreed: boolean
@@ -38,6 +44,10 @@ export function OnboardingModal({
   ollamaReachable = null,
 }: OnboardingModalProps) {
   const [embedDismissed, setEmbedDismissed] = useState(false)
+  // Advanced runtimes (local Ollama, cloud APIs, desktop app) are tucked away
+  // so a first-time visitor sees one obvious "just start" path, not a wall of
+  // choices and an install pitch.
+  const [showMoreRuntimes, setShowMoreRuntimes] = useState(false)
 
   const currentStep: Step = !hasAgreed
     ? "agreement"
@@ -88,17 +98,20 @@ export function OnboardingModal({
         {currentStep === "agreement" ? (
           <>
             <h2 className={`mt-2 font-semibold text-foreground ${embedMode ? "text-base" : "text-lg"}`}>
-              Empathy Tool Agreement
+              A gentle place to think out loud
             </h2>
             <p className={`mt-2 leading-relaxed text-muted-foreground ${embedMode ? "text-[12px]" : "text-sm"}`}>
-              This tool is designed to help you reflect, rethink, and re-evaluate negative thoughts with empathetic support.
-              It is not a substitute for clinical care, diagnosis, or emergency support.
+              EMPATHEIA is here to help you reflect and feel a little more understood. It listens and
+              responds with care — but it&apos;s a companion, not a therapist.
             </p>
             <ul className={`mt-2 list-disc space-y-1 pl-5 text-muted-foreground ${embedMode ? "text-[12px]" : "text-sm"}`}>
-              <li>I understand this is supportive guidance, not medical advice.</li>
-              <li>I will seek professional help for urgent mental health concerns.</li>
-              <li>I consent to using my conversation context and uploaded profile JSON for personalized responses.</li>
+              <li>It offers supportive reflection, not medical advice or diagnosis.</li>
+              <li>For anything urgent, please reach out to a professional or a crisis line.</li>
+              <li>Your conversation shapes its responses and stays private to you.</li>
             </ul>
+            <p className={`mt-2 leading-relaxed text-muted-foreground/80 ${embedMode ? "text-[11px]" : "text-xs"}`}>
+              In crisis? You&apos;re not alone — call or text <span className="font-semibold text-foreground">988</span> (US Suicide &amp; Crisis Lifeline), or your local emergency number.
+            </p>
 
             <label className={`mt-3 flex items-start gap-2 text-foreground ${embedMode ? "text-[12px]" : "text-sm"}`}>
               <input
@@ -107,7 +120,7 @@ export function OnboardingModal({
                 onChange={(e) => onAgreementCheckedChange(e.target.checked)}
                 className="mt-1"
               />
-              <span>I have read and agree to use this empathy tool responsibly.</span>
+              <span>I understand, and I&apos;d like to begin.</span>
             </label>
 
             <button
@@ -123,132 +136,169 @@ export function OnboardingModal({
         ) : (
           <>
             <h2 className={`mt-2 font-semibold text-foreground ${embedMode ? "text-base" : "text-lg"}`}>
-              Choose how private you want this to be
+              You&apos;re all set — let&apos;s talk
             </h2>
             <p className={`mt-2 text-muted-foreground ${embedMode ? "text-[12px]" : "text-sm"}`}>
-              Your conversations build a consciousness of you. The local options keep it entirely on
-              this device — nothing leaves. Pick one and start chatting; you can change it later in Settings.
+              Nothing to install. A small AI runs right here in your browser, so your conversation
+              stays on your device. You can change how it runs anytime in Settings.
             </p>
 
-            {/* Live local-runtime status, only shown on step 2 so the user
-                does not have to interpret it before they have committed. */}
-            {ollamaReachable !== null && (
-              <div
-                className={`mt-3 inline-flex items-center gap-1.5 rounded border px-2 py-1 text-[11px] uppercase tracking-wide ${
-                  ollamaReachable
-                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-                    : "border-border bg-card text-muted-foreground"
-                }`}
-              >
-                <Cpu className="h-3 w-3" />
-                {ollamaReachable
-                  ? "Ollama detected on this device"
-                  : "No local Ollama detected — install it for a fully private PC LLM, or pick a cloud API below"}
+            {/* Primary path: zero-install, private, in-browser. One obvious
+                button so a first-time visitor just starts. */}
+            <button
+              onClick={() => onChoosePreset("browser-private")}
+              className="mt-3 flex w-full items-start gap-2 rounded border border-emerald-500/50 bg-emerald-500/10 p-3 text-left transition-colors hover:border-emerald-400/80 hover:bg-emerald-500/15"
+            >
+              <Globe className="mt-0.5 h-5 w-5 flex-shrink-0 text-emerald-400" />
+              <div className="flex-1">
+                <div className={`flex flex-wrap items-center gap-1.5 font-semibold text-foreground ${embedMode ? "text-[13px]" : "text-sm"}`}>
+                  Start now — in your browser
+                  <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-emerald-300">
+                    Recommended · Free · Private
+                  </span>
+                </div>
+                <div className={`text-muted-foreground ${embedMode ? "text-[11px]" : "text-xs"}`}>
+                  No sign-up, no install. The first reply loads a small model, then it&apos;s instant
+                  and works offline. Best in Chrome, Edge, or Arc.
+                </div>
+              </div>
+            </button>
+
+            {/* Everything else is an opt-in upgrade, hidden by default. */}
+            <button
+              onClick={() => setShowMoreRuntimes((v) => !v)}
+              className="mt-3 flex w-full items-center justify-between gap-2 text-left"
+              aria-expanded={showMoreRuntimes}
+            >
+              <span className="text-[12px] font-medium text-muted-foreground">
+                More ways to run it (local LLM, cloud, desktop app)
+              </span>
+              <ChevronDown
+                className={`h-4 w-4 text-muted-foreground transition-transform ${showMoreRuntimes ? "rotate-180" : ""}`}
+              />
+            </button>
+
+            {showMoreRuntimes && (
+              <div className="mt-3 border-t border-border/60 pt-3">
+                {/* Live local-runtime status, only relevant once the user is
+                    exploring local options. */}
+                {ollamaReachable !== null && (
+                  <div
+                    className={`inline-flex items-center gap-1.5 rounded border px-2 py-1 text-[11px] uppercase tracking-wide ${
+                      ollamaReachable
+                        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                        : "border-border bg-card text-muted-foreground"
+                    }`}
+                  >
+                    <Cpu className="h-3 w-3" />
+                    {ollamaReachable
+                      ? "Ollama detected on this device"
+                      : "No local Ollama detected — install it for a fully private PC LLM, or pick a cloud API below"}
+                  </div>
+                )}
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Link
+                    href="/ollama-install"
+                    className={`inline-flex items-center gap-2 rounded border border-border bg-card text-foreground transition-colors hover:bg-accent ${
+                      embedMode ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs"
+                    }`}
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Install + Run Guide
+                  </Link>
+
+                  {process.env.NEXT_PUBLIC_ELECTRON_BUILD !== "true" && (
+                    <a
+                      href={DESKTOP_RELEASES_URL}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className={`inline-flex items-center gap-2 rounded border border-border bg-card text-foreground transition-colors hover:bg-accent ${
+                        embedMode ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs"
+                      }`}
+                      title="Download the installable desktop app (mac / windows / linux)"
+                    >
+                      <Monitor className="h-3.5 w-3.5" />
+                      Get the desktop app
+                    </a>
+                  )}
+                </div>
+
+                <div className="mt-3 grid gap-2">
+                  <button
+                    onClick={() => onChoosePreset("lite-empathy")}
+                    className="flex items-start gap-2 rounded border border-border bg-background p-3 text-left transition-colors hover:border-muted-foreground/50"
+                  >
+                    <Feather className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-400" />
+                    <div className="flex-1">
+                      <div className={`flex items-center gap-1.5 font-semibold text-foreground ${embedMode ? "text-[13px]" : "text-sm"}`}>
+                        Lite Empathy (TinyLlama)
+                        <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-emerald-300">
+                          Private
+                        </span>
+                      </div>
+                      <div className={`text-muted-foreground ${embedMode ? "text-[11px]" : "text-xs"}`}>
+                        A small Ollama model (~600 MB) tuned for warm replies, on your machine. Needs Ollama installed.
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => onChoosePreset("fast-local")}
+                    className="flex items-start gap-2 rounded border border-border bg-background p-3 text-left transition-colors hover:border-muted-foreground/50"
+                  >
+                    <Cpu className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-400" />
+                    <div className="flex-1">
+                      <div className={`flex items-center gap-1.5 font-semibold text-foreground ${embedMode ? "text-[13px]" : "text-sm"}`}>
+                        Full Local LLM
+                        <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-emerald-300">
+                          Private
+                        </span>
+                      </div>
+                      <div className={`text-muted-foreground ${embedMode ? "text-[11px]" : "text-xs"}`}>
+                        A larger local model via Ollama for more depth. On-device privacy; one-time install, bigger download.
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => onChoosePreset("balanced-cloud")}
+                    className="flex items-start gap-2 rounded border border-border bg-background p-3 text-left transition-colors hover:border-muted-foreground/50"
+                  >
+                    <Cloud className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-400" />
+                    <div className="flex-1">
+                      <div className={`flex items-center gap-1.5 font-semibold text-foreground ${embedMode ? "text-[13px]" : "text-sm"}`}>
+                        Balanced Cloud
+                        <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-amber-300">
+                          Not Private
+                        </span>
+                      </div>
+                      <div className={`text-muted-foreground ${embedMode ? "text-[11px]" : "text-xs"}`}>
+                        Smooth quality via OpenRouter free tier. Messages travel to a third-party AI provider.
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => onChoosePreset("deep-empathy")}
+                    className="flex items-start gap-2 rounded border border-border bg-background p-3 text-left transition-colors hover:border-muted-foreground/50"
+                  >
+                    <Sparkles className="mt-0.5 h-4 w-4 flex-shrink-0 text-violet-400" />
+                    <div className="flex-1">
+                      <div className={`flex items-center gap-1.5 font-semibold text-foreground ${embedMode ? "text-[13px]" : "text-sm"}`}>
+                        Deep Empathy
+                        <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-amber-300">
+                          Not Private
+                        </span>
+                      </div>
+                      <div className={`text-muted-foreground ${embedMode ? "text-[11px]" : "text-xs"}`}>
+                        Stronger reflective depth for long chats. Same cloud caveat: messages go to a third-party AI.
+                      </div>
+                    </div>
+                  </button>
+                </div>
               </div>
             )}
-
-            <Link
-              href="/ollama-install"
-              className={`mt-3 inline-flex items-center gap-2 rounded border border-foreground bg-foreground font-semibold text-background transition-colors hover:bg-foreground/90 ${
-                embedMode ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs"
-              }`}
-            >
-              <Download className="h-3.5 w-3.5" />
-              First time here? Install + Run Guide
-            </Link>
-
-            {/* Hidden inside the Electron build — the desktop installer is for
-                visitors on github.io, not for users already running it. */}
-            {process.env.NEXT_PUBLIC_ELECTRON_BUILD !== "true" && (
-              <a
-                href={DESKTOP_RELEASES_URL}
-                target="_blank"
-                rel="noreferrer noopener"
-                className={`ml-2 mt-3 inline-flex items-center gap-2 rounded border border-border bg-card text-foreground transition-colors hover:bg-accent ${
-                  embedMode ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs"
-                }`}
-                title="Download the installable desktop app (mac / windows / linux)"
-              >
-                <Monitor className="h-3.5 w-3.5" />
-                Get the desktop app
-              </a>
-            )}
-
-            <div className="mt-3 grid gap-2">
-              <button
-                onClick={() => onChoosePreset("lite-empathy")}
-                className="flex items-start gap-2 rounded border border-emerald-500/40 bg-emerald-500/5 p-3 text-left transition-colors hover:border-emerald-500/70"
-              >
-                <Feather className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-400" />
-                <div className="flex-1">
-                  <div className={`flex items-center gap-1.5 font-semibold text-foreground ${embedMode ? "text-[13px]" : "text-sm"}`}>
-                    Lite Empathy (TinyLlama)
-                    <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-emerald-300">
-                      Recommended · Private
-                    </span>
-                  </div>
-                  <div className={`text-muted-foreground ${embedMode ? "text-[11px]" : "text-xs"}`}>
-                    A small model (~600 MB) tuned for warm, reflective replies, running entirely on this device.
-                    Your consciousness never leaves your machine — no API key, no cloud, no logging.
-                  </div>
-                </div>
-              </button>
-
-              <button
-                onClick={() => onChoosePreset("fast-local")}
-                className="flex items-start gap-2 rounded border border-border bg-background p-3 text-left transition-colors hover:border-muted-foreground/50"
-              >
-                <Cpu className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-400" />
-                <div className="flex-1">
-                  <div className={`flex items-center gap-1.5 font-semibold text-foreground ${embedMode ? "text-[13px]" : "text-sm"}`}>
-                    Full Local LLM
-                    <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-emerald-300">
-                      Private
-                    </span>
-                  </div>
-                  <div className={`text-muted-foreground ${embedMode ? "text-[11px]" : "text-xs"}`}>
-                    A larger local model via Ollama for more depth. Same on-device privacy, but needs a
-                    one-time install and a bigger download.
-                  </div>
-                </div>
-              </button>
-
-              <button
-                onClick={() => onChoosePreset("balanced-cloud")}
-                className="flex items-start gap-2 rounded border border-border bg-background p-3 text-left transition-colors hover:border-muted-foreground/50"
-              >
-                <Cloud className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-400" />
-                <div className="flex-1">
-                  <div className={`flex items-center gap-1.5 font-semibold text-foreground ${embedMode ? "text-[13px]" : "text-sm"}`}>
-                    Balanced Cloud
-                    <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-amber-300">
-                      Not Private
-                    </span>
-                  </div>
-                  <div className={`text-muted-foreground ${embedMode ? "text-[11px]" : "text-xs"}`}>
-                    Smooth quality via OpenRouter free tier. Your messages travel over the internet to a third-party AI provider.
-                  </div>
-                </div>
-              </button>
-
-              <button
-                onClick={() => onChoosePreset("deep-empathy")}
-                className="flex items-start gap-2 rounded border border-border bg-background p-3 text-left transition-colors hover:border-muted-foreground/50"
-              >
-                <Sparkles className="mt-0.5 h-4 w-4 flex-shrink-0 text-violet-400" />
-                <div className="flex-1">
-                  <div className={`flex items-center gap-1.5 font-semibold text-foreground ${embedMode ? "text-[13px]" : "text-sm"}`}>
-                    Deep Empathy
-                    <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-amber-300">
-                      Not Private
-                    </span>
-                  </div>
-                  <div className={`text-muted-foreground ${embedMode ? "text-[11px]" : "text-xs"}`}>
-                    Stronger reflective depth for long-form chats. Same cloud round-trip caveat: messages go to a third-party AI.
-                  </div>
-                </div>
-              </button>
-            </div>
 
             <button
               onClick={() => onChoosePreset("default")}
@@ -257,7 +307,7 @@ export function OnboardingModal({
               }`}
             >
               <Check className="h-3.5 w-3.5" />
-              Keep default settings for now
+              Just use the default
             </button>
           </>
         )}
