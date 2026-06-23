@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   buildLocalCompanionReply,
+  composeConversationSummary,
   describeFeltState,
   inferUserUnderstanding,
   suggestPromptsFromFeltState,
@@ -169,5 +170,41 @@ describe("suggestPromptsFromFeltState", () => {
 
     expect(prompts.length).toBeGreaterThan(0)
     expect(prompts[0]).toMatch(/arrive|first thing|gently/i)
+  })
+})
+
+describe("composeConversationSummary — emotional arc", () => {
+  const base = {
+    userTurnCount: 8,
+    empathyData: { says: [], thinks: ["I keep second-guessing myself"], does: [], feels: ["tired"] },
+    feltState: null,
+    empathyCode: "",
+    durationMinutes: 12,
+  }
+
+  it("names a softening trajectory when sentiment rises", () => {
+    const summary = composeConversationSummary({
+      ...base,
+      sentimentTrajectory: [-0.8, -0.7, -0.4, -0.1, 0.2, 0.5],
+    })
+    expect(summary.paragraphs.join(" ")).toMatch(/soften|lighter|warm/i)
+  })
+
+  it("names a heavier trajectory when sentiment falls", () => {
+    const summary = composeConversationSummary({
+      ...base,
+      sentimentTrajectory: [0.4, 0.2, -0.1, -0.4, -0.7, -0.9],
+    })
+    expect(summary.paragraphs.join(" ")).toMatch(/heavier|room to be felt/i)
+  })
+
+  it("omits the arc line when there is too little signal", () => {
+    const summary = composeConversationSummary({ ...base, sentimentTrajectory: [0.1] })
+    expect(summary.paragraphs.join(" ")).not.toMatch(/softened|heavier|steady ground/i)
+  })
+
+  it("is backward-compatible when no trajectory is provided", () => {
+    const summary = composeConversationSummary(base)
+    expect(summary.paragraphs.length).toBeGreaterThan(0)
   })
 })

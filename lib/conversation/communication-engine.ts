@@ -839,6 +839,33 @@ export interface ConversationSummaryInput {
   feltState: FeltState | null
   empathyCode: string
   durationMinutes: number
+  // Optional per-turn sentiment polarities (-1..1), oldest→newest. When
+  // present, the summary names the emotional trajectory ("you arrived heavy
+  // and softened as we talked"). Backward-compatible: omitted = no arc line.
+  sentimentTrajectory?: number[]
+}
+
+// Turn a sequence of sentiment polarities into one human sentence about the
+// arc of the conversation. Returns "" when there isn't enough signal.
+function describeTrajectory(trajectory?: number[]): string {
+  if (!trajectory || trajectory.length < 3) return ""
+  const clean = trajectory.filter((v) => Number.isFinite(v))
+  if (clean.length < 3) return ""
+  const head = clean.slice(0, Math.max(1, Math.floor(clean.length / 3)))
+  const tail = clean.slice(-Math.max(1, Math.floor(clean.length / 3)))
+  const avg = (xs: number[]) => xs.reduce((s, v) => s + v, 0) / xs.length
+  const start = avg(head)
+  const end = avg(tail)
+  const delta = end - start
+  const toneAt = (v: number) =>
+    v <= -0.35 ? "heavy" : v < -0.1 ? "weighed down" : v < 0.1 ? "even" : v < 0.35 ? "a bit lighter" : "warm"
+  if (delta > 0.2) {
+    return `You came in ${toneAt(start)} and softened toward ${toneAt(end)} as we talked — that shift is worth noticing.`
+  }
+  if (delta < -0.2) {
+    return `Things got heavier as we went, from ${toneAt(start)} to ${toneAt(end)}. That's okay — some of this needed room to be felt.`
+  }
+  return `The tone held fairly ${toneAt(end)} throughout — steady ground.`
 }
 
 export interface ConversationSummary {
@@ -893,6 +920,8 @@ export function composeConversationSummary(
     ? `What is alive in you right now: ${themes.map((t) => `"${t}"`).join("; ")}.`
     : "We have not yet surfaced concrete themes — the conversation is still settling in."
 
+  const arcLine = describeTrajectory(input.sentimentTrajectory)
+
   const closing = `Best read on what you need next: ${need}.`
 
   const codeLine = input.empathyCode
@@ -901,7 +930,7 @@ export function composeConversationSummary(
 
   return {
     headline,
-    paragraphs: [opening, middle, closing, codeLine].filter(Boolean),
+    paragraphs: [opening, arcLine, middle, closing, codeLine].filter(Boolean),
     themes,
     generatedAt: new Date().toISOString(),
   }

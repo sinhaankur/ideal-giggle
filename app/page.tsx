@@ -1860,8 +1860,9 @@ export default function CompanionApp() {
       feltState,
       empathyCode,
       durationMinutes: elapsedMs / 60000,
+      sentimentTrajectory: metaHistory.map((m) => m.sentimentPolarity),
     })
-  }, [userTurnCount, feltState, empathyCode, elapsedMs])
+  }, [userTurnCount, feltState, empathyCode, elapsedMs, metaHistory])
 
   const handleGenerateSummary = useCallback(() => {
     const next = buildSummaryCard()
