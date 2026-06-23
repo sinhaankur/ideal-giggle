@@ -139,6 +139,37 @@ describe("composeFromPlan", () => {
     expect(composed.length).toBeGreaterThan(0)
     expect(composed.toLowerCase()).toMatch(/breath|exhale|chest|slow/i)
   })
+
+  it("does not reproduce the previous turn's reply verbatim", () => {
+    const text = "I've been thinking about what happened and I'm trying to understand my part"
+    const plan = planTherapyResponse(buildInput(text, { userTurnCount: 6, sessionMinutes: 8 }))
+    const first = composeFromPlan(plan, text, 3)
+    // Same plan + same seed would normally reproduce `first`; passing it as
+    // lastReply must force a different opener.
+    const second = composeFromPlan(plan, text, 3, { lastReply: first })
+    expect(second.length).toBeGreaterThan(0)
+    expect(second).not.toBe(first)
+  })
+
+  it("can weave the preferred name into a roomy reply without breaking questions", () => {
+    // This input yields a standard-dose plan that includes a `validate` intent,
+    // which is where the composer may address the person by name.
+    const text = "I've been thinking about what happened and I'm trying to understand my part"
+    const plan = planTherapyResponse(buildInput(text, { userTurnCount: 6, sessionMinutes: 8 }))
+    expect(plan.dose === "standard" || plan.dose === "long").toBe(true)
+    expect(plan.intents).toContain("validate")
+    // Sweep seeds; at least one eligible line should address by name.
+    let sawName = false
+    for (let seed = 0; seed < 12; seed++) {
+      const out = composeFromPlan(plan, text, seed, { preferredName: "Sam" })
+      if (out.includes("Sam")) {
+        sawName = true
+        // Name is used as a soft lead ("Sam — ..."), not glued into a word.
+        expect(out).toMatch(/(^|\s)Sam — /)
+      }
+    }
+    expect(sawName).toBe(true)
+  })
 })
 
 describe("directivesFromPlan", () => {

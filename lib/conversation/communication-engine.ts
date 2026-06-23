@@ -22,6 +22,11 @@ export type RuntimeFallbackContext = {
   systemHealth?: "ready" | "busy" | "fallback"
   ollamaBaseUrl?: string
   ollamaModel?: string
+  // Optional conversation context that makes the deterministic reply feel
+  // less templated: the person's name (used sparingly) and the previous
+  // reply (so consecutive turns don't echo).
+  preferredName?: string
+  lastReply?: string
 }
 
 export type UserUnderstanding = {
@@ -204,7 +209,10 @@ export function buildLocalCompanionReply(
   // available (kept for backward compatibility with existing callers).
   if (plan) {
     const seed = Math.abs(input.length) * 31 + Math.abs(Math.round(sentimentScore * 100))
-    const composed = composeFromPlan(plan, input, seed)
+    const composed = composeFromPlan(plan, input, seed, {
+      preferredName: context?.preferredName,
+      lastReply: context?.lastReply,
+    })
     if (composed.trim().length > 0) return composed
   }
 

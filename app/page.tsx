@@ -2406,6 +2406,8 @@ export default function CompanionApp() {
             systemHealth,
             ollamaBaseUrl: settings.ollamaBaseUrl,
             ollamaModel: settings.ollamaModel,
+            preferredName: empathyProfile?.preferredName || undefined,
+            lastReply: lastFallbackReplyRef.current,
           },
           responsePlan
         )
@@ -2555,6 +2557,8 @@ export default function CompanionApp() {
               systemHealth,
               ollamaBaseUrl: settings.ollamaBaseUrl,
               ollamaModel: settings.ollamaModel,
+              preferredName: empathyProfile?.preferredName || undefined,
+              lastReply: lastFallbackReplyRef.current,
             },
             responsePlan
           )
@@ -2652,6 +2656,8 @@ export default function CompanionApp() {
           systemHealth,
           ollamaBaseUrl: settings.ollamaBaseUrl,
           ollamaModel: settings.ollamaModel,
+          preferredName: empathyProfile?.preferredName || undefined,
+          lastReply: lastFallbackReplyRef.current,
         }, responsePlan)
         const fallbackText = ensureNonRepeatingFallback(
           baseFallback,
