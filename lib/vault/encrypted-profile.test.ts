@@ -3,8 +3,11 @@ import {
   encryptVault,
   decryptVault,
   isEncryptedEnvelope,
+  mergeSessionHistory,
   unlockVault,
+  SESSION_HISTORY_CAP,
   VAULT_VERSION,
+  type SessionMemoryRecord,
   type VaultPayload,
 } from "./encrypted-profile"
 import { DEFAULT_EMPATHY_PROFILE } from "../companion-types"
@@ -57,17 +60,68 @@ describe("vault round-trip", () => {
     await expect(encryptVault(samplePayload, "short")).rejects.toThrow(/at least 8/i)
   })
 
-  it("still decrypts a legacy v1 envelope under the current version", async () => {
-    // Backward-compat guarantee: bumping VAULT_VERSION to 2 (consciousness
-    // block) must never lock out files written at v1. Encrypt, then forge the
-    // stored version back to 1 to simulate an older file.
+  it("still decrypts legacy v1 and v2 envelopes under the current version", async () => {
+    // Backward-compat guarantee: bumping VAULT_VERSION (now 3, sessionHistory)
+    // must never lock out older files. Encrypt, then forge the stored version
+    // back to simulate older files.
     const passphrase = "correct horse battery staple"
-    const envelopeJson = await encryptVault(samplePayload, passphrase)
-    const envelope = JSON.parse(envelopeJson)
-    envelope.v = 1
+    for (const legacyVersion of [1, 2]) {
+      const envelopeJson = await encryptVault(samplePayload, passphrase)
+      const envelope = JSON.parse(envelopeJson)
+      envelope.v = legacyVersion
+      const decrypted = await decryptVault(envelope, passphrase)
+      expect(decrypted).toEqual(samplePayload)
+    }
+  })
 
-    const decrypted = await decryptVault(envelope, passphrase)
-    expect(decrypted).toEqual(samplePayload)
+  it("round-trips a v3 payload carrying sessionHistory", async () => {
+    const passphrase = "correct horse battery staple"
+    const withHistory: VaultPayload = {
+      ...samplePayload,
+      sessionHistory: [
+        { id: "s1", savedAt: "2026-04-01T10:00:00.000Z", headline: "anxious + tired", summaryParagraphs: ["a"], turns: [] },
+        { id: "s2", savedAt: "2026-04-02T10:00:00.000Z", headline: "lighter", summaryParagraphs: ["b"], turns: [] },
+      ],
+    }
+    const envelopeJson = await encryptVault(withHistory, passphrase)
+    const decrypted = await decryptVault(JSON.parse(envelopeJson), passphrase)
+    expect(decrypted.sessionHistory).toHaveLength(2)
+    expect(decrypted.sessionHistory?.[1].headline).toBe("lighter")
+  })
+})
+
+describe("mergeSessionHistory", () => {
+  const rec = (id: string, headline = id): SessionMemoryRecord => ({
+    id,
+    savedAt: new Date().toISOString(),
+    headline,
+    summaryParagraphs: [],
+    turns: [],
+  })
+
+  it("appends a new session", () => {
+    const out = mergeSessionHistory([rec("a")], rec("b"))
+    expect(out.map((s) => s.id)).toEqual(["a", "b"])
+  })
+
+  it("replaces a same-id session in place (debounced re-save grows one entry)", () => {
+    const out = mergeSessionHistory([rec("a"), rec("b", "old")], rec("b", "updated"))
+    expect(out).toHaveLength(2)
+    expect(out.find((s) => s.id === "b")?.headline).toBe("updated")
+  })
+
+  it("handles undefined existing and undefined incoming", () => {
+    expect(mergeSessionHistory(undefined, undefined)).toEqual([])
+    expect(mergeSessionHistory(undefined, rec("a")).map((s) => s.id)).toEqual(["a"])
+  })
+
+  it("caps the list to SESSION_HISTORY_CAP, dropping the oldest", () => {
+    const many = Array.from({ length: SESSION_HISTORY_CAP + 5 }, (_, i) => rec(`s${i}`))
+    const out = mergeSessionHistory(many, rec("newest"))
+    expect(out).toHaveLength(SESSION_HISTORY_CAP)
+    expect(out[out.length - 1].id).toBe("newest")
+    // The oldest few rolled off.
+    expect(out.some((s) => s.id === "s0")).toBe(false)
   })
 })
 

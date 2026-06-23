@@ -1,10 +1,12 @@
 import type { EmpathyProfile, EmpathyData } from "@/lib/companion-types"
 
-// v2 added the optional `consciousness` block (relationship trajectory).
-// The field is optional, so v1 envelopes still decrypt cleanly — we accept
-// any version in SUPPORTED_VAULT_VERSIONS for reads and write the latest.
-export const VAULT_VERSION = 2
-const SUPPORTED_VAULT_VERSIONS = new Set([1, 2])
+// Vault schema versions (all additive, so older envelopes still decrypt):
+//   v1 — profile + empathyData (+ optional sessionMemory)
+//   v2 — added the optional `consciousness` block (relationship trajectory)
+//   v3 — added the optional `sessionHistory` list (revisitable past sessions)
+// We accept any version in SUPPORTED_VAULT_VERSIONS for reads and write latest.
+export const VAULT_VERSION = 3
+const SUPPORTED_VAULT_VERSIONS = new Set([1, 2, 3])
 const KDF = "pbkdf2-sha256"
 const ITERATIONS = 600_000
 const MIN_ACCEPTED_ITERATIONS = 1_000
@@ -24,6 +26,36 @@ export interface SessionMemoryRecord {
   headline: string
   summaryParagraphs: string[]
   turns: SessionMemoryTurn[]
+  // Stable id for a session so debounced re-saves of the same conversation
+  // update its history entry instead of appending duplicates. Optional for
+  // backward compatibility with records written before v3.
+  id?: string
+}
+
+// How many past sessions we keep in the soul file. Bounded so the encrypted
+// envelope stays small; oldest sessions roll off.
+export const SESSION_HISTORY_CAP = 30
+
+// Pure merge: fold a freshly-saved session into the existing history. If a
+// record with the same id already exists it's replaced in place (a session
+// being re-saved as it grows), otherwise the record is appended. The list is
+// kept newest-last and capped. Exported + pure so it's unit-testable and the
+// save path stays simple.
+export function mergeSessionHistory(
+  existing: SessionMemoryRecord[] | undefined,
+  incoming: SessionMemoryRecord | null | undefined
+): SessionMemoryRecord[] {
+  const list = Array.isArray(existing) ? [...existing] : []
+  if (!incoming) return list.slice(-SESSION_HISTORY_CAP)
+  const idx = incoming.id
+    ? list.findIndex((s) => s.id && s.id === incoming.id)
+    : -1
+  if (idx >= 0) {
+    list[idx] = incoming
+  } else {
+    list.push(incoming)
+  }
+  return list.slice(-SESSION_HISTORY_CAP)
 }
 
 // One depth/sentiment reading the model emitted via its hidden [META] tag,
@@ -67,6 +99,10 @@ export interface VaultPayload {
   // Absent in v1 soul files written before this field existed — readers must
   // treat it as "start fresh trajectory" when missing.
   consciousness?: ConsciousnessState
+  // Optional (v3+). The rolling list of past session summaries the user can
+  // revisit. Absent in v1/v2 files — readers treat missing as []. Capped to
+  // SESSION_HISTORY_CAP on write.
+  sessionHistory?: SessionMemoryRecord[]
 }
 
 export interface VaultEnvelope {
