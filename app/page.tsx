@@ -4,7 +4,7 @@ import { useState, useCallback, useMemo, useEffect, useRef, type Dispatch, type 
 import dynamic from "next/dynamic"
 import Link from "next/link"
 import { useChat } from "@ai-sdk/react"
-import { Settings, Download, Camera, MessageSquare, Heart, Search } from "lucide-react"
+import { Settings, Download, Camera, MessageSquare, Heart, Search, PanelRightOpen } from "lucide-react"
 import { ChatPanel } from "@/components/chat-panel"
 import { VaultModal, type VaultModalMode } from "@/components/vault-modal"
 import {
@@ -646,6 +646,42 @@ export default function CompanionApp() {
   const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null)
   const [elapsedMs, setElapsedMs] = useState(0)
   const [mobilePanel, setMobilePanel] = useState<"camera" | "chat" | "empathy">("chat")
+  // Desktop panels are hidden by default so first run is calm and talk-first
+  // (just the orb + conversation). Users reveal the camera and the insights /
+  // empathy map on demand. Preference persists across sessions.
+  const [showCameraPanel, setShowCameraPanel] = useState(false)
+  const [showInsightsPanel, setShowInsightsPanel] = useState(false)
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      setShowCameraPanel(window.localStorage.getItem("empatheia.panel.camera") === "true")
+      setShowInsightsPanel(window.localStorage.getItem("empatheia.panel.insights") === "true")
+    } catch {
+      /* ignore storage errors */
+    }
+  }, [])
+  const toggleCameraPanel = useCallback(() => {
+    setShowCameraPanel((v) => {
+      const next = !v
+      try {
+        window.localStorage.setItem("empatheia.panel.camera", String(next))
+      } catch {
+        /* ignore */
+      }
+      return next
+    })
+  }, [])
+  const toggleInsightsPanel = useCallback(() => {
+    setShowInsightsPanel((v) => {
+      const next = !v
+      try {
+        window.localStorage.setItem("empatheia.panel.insights", String(next))
+      } catch {
+        /* ignore */
+      }
+      return next
+    })
+  }, [])
   const [rightPanelWidth, setRightPanelWidth] = useState(320)
   const [isResizingRightPanel, setIsResizingRightPanel] = useState(false)
   const [leftPanelWidth, setLeftPanelWidth] = useState(304)
@@ -3134,6 +3170,36 @@ export default function CompanionApp() {
                   : "System Ready"}
             </span>
           </div>
+          {/* Desktop view toggles — keep the default surface calm; reveal the
+              camera and the insights/empathy map only when the user wants them. */}
+          <button
+            onClick={toggleCameraPanel}
+            className={`hidden items-center gap-2 rounded border px-3 py-2 text-sm font-medium transition-colors md:flex ${
+              showCameraPanel
+                ? "border-foreground/40 bg-foreground/5 text-foreground"
+                : "border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground"
+            }`}
+            aria-pressed={showCameraPanel}
+            aria-label={showCameraPanel ? "Hide camera" : "Show camera"}
+            title={showCameraPanel ? "Hide camera" : "Show camera"}
+          >
+            <Camera className="h-4 w-4" />
+            <span className="hidden lg:inline">Camera</span>
+          </button>
+          <button
+            onClick={toggleInsightsPanel}
+            className={`hidden items-center gap-2 rounded border px-3 py-2 text-sm font-medium transition-colors md:flex ${
+              showInsightsPanel
+                ? "border-foreground/40 bg-foreground/5 text-foreground"
+                : "border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground"
+            }`}
+            aria-pressed={showInsightsPanel}
+            aria-label={showInsightsPanel ? "Hide insights" : "Show insights"}
+            title={showInsightsPanel ? "Hide insights" : "Show what I'm learning about you"}
+          >
+            <PanelRightOpen className="h-4 w-4" />
+            <span className="hidden lg:inline">Insights</span>
+          </button>
           <button
             onClick={() => setCommandPaletteOpen(true)}
             className="flex items-center gap-2 rounded border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
@@ -3169,11 +3235,13 @@ export default function CompanionApp() {
       {/* Main Content - Three Panel Layout. Bottom padding on mobile so
           the fixed nav bar at the bottom doesn't cover the chat input. */}
       <div className="flex flex-1 overflow-hidden pb-14 md:pb-0">
-        {/* Left Panel - Camera & Controls */}
+        {/* Left Panel - Camera & Controls. Hidden on desktop unless the user
+            toggles it on (calm-default); on mobile it's driven by the bottom
+            nav's mobilePanel selection. */}
         <aside
           className={`w-full flex-shrink-0 overflow-y-auto p-4 md:border-r md:border-border ${
-            mobilePanel === "camera" ? "block" : "hidden md:block"
-          }`}
+            mobilePanel === "camera" ? "block" : "hidden"
+          } ${showCameraPanel ? "md:block" : "md:hidden"}`}
           style={{ width: mobilePanel === "camera" ? "100%" : `${leftPanelWidth}px` }}
         >
           <CameraPanel
@@ -3272,7 +3340,9 @@ export default function CompanionApp() {
             group around a 1px visible rule that accents on hover/active. */}
         <div
           onMouseDown={() => setIsResizingLeftPanel(true)}
-          className="group relative hidden w-2 cursor-col-resize md:flex md:items-center md:justify-center"
+          className={`group relative w-2 cursor-col-resize md:items-center md:justify-center ${
+            showCameraPanel ? "hidden md:flex" : "hidden"
+          }`}
           role="separator"
           aria-orientation="vertical"
           aria-label="Resize camera panel"
@@ -3421,7 +3491,9 @@ export default function CompanionApp() {
             visible accent on hover/active to confirm grab. */}
         <div
           onMouseDown={() => setIsResizingRightPanel(true)}
-          className="group relative hidden w-2 cursor-col-resize md:flex md:items-center md:justify-center"
+          className={`group relative w-2 cursor-col-resize md:items-center md:justify-center ${
+            showInsightsPanel ? "hidden md:flex" : "hidden"
+          }`}
           role="separator"
           aria-orientation="vertical"
           aria-label="Resize empathy panel"
@@ -3435,11 +3507,12 @@ export default function CompanionApp() {
           />
         </div>
 
-        {/* Right Panel - Empathy Map */}
+        {/* Right Panel - Empathy Map / Insights. Hidden on desktop unless the
+            user toggles it on; on mobile it's driven by the bottom nav. */}
         <aside
           className={`w-full flex-shrink-0 overflow-y-auto border-l border-border p-4 ${
-            mobilePanel === "empathy" ? "block" : "hidden md:block"
-          }`}
+            mobilePanel === "empathy" ? "block" : "hidden"
+          } ${showInsightsPanel ? "md:block" : "md:hidden"}`}
           style={{ width: mobilePanel === "empathy" ? "100%" : `${rightPanelWidth}px` }}
         >
           <EmpathyPanel
