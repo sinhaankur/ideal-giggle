@@ -3,10 +3,11 @@
 import { useRef, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { MessageSquare, Brain, HandMetal, Heart, Upload, Download, Copy, Link2, Lock, Unlock, Trash2, Activity } from "lucide-react"
-import type { EmpathyData, EmpathyProfile } from "@/lib/companion-types"
+import type { EmpathyData, EmpathyProfile, EmpathyMetaRecord } from "@/lib/companion-types"
 import type { UserUnderstanding } from "@/lib/conversation/communication-engine"
 import { isEncryptedEnvelope, type VaultEnvelope } from "@/lib/vault/encrypted-profile"
 import { ConsciousnessReview } from "@/components/consciousness-review"
+import { MoodTimeline } from "@/components/mood-timeline"
 
 export interface EmpathyTimelineEntry {
   id: string
@@ -36,6 +37,8 @@ interface EmpathyPanelProps {
   onVaultLock?: () => void
   onVaultClear?: () => void
   timeline?: EmpathyTimelineEntry[]
+  // Per-turn sentiment/depth readings — powers the emotional-arc sparkline.
+  metaHistory?: EmpathyMetaRecord[]
   // Apply the person's own corrections to the empathy map (the consciousness
   // review modal). When absent, the "Did I get this right?" entry is hidden.
   onUpdateData?: (next: EmpathyData) => void
@@ -87,6 +90,7 @@ export function EmpathyPanel({
   onVaultLock,
   onVaultClear,
   timeline,
+  metaHistory,
   onUpdateData,
   weightHint = "mixed",
 }: EmpathyPanelProps) {
@@ -378,8 +382,14 @@ export function EmpathyPanel({
         />
       </div>
 
+      {metaHistory && metaHistory.length >= 2 && (
+        <div className="mt-3">
+          <MoodTimeline metaHistory={metaHistory} />
+        </div>
+      )}
+
       {timeline && timeline.length > 0 && (
-        <div className="border border-border bg-card p-3">
+        <div className="mt-3 border border-border bg-card p-3">
           <div className="mb-2 flex items-center gap-1.5">
             <Activity className="h-3 w-3 text-muted-foreground" />
             <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
