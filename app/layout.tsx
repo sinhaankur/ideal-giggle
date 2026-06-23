@@ -10,12 +10,63 @@ const interFont = Inter({
   variable: '--font-inter',
 })
 
+// Public site URL. Override per-deploy with NEXT_PUBLIC_SITE_URL if needed
+// (e.g. a preview), otherwise default to the production custom domain so
+// canonical/OG/sitemap URLs are absolute and crawlable.
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://empatheia.sinhaankur.com'
+
+const description =
+  'A free, private AI companion for your feelings. Talk things through with an empathetic listener that runs entirely in your browser — no sign-up, no install, and your conversation never leaves your device. Not a substitute for professional or crisis care.'
+
 export const metadata: Metadata = {
-  title: 'EMPATHEIA -- AI Companion',
-  description:
-    'An empathetic AI companion that sees, listens, and understands. Runs offline with a local LLM.',
-  manifest: '/manifest.webmanifest',
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: 'EMPATHEIA — Free Private AI Companion to Talk Through Your Feelings',
+    template: '%s · EMPATHEIA',
+  },
+  description,
   applicationName: 'EMPATHEIA',
+  manifest: '/manifest.webmanifest',
+  keywords: [
+    'free AI companion',
+    'private mental wellness',
+    'talk to an AI about feelings',
+    'anonymous emotional support',
+    'empathetic AI chat',
+    'in-browser AI, no sign up',
+    'offline AI companion',
+  ],
+  authors: [{ name: 'Ankur Sinha' }],
+  creator: 'Ankur Sinha',
+  alternates: {
+    canonical: '/',
+  },
+  // The app is genuinely useful and safe to surface; allow indexing and rich
+  // previews. Individual non-content routes can still opt out locally.
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
+  openGraph: {
+    type: 'website',
+    siteName: 'EMPATHEIA',
+    url: siteUrl,
+    title: 'EMPATHEIA — Free Private AI Companion',
+    description,
+    images: [{ url: '/icon-512.png', width: 512, height: 512, alt: 'EMPATHEIA' }],
+  },
+  twitter: {
+    card: 'summary',
+    title: 'EMPATHEIA — Free Private AI Companion',
+    description,
+    images: ['/icon-512.png'],
+  },
   appleWebApp: {
     capable: true,
     title: 'EMPATHEIA',
