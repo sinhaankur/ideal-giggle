@@ -73,15 +73,15 @@ describe("FaceDepthEngine — emotion mapping", () => {
 
   it("falls back to neutral when the dominant score is weak", () => {
     const engine = new FaceDepthEngine()
-    // sad just barely on top but well under the 0.35 floor.
-    const reading = settle(engine, detectionWith({ sad: 0.3, neutral: 0.25 }), 8)
+    // sad on top but under the 0.28 generic floor.
+    const reading = settle(engine, detectionWith({ sad: 0.22, neutral: 0.18 }), 8)
     expect(reading.emotion).toBe("neutral")
   })
 
   it("requires a higher bar for fear than for happy", () => {
     const engine = new FaceDepthEngine()
-    // 0.45 clears the 0.35 generic floor but not the 0.5 fear floor.
-    const reading = settle(engine, detectionWith({ fearful: 0.45, neutral: 0.2 }), 10)
+    // 0.32 clears the 0.28 generic floor but not the 0.4 fear floor.
+    const reading = settle(engine, detectionWith({ fearful: 0.32, neutral: 0.2 }), 10)
     expect(reading.emotion).toBe("neutral")
   })
 })

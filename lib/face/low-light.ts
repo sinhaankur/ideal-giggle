@@ -23,8 +23,11 @@ export interface LowLightResult {
 }
 
 // Below this mean luminance we start brightening. Above it the frame is left
-// alone. Tuned to kick in for "dim" rooms, not just pitch black.
-const BOOST_THRESHOLD = 0.42
+// completely untouched (detection runs on the raw video). Set conservatively
+// so normally-lit rooms are NEVER boosted — boosting a fine frame would
+// downscale it and can hurt expression detection. This only engages for
+// genuinely dim/dark rooms.
+const BOOST_THRESHOLD = 0.3
 // Downscale used only for the cheap brightness probe.
 const PROBE_SIZE = 24
 
