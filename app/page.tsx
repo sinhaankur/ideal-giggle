@@ -10,6 +10,7 @@ import { VaultModal, type VaultModalMode } from "@/components/vault-modal"
 import {
   deriveVaultKey,
   encryptWithKey,
+  mergeSessionHistory,
   unlockVault,
   type VaultEnvelope,
   type VaultKeyHandle,
@@ -741,6 +742,18 @@ export default function CompanionApp() {
   // Session memory loaded from the vault on unlock — null when none was
   // stored or the user has never opted in. Drives the resume card.
   const [storedSessionMemory, setStoredSessionMemory] = useState<SessionMemoryRecord | null>(null)
+  // The rolling list of past sessions restored from the soul file (v3+), shown
+  // in the Insights panel so the user can revisit earlier conversations.
+  const [storedSessionHistory, setStoredSessionHistory] = useState<SessionMemoryRecord[]>([])
+  // Mirror of storedSessionHistory for the debounced save closure, so it always
+  // merges against the latest list without re-subscribing the save effect.
+  const storedSessionHistoryRef = useRef<SessionMemoryRecord[]>([])
+  // Stable id for the CURRENT session so debounced re-saves update one history
+  // entry rather than appending a new one each save. Created once per mount.
+  const currentSessionIdRef = useRef<string>("")
+  if (!currentSessionIdRef.current && typeof crypto !== "undefined") {
+    currentSessionIdRef.current = crypto.randomUUID()
+  }
   // The user has acted on the resume card (chose "Pick up" or "Start fresh"),
   // so don't show it again this session even if memory is still in the vault.
   const [resumeCardHandled, setResumeCardHandled] = useState(false)
@@ -1162,6 +1175,13 @@ export default function CompanionApp() {
           setEmpathyProfile(payload.profile)
           setEmpathyData(payload.empathyData)
           setStoredSessionMemory(payload.sessionMemory ?? null)
+          {
+            const restoredHistory = Array.isArray(payload.sessionHistory)
+              ? payload.sessionHistory
+              : []
+            storedSessionHistoryRef.current = restoredHistory
+            setStoredSessionHistory(restoredHistory)
+          }
           // Resume the relationship trajectory from the soul file so the
           // companion picks up at the depth it had reached rather than
           // re-climbing from the surface. Absent in v1 files — then we just
@@ -1206,6 +1226,11 @@ export default function CompanionApp() {
             profile: empathyProfile,
             empathyData,
             exportedAt: new Date().toISOString(),
+            // Preserve the rolling session history so this save path doesn't
+            // wipe past sessions that were persisted by the debounced saver.
+            ...(storedSessionHistoryRef.current.length > 0
+              ? { sessionHistory: storedSessionHistoryRef.current }
+              : {}),
             ...(consciousnessToPersistRef.current
               ? { consciousness: consciousnessToPersistRef.current }
               : {}),
@@ -1278,6 +1303,10 @@ export default function CompanionApp() {
           profile: empathyProfile,
           empathyData,
           exportedAt: new Date().toISOString(),
+          // Preserve past sessions so this save path never wipes history.
+          ...(storedSessionHistoryRef.current.length > 0
+            ? { sessionHistory: storedSessionHistoryRef.current }
+            : {}),
           ...(consciousnessToPersistRef.current
             ? { consciousness: consciousnessToPersistRef.current }
             : {}),
@@ -1964,6 +1993,7 @@ export default function CompanionApp() {
       }))
     if (turns.length === 0) return null
     return {
+      id: currentSessionIdRef.current || undefined,
       savedAt: new Date().toISOString(),
       headline: summaryCard?.headline || feltState?.primary || "in motion",
       summaryParagraphs: summaryCard?.paragraphs || [],
@@ -2028,17 +2058,27 @@ export default function CompanionApp() {
 
     sessionMemorySaveTimerRef.current = window.setTimeout(async () => {
       try {
+        // Fold the current session into the rolling history (replace-by-id so
+        // debounced re-saves of the same conversation update one entry).
+        const nextHistory = mergeSessionHistory(
+          storedSessionHistoryRef.current,
+          sessionMemoryToPersist
+        )
         const bundle: VaultPayload = {
           profile: empathyProfile,
           empathyData,
           exportedAt: new Date().toISOString(),
           sessionMemory: sessionMemoryToPersist,
+          sessionHistory: nextHistory,
           ...(consciousnessToPersistRef.current
             ? { consciousness: consciousnessToPersistRef.current }
             : {}),
         }
         const envelopeJson = await encryptWithKey(bundle, handle)
         writeVaultEnvelopeToStorage(envelopeJson)
+        // Keep in-memory history in sync so the Insights list updates live.
+        storedSessionHistoryRef.current = nextHistory
+        setStoredSessionHistory(nextHistory)
       } catch {
         // Silent: same rationale as the main auto-save.
       }
@@ -2100,11 +2140,17 @@ export default function CompanionApp() {
   // Settings panel when the user disables remembering or hits "Forget all".
   const handleForgetSessionMemory = useCallback(async () => {
     setStoredSessionMemory(null)
+    // Forgetting conversations also clears the revisitable session history —
+    // those entries contain message turns, so "forget" must drop them too.
+    // Clear in-memory first (state + ref) so the UI updates and the next save
+    // can't re-persist them.
+    storedSessionHistoryRef.current = []
+    setStoredSessionHistory([])
     const handle = vaultKeyHandleRef.current
     if (!handle) return
     try {
-      // Forgetting conversations drops sessionMemory (which holds message
-      // text) but keeps the abstract trajectory — that's not a transcript.
+      // Forgetting conversations drops sessionMemory AND sessionHistory (both
+      // hold message text) but keeps the abstract trajectory — not a transcript.
       const bundle: VaultPayload = {
         profile: empathyProfile,
         empathyData,
@@ -2802,6 +2848,10 @@ export default function CompanionApp() {
           profile: empathyProfile,
           empathyData,
           exportedAt: new Date().toISOString(),
+          // Preserve past sessions so this save path never wipes history.
+          ...(storedSessionHistoryRef.current.length > 0
+            ? { sessionHistory: storedSessionHistoryRef.current }
+            : {}),
           ...(consciousnessToPersistRef.current
             ? { consciousness: consciousnessToPersistRef.current }
             : {}),
@@ -3594,6 +3644,7 @@ export default function CompanionApp() {
             onVaultClear={requestVaultClear}
             timeline={empathyTimeline}
             metaHistory={metaHistory}
+            sessionHistory={storedSessionHistory}
             onUpdateData={handleConsciousnessCorrection}
             weightHint={
               totalSentimentScore <= -2 ? "heavy" : totalSentimentScore >= 2 ? "lighter" : "mixed"

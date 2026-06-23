@@ -2,10 +2,10 @@
 
 import { useRef, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { MessageSquare, Brain, HandMetal, Heart, Upload, Download, Copy, Link2, Lock, Unlock, Trash2, Activity } from "lucide-react"
+import { MessageSquare, Brain, HandMetal, Heart, Upload, Download, Copy, Link2, Lock, Unlock, Trash2, Activity, History, ChevronDown } from "lucide-react"
 import type { EmpathyData, EmpathyProfile, EmpathyMetaRecord } from "@/lib/companion-types"
 import type { UserUnderstanding } from "@/lib/conversation/communication-engine"
-import { isEncryptedEnvelope, type VaultEnvelope } from "@/lib/vault/encrypted-profile"
+import { isEncryptedEnvelope, type VaultEnvelope, type SessionMemoryRecord } from "@/lib/vault/encrypted-profile"
 import { ConsciousnessReview } from "@/components/consciousness-review"
 import { MoodTimeline } from "@/components/mood-timeline"
 
@@ -39,6 +39,8 @@ interface EmpathyPanelProps {
   timeline?: EmpathyTimelineEntry[]
   // Per-turn sentiment/depth readings — powers the emotional-arc sparkline.
   metaHistory?: EmpathyMetaRecord[]
+  // Past sessions restored from the soul file, to revisit earlier reflections.
+  sessionHistory?: SessionMemoryRecord[]
   // Apply the person's own corrections to the empathy map (the consciousness
   // review modal). When absent, the "Did I get this right?" entry is hidden.
   onUpdateData?: (next: EmpathyData) => void
@@ -91,12 +93,16 @@ export function EmpathyPanel({
   onVaultClear,
   timeline,
   metaHistory,
+  sessionHistory,
   onUpdateData,
   weightHint = "mixed",
 }: EmpathyPanelProps) {
   const [jsonStatus, setJsonStatus] = useState<string>("No profile JSON imported yet.")
   const [copyStatus, setCopyStatus] = useState<string>("")
   const [reviewOpen, setReviewOpen] = useState(false)
+  // Which past session (by index) is expanded to show its full reflection.
+  const [openSessionIdx, setOpenSessionIdx] = useState<number | null>(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const triggerUpload = () => {
@@ -385,6 +391,70 @@ export function EmpathyPanel({
       {metaHistory && metaHistory.length >= 2 && (
         <div className="mt-3">
           <MoodTimeline metaHistory={metaHistory} />
+        </div>
+      )}
+
+      {sessionHistory && sessionHistory.length > 0 && (
+        <div className="mt-3 rounded border border-border bg-card p-3">
+          <button
+            onClick={() => setHistoryOpen((v) => !v)}
+            className="flex w-full items-center justify-between gap-2 text-left"
+            aria-expanded={historyOpen}
+          >
+            <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <History className="h-3 w-3" />
+              Past sessions
+              <span className="ml-1 rounded bg-muted-foreground/15 px-1 text-[10px] text-muted-foreground">
+                {sessionHistory.length}
+              </span>
+            </span>
+            <ChevronDown
+              className={`h-4 w-4 text-muted-foreground transition-transform ${historyOpen ? "rotate-180" : ""}`}
+            />
+          </button>
+
+          {historyOpen && (
+            <ol className="mt-2 space-y-1.5">
+              {[...sessionHistory].reverse().map((session, i) => {
+                const open = openSessionIdx === i
+                const when = (() => {
+                  const d = new Date(session.savedAt)
+                  return Number.isNaN(d.getTime())
+                    ? ""
+                    : d.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+                })()
+                return (
+                  <li key={session.id || session.savedAt || i} className="rounded border border-border/60 bg-background">
+                    <button
+                      onClick={() => setOpenSessionIdx(open ? null : i)}
+                      className="flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left"
+                      aria-expanded={open}
+                    >
+                      <span className="truncate text-[12px] text-foreground">{session.headline}</span>
+                      <span className="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground">
+                        {when}
+                        <ChevronDown className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`} />
+                      </span>
+                    </button>
+                    {open && session.summaryParagraphs.length > 0 && (
+                      <div className="border-t border-border/60 px-2.5 py-2">
+                        {session.summaryParagraphs.map((p, pi) => (
+                          <p key={pi} className="mb-1.5 text-[11px] leading-relaxed text-muted-foreground last:mb-0">
+                            {p}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                    {open && session.summaryParagraphs.length === 0 && (
+                      <div className="border-t border-border/60 px-2.5 py-2 text-[11px] text-muted-foreground/70">
+                        No saved reflection for this session.
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
+            </ol>
+          )}
         </div>
       )}
 
