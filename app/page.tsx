@@ -1861,6 +1861,9 @@ export default function CompanionApp() {
       empathyCode,
       durationMinutes: elapsedMs / 60000,
       sentimentTrajectory: metaHistory.map((m) => m.sentimentPolarity),
+      // Requesting a reflection is itself a reflective pause, so we end the
+      // summary with a warm, keepable send-off — something to hold, not analysis.
+      closing: true,
     })
   }, [userTurnCount, feltState, empathyCode, elapsedMs, metaHistory])
 
