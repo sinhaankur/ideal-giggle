@@ -4,7 +4,7 @@ import { useState, useCallback, useMemo, useEffect, useRef, type Dispatch, type 
 import dynamic from "next/dynamic"
 import Link from "next/link"
 import { useChat } from "@ai-sdk/react"
-import { Settings, Download, Camera, MessageSquare, Heart, Search, PanelRightOpen } from "lucide-react"
+import { Settings, Download, Camera, MessageSquare, Heart, Search, PanelRightOpen, LifeBuoy } from "lucide-react"
 import { ChatPanel } from "@/components/chat-panel"
 import { VaultModal, type VaultModalMode } from "@/components/vault-modal"
 import {
@@ -78,6 +78,7 @@ const EmpathyPanel = dynamic(() => import("@/components/empathy-panel").then((mo
 const SettingsPanel = dynamic(() => import("@/components/settings-panel").then((mod) => mod.SettingsPanel))
 
 const SetupChecklist = dynamic(() => import("@/components/setup-checklist").then((mod) => mod.SetupChecklist))
+const SupportPanel = dynamic(() => import("@/components/support-panel").then((mod) => mod.SupportPanel))
 
 const AmbientPianoControl = dynamic(
   () => import("@/components/ambient-piano-control").then((mod) => mod.AmbientPianoControl),
@@ -672,6 +673,8 @@ export default function CompanionApp() {
   // empathy map on demand. Preference persists across sessions.
   const [showCameraPanel, setShowCameraPanel] = useState(false)
   const [showInsightsPanel, setShowInsightsPanel] = useState(false)
+  // Always-available grounding/crisis support, openable from the header anytime.
+  const [showSupport, setShowSupport] = useState(false)
   useEffect(() => {
     if (typeof window === "undefined") return
     try {
@@ -3053,6 +3056,13 @@ export default function CompanionApp() {
         ollamaReachable={ollamaReachable}
       />
 
+      {showSupport && (
+        <SupportPanel
+          onClose={() => setShowSupport(false)}
+          reducedMotion={settings.accessibilityMode}
+        />
+      )}
+
       <CommandPalette
         open={commandPaletteOpen}
         onClose={() => setCommandPaletteOpen(false)}
@@ -3197,6 +3207,19 @@ export default function CompanionApp() {
                   : "System Ready"}
             </span>
           </div>
+          {/* Always-available support — grounding tools + crisis resources,
+              one tap away from anywhere, proactively (not only when distress
+              is detected). Shown on every breakpoint. */}
+          <button
+            onClick={() => setShowSupport(true)}
+            className="flex items-center gap-2 rounded border border-rose-500/30 bg-rose-500/5 px-3 py-2 text-sm font-medium text-rose-200 transition-colors hover:bg-rose-500/15"
+            aria-label="Open support and grounding"
+            title="Breathing, grounding, and crisis resources"
+          >
+            <LifeBuoy className="h-4 w-4" />
+            <span className="hidden md:inline">Support</span>
+          </button>
+
           {/* Desktop view toggles — keep the default surface calm; reveal the
               camera and the insights/empathy map only when the user wants them. */}
           <button
