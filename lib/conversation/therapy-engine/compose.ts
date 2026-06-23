@@ -10,6 +10,18 @@
 
 import type { ResponseIntent, ResponsePlan } from "./types"
 
+// Optional context that makes a composed reply feel less like a template and
+// more like a person who's been in the conversation. All fields are optional
+// so existing callers keep working unchanged.
+export interface ComposeContext {
+  // The person's preferred name. Used sparingly (never every turn) and only in
+  // roomier doses, the way a friend drops your name now and then.
+  preferredName?: string
+  // The composer's previous reply. When a freshly-picked line would repeat it,
+  // we nudge the seed and pick a different variant so turns don't echo.
+  lastReply?: string
+}
+
 // Bank of openers per intent + register. Each list has multiple entries
 // so the composer can pick a non-repeating one via the seed.
 const WITNESS_LINES = [
@@ -70,6 +82,30 @@ function pickSeeded<T>(pool: T[], seed: number): T {
   return pool[seed % pool.length]
 }
 
+// Like pickSeeded, but skips a candidate that would reproduce a line already
+// used in the reply being built (or the previous turn's reply). Keeps the
+// composer from echoing itself.
+function pickFresh(pool: string[], seed: number, avoid: string[]): string {
+  if (pool.length === 0) return ""
+  for (let i = 0; i < pool.length; i++) {
+    const candidate = pool[(seed + i) % pool.length]
+    if (!avoid.some((a) => a && a.trim() === candidate.trim())) return candidate
+  }
+  return pool[seed % pool.length]
+}
+
+// A small set of natural body words → the phrase the composer can weave into a
+// reflection so the reply acknowledges the body the user named.
+function bodyMention(bodyAnchors: string[]): string | null {
+  const a = bodyAnchors.map((x) => x.toLowerCase())
+  if (a.some((x) => x.includes("chest"))) return "the tightness in your chest"
+  if (a.some((x) => x.includes("throat"))) return "that catch in your throat"
+  if (a.some((x) => x.includes("stomach") || x.includes("gut"))) return "that knot in your stomach"
+  if (a.some((x) => x.includes("jaw"))) return "the clench in your jaw"
+  if (a.some((x) => x.includes("breath") || x.includes("heart"))) return "how fast everything's moving in your body"
+  return null
+}
+
 function quotedSnippet(userText: string): string | null {
   const compact = userText.replace(/\s+/g, " ").trim()
   if (compact.length < 6) return null
@@ -77,25 +113,45 @@ function quotedSnippet(userText: string): string | null {
   return words.join(" ")
 }
 
-function composeReflect(userText: string, seed: number): string {
+function composeReflect(
+  userText: string,
+  seed: number,
+  bodyAnchors: string[],
+  avoid: string[]
+): string {
   const snippet = quotedSnippet(userText)
   if (!snippet) {
-    return pickSeeded(
+    return pickFresh(
       [
         "Say more about that.",
         "Mm. Go on.",
         "Tell me what just shifted as you said that.",
       ],
-      seed
+      seed,
+      avoid
     )
   }
-  return pickSeeded(
+  // When the user named a body sensation, sometimes reflect through it — it
+  // lands as much closer listening than a bare word-quote.
+  const body = bodyMention(bodyAnchors)
+  if (body && seed % 2 === 0) {
+    return pickFresh(
+      [
+        `"${snippet}" — and I can hear ${body} right there with it. What's that part holding?`,
+        `When you say "${snippet}", ${body} makes sense. Stay with it a second — what's underneath?`,
+      ],
+      seed,
+      avoid
+    )
+  }
+  return pickFresh(
     [
       `When you say "${snippet}" — what's underneath that for you?`,
       `Mm. "${snippet}". Stay with that for a beat.`,
       `"${snippet}" — yeah. What part of it feels loudest right now?`,
     ],
-    seed
+    seed,
+    avoid
   )
 }
 
@@ -133,15 +189,58 @@ function composeAnchor(bodyAnchors: string[], seed: number): string {
   return pickSeeded(ANCHOR_LINES, seed)
 }
 
+// Lightly weave the person's name into one line of a roomier reply — not
+// every turn, and never on micro/short doses (those need to stay spare). A
+// friend uses your name occasionally, as punctuation, not constantly.
+function maybeAddName(line: string, name: string | undefined, seed: number): string {
+  if (!name) return line
+  const clean = name.trim()
+  if (!clean) return line
+  // ~1 in 3 eligible lines, deterministic on the seed.
+  if (seed % 3 !== 0) return line
+  // Only attach to a statement, not a question, and only if the name isn't
+  // already there. Prepend as a soft address: "Yeah — Sam, that ..." reads
+  // worse than a gentle leading "Sam — ", so use that form.
+  if (line.includes(clean)) return line
+  if (line.trimEnd().endsWith("?")) return line
+  return `${clean} — ${line.charAt(0).toLowerCase()}${line.slice(1)}`
+}
+
 // Render a full response from a plan + the user's latest message. The
 // seed (a number) is used to pick variants so repeat turns don't read
-// the same.
+// the same. Optional context lets the reply use the person's name and avoid
+// echoing the previous turn.
 export function composeFromPlan(
   plan: ResponsePlan,
   userText: string,
-  seed: number
+  seed: number,
+  context?: ComposeContext
 ): string {
   const parts: string[] = []
+  // Lines to avoid reproducing: anything already in this reply, plus the
+  // sentences of the previous turn's reply so consecutive turns don't echo.
+  // We split the previous reply back into sentence-ish pieces because the
+  // composer picks line-by-line — comparing against the whole blob would
+  // never catch a repeated opener.
+  const avoid: string[] = []
+  if (context?.lastReply) {
+    const prev = context.lastReply.trim()
+    avoid.push(prev)
+    for (const piece of prev.split(/(?<=[.!?])\s+/)) {
+      const t = piece.trim()
+      if (t) avoid.push(t)
+    }
+  }
+
+  const push = (line: string) => {
+    if (!line) return
+    parts.push(line)
+    avoid.push(line.trim())
+  }
+
+  // Name use is reserved for roomier replies and applied to at most one line.
+  const roomyEnough = plan.dose === "standard" || plan.dose === "long"
+  let nameUsed = false
 
   // Intent 1 leads. Each intent contributes a sentence (or, for micro,
   // a single line and we stop).
@@ -150,39 +249,58 @@ export function composeFromPlan(
     if (plan.dose === "short" && parts.length > 1) break
     if (plan.dose === "standard" && parts.length > 2) break
 
+    const s = seed + parts.length
     const turn = (intent as ResponseIntent)
     switch (turn) {
       case "witness":
-        parts.push(pickSeeded(WITNESS_LINES, seed + parts.length))
+        push(pickFresh(WITNESS_LINES, s, avoid))
         break
-      case "validate":
-        parts.push(pickSeeded(VALIDATE_LINES, seed + parts.length))
+      case "validate": {
+        let line = pickFresh(VALIDATE_LINES, s, avoid)
+        if (roomyEnough && !nameUsed) {
+          const named = maybeAddName(line, context?.preferredName, s)
+          if (named !== line) nameUsed = true
+          line = named
+        }
+        push(line)
         break
+      }
       case "reflect":
-        parts.push(composeReflect(userText, seed + parts.length))
+        push(composeReflect(userText, s, plan.bodyAnchors, avoid))
         break
       case "clarify":
-        if (plan.mustAskQuestion) parts.push(composeClarify(seed + parts.length))
+        if (plan.mustAskQuestion) push(composeClarify(s))
         break
       case "anchor":
-        parts.push(composeAnchor(plan.bodyAnchors, seed + parts.length))
+        push(composeAnchor(plan.bodyAnchors, s))
         break
       case "reframe":
-        parts.push(pickSeeded(REFRAME_LINES, seed + parts.length))
+        push(pickFresh(REFRAME_LINES, s, avoid))
         break
-      case "affirm":
-        parts.push(pickSeeded(AFFIRM_LINES, seed + parts.length))
+      case "affirm": {
+        let line = pickFresh(AFFIRM_LINES, s, avoid)
+        if (roomyEnough && !nameUsed) {
+          const named = maybeAddName(line, context?.preferredName, s)
+          if (named !== line) nameUsed = true
+          line = named
+        }
+        push(line)
         break
+      }
       case "bridge":
-        parts.push(pickSeeded(BRIDGE_LINES, seed + parts.length))
+        push(pickFresh(BRIDGE_LINES, s, avoid))
         break
       case "mobilize":
-        parts.push(pickSeeded(MOBILIZE_LINES, seed + parts.length))
+        push(pickFresh(MOBILIZE_LINES, s, avoid))
         break
       case "summarize": {
         const snippet = quotedSnippet(userText)
         const opener = pickSeeded(SUMMARY_OPENER, seed)
-        parts.push(snippet ? `${opener}"${snippet}" — and what's living under that.` : `${opener}what's living under what you've named.`)
+        push(
+          snippet
+            ? `${opener}"${snippet}" — and what's living under that.`
+            : `${opener}what's living under what you've named.`
+        )
         break
       }
     }
