@@ -467,7 +467,11 @@ export function ChatPanel({
   }
 
   const providerLabel =
-    settings.provider === "ollama" ? "OLLAMA LOCAL" : settings.provider.toUpperCase()
+    settings.provider === "ollama"
+      ? "OLLAMA LOCAL"
+      : settings.provider === "webllm"
+        ? "IN-BROWSER AI"
+        : settings.provider.toUpperCase()
 
   const introTotal = introProgress?.total || 0
   const introAnswered = introProgress?.answered || 0
@@ -643,7 +647,10 @@ export function ChatPanel({
         </div>
         <div className="flex items-center gap-2">
           {(() => {
-            const isLocalProvider = settings.provider === "ollama"
+            // Both Ollama (local daemon) and WebLLM (in-browser WebGPU) run
+            // fully on-device, so neither sends the conversation anywhere.
+            const isLocalProvider =
+              settings.provider === "ollama" || settings.provider === "webllm"
             const providerName = settings.provider === "openai"
               ? "OpenAI"
               : settings.provider === "anthropic"
@@ -654,9 +661,12 @@ export function ChatPanel({
                     ? "OpenRouter"
                     : settings.provider.toUpperCase()
             const label = isLocalProvider ? "PRIVATE" : "CLOUD · NOT PRIVATE"
-            const tooltip = isLocalProvider
-              ? "This conversation runs entirely on your machine via Ollama. Nothing leaves the device. EMPATHEIA itself never sees your messages."
-              : `Your messages are sent to ${providerName} over the internet for the AI to reply. ${providerName} processes them under their own policy and may retain logs. EMPATHEIA does not store them, but the conversation is NOT private end-to-end. For full privacy, switch to Ollama (PC LLM) in Settings.`
+            const tooltip =
+              settings.provider === "webllm"
+                ? "This conversation runs entirely inside your browser via WebGPU. Nothing leaves your device. EMPATHEIA itself never sees your messages."
+                : settings.provider === "ollama"
+                  ? "This conversation runs entirely on your machine via Ollama. Nothing leaves the device. EMPATHEIA itself never sees your messages."
+                  : `Your messages are sent to ${providerName} over the internet for the AI to reply. ${providerName} processes them under their own policy and may retain logs. EMPATHEIA does not store them, but the conversation is NOT private end-to-end. For full privacy, switch to In-Browser AI or Ollama in Settings.`
             return (
               <span
                 className={`flex h-6 items-center gap-1 border px-2 text-[11px] uppercase tracking-wide ${
@@ -786,19 +796,23 @@ export function ChatPanel({
           <div className="flex items-center gap-2 text-amber-200">
             <WifiOff className="h-3.5 w-3.5" />
             <span className="leading-relaxed">
-              {settings.provider === "ollama"
-                ? "You are offline. Ollama on your machine keeps the conversation running."
-                : "You are offline. Switch to Ollama (PC LLM) in Settings, or wait for the network to come back."}
+              {settings.provider === "webllm"
+                ? "You are offline. The in-browser model keeps the conversation running."
+                : settings.provider === "ollama"
+                  ? "You are offline. Ollama on your machine keeps the conversation running."
+                  : "You are offline. Switch to In-Browser AI in Settings, or wait for the network to come back."}
             </span>
           </div>
-          {settings.provider !== "ollama" && onUseLocalProvider && (
-            <button
-              onClick={onUseLocalProvider}
-              className="inline-flex items-center gap-1 rounded border border-amber-500/40 bg-background/40 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-200 transition-colors hover:bg-amber-500/20"
-            >
-              Use Ollama
-            </button>
-          )}
+          {settings.provider !== "ollama" &&
+            settings.provider !== "webllm" &&
+            onUseLocalProvider && (
+              <button
+                onClick={onUseLocalProvider}
+                className="inline-flex items-center gap-1 rounded border border-amber-500/40 bg-background/40 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-200 transition-colors hover:bg-amber-500/20"
+              >
+                Use Local AI
+              </button>
+            )}
         </div>
       )}
 

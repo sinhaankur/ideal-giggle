@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
-import { Settings, Server, Cloud, Thermometer, User, Sparkles, Cpu, Download } from "lucide-react"
+import { Settings, Server, Cloud, Thermometer, User, Sparkles, Cpu, Download, Globe } from "lucide-react"
 import type { CompanionSettings, AIProvider, Personality, ToneMode } from "@/lib/companion-types"
 
 // Free-tier model presets verified live against OpenRouter's catalog.
@@ -17,12 +17,21 @@ const OPENROUTER_MODEL_PRESETS = [
   "nousresearch/hermes-3-llama-3.1-405b:free",
 ]
 
-// Two-path provider model: Ollama (local PC LLM) or a cloud API.
+// Provider paths, ordered by how little setup they need:
+//   webllm    — runs in this browser, zero install (default on the web)
+//   ollama    — local PC LLM, max privacy/quality, requires install
+//   openrouter — hosted open-source models via API
 const PROVIDERS: { value: AIProvider; label: string; desc: string; icon: typeof Server }[] = [
+  {
+    value: "webllm",
+    label: "In-Browser AI (no setup)",
+    desc: "A small model runs entirely in this browser via WebGPU. Private, free, nothing to install.",
+    icon: Globe,
+  },
   {
     value: "ollama",
     label: "Ollama (PC LLM)",
-    desc: "Local LLM running on your own machine. Private, free, offline.",
+    desc: "Local LLM running on your own machine. Private, free, offline, higher quality.",
     icon: Cpu,
   },
   {
@@ -452,6 +461,40 @@ export function SettingsPanel({
               })}
             </div>
           </div>
+
+          {/* In-Browser WebLLM Settings */}
+          {settings.provider === "webllm" && (
+            <div className="mb-6 rounded border border-border bg-background p-3">
+              <div className="mb-3 flex items-center gap-2 border-b border-border pb-2">
+                <Globe className="h-4 w-4 text-foreground" />
+                <span className="text-sm font-semibold text-foreground">
+                  In-Browser AI (WebGPU)
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                A small language model is downloaded once and runs entirely inside
+                this browser tab. Your conversation never leaves your device, and
+                no server or install is involved. The first reply takes a little
+                longer while the model loads; after that it&apos;s instant and works
+                offline. Requires a Chromium-based browser (Chrome, Edge, Arc) with
+                WebGPU enabled.
+              </p>
+              <label className="mb-2 mt-3 block text-sm font-medium text-foreground">
+                Model (optional)
+              </label>
+              <input
+                type="text"
+                value={settings.webllmModel}
+                onChange={(e) => update({ webllmModel: e.target.value })}
+                className="w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder="Auto (TinyLlama / Llama-3.2-1B)"
+              />
+              <div className="mt-2 text-[11px] text-muted-foreground">
+                Leave blank to let EMPATHEIA pick a small, broadly-compatible model.
+                Larger models give better replies but download more and need more memory.
+              </div>
+            </div>
+          )}
 
           {/* Ollama Settings */}
           {settings.provider === "ollama" && (

@@ -1630,7 +1630,13 @@ export default function CompanionApp() {
       responsePlan: ResponsePlan | null
       history: Message[]
     }) => {
-      if (settings.provider !== "ollama" || !isWebLLMSupported()) {
+      // The in-browser engine is the primary runtime for the "webllm" provider
+      // and also serves as the offline fallback for "ollama". For any other
+      // provider it stays inactive. WebGPU is required either way.
+      if (
+        (settings.provider !== "webllm" && settings.provider !== "ollama") ||
+        !isWebLLMSupported()
+      ) {
         return null
       }
 
@@ -1641,7 +1647,8 @@ export default function CompanionApp() {
         }))
 
         return await sendWebLLMDirect({
-          model: settings.ollamaModel,
+          // Empty string lets the engine auto-pick a small, available model.
+          model: settings.webllmModel || undefined,
           system: buildSystemPrompt(
             settings.name,
             settings.personality,
@@ -1665,7 +1672,7 @@ export default function CompanionApp() {
     [
       settings.provider,
       settings.contextMessages,
-      settings.ollamaModel,
+      settings.webllmModel,
       settings.name,
       settings.personality,
       settings.toneMode,
@@ -2331,6 +2338,95 @@ export default function CompanionApp() {
             emotion: "thinking",
           },
         ])
+        return
+      }
+
+      // WebLLM: the default public-web provider. Everything runs in the
+      // visitor's browser via WebGPU — no server, no install, fully private.
+      // We never touch /api/chat here. If WebGPU is unavailable (or the model
+      // errors), we degrade to the deterministic empathy engine so a reply is
+      // always produced.
+      if (settings.provider === "webllm") {
+        const userMessage: Message = {
+          id: crypto.randomUUID(),
+          text,
+          sender: "user",
+          timestamp: new Date(),
+          emotion: sentimentEmotion,
+        }
+        setRemoteFallbackMessages((prev) => [...prev, userMessage])
+
+        const browserReply = await requestBrowserWebLLMReply({
+          text,
+          sentimentEmotion,
+          responsePlan,
+          history: [...remoteFallbackMessages, userMessage],
+        })
+
+        if (browserReply) {
+          const extracted = extractDataUpdate(browserReply.text)
+          const metaExtracted = extractMetaBlock(extracted.cleanText)
+          if (extracted.update) {
+            const nextData = applyDataUpdateBlock(empathyDataRef.current, extracted.update)
+            setEmpathyData(nextData)
+            empathyDataRef.current = nextData
+          }
+          applyMetaSignal(metaExtracted.meta, setSessionDepthLevel, setCurrentStep, setConversationSentimentScore)
+          if (metaExtracted.meta) {
+            setMetaHistory((prev) => [...prev.slice(-19), { ...metaExtracted.meta!, at: new Date().toISOString() }])
+          }
+
+          setRemoteFallbackMessages((prev) => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              text:
+                metaExtracted.cleanText ||
+                "I am here with you. Could you tell me a little more?",
+              sender: "ai",
+              timestamp: new Date(),
+              emotion: sentimentEmotion,
+            },
+          ])
+          setLlmConnectionError("")
+          setRuntimeSource("webllm")
+          return
+        }
+
+        // WebGPU unavailable or the model failed — deterministic engine.
+        const baseFallback = buildLocalCompanionReply(
+          text,
+          analysis.sentimentScore,
+          suggestedNext.question,
+          {
+            provider: settings.provider,
+            llmConnectionError: isWebLLMSupported()
+              ? "In-browser model unavailable"
+              : "This browser does not support WebGPU",
+            systemHealth,
+            ollamaBaseUrl: settings.ollamaBaseUrl,
+            ollamaModel: settings.ollamaModel,
+          },
+          responsePlan
+        )
+        const fallbackText = ensureNonRepeatingFallback(
+          baseFallback,
+          lastFallbackReplyRef.current,
+          suggestedNext.question
+        )
+        lastFallbackReplyRef.current = fallbackText
+        setRemoteFallbackMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            text: fallbackText,
+            sender: "ai",
+            timestamp: new Date(),
+            emotion: sentimentEmotion,
+            mode: "fallback",
+          },
+        ])
+        setRuntimeSource("fallback")
         return
       }
 
@@ -3224,7 +3320,7 @@ export default function CompanionApp() {
             >
               <span className="flex-1">
                 <span aria-hidden className="mr-1">✨</span>
-                You're building something here. Save this as your consciousness — encrypted, only yours — so it remembers you next time.
+                You&apos;re building something here. Save this as your consciousness — encrypted, only yours — so it remembers you next time.
               </span>
               <span className="flex shrink-0 items-center gap-2">
                 <button
@@ -3250,7 +3346,7 @@ export default function CompanionApp() {
               aria-live="polite"
             >
               <span>
-                Welcome back — your consciousness is restored. We're picking up where we left off, not starting over.
+                Welcome back — your consciousness is restored. We&apos;re picking up where we left off, not starting over.
               </span>
               <button
                 onClick={() => setResumedConsciousness(null)}

@@ -2,10 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
-import { CheckCircle2, CircleAlert, Copy, Download, Loader2, RefreshCw } from "lucide-react"
+import { CheckCircle2, ChevronDown, CircleAlert, Copy, Download, Info, Loader2, RefreshCw } from "lucide-react"
 import type { CompanionSettings } from "@/lib/companion-types"
+import { isWebLLMSupported } from "@/lib/api/webllm-direct"
 
-type CheckState = "ok" | "warning" | "pending"
+// "info" reads as neutral/optional (a capability that's available but not
+// required), distinct from "warning" which signals something the user may
+// actually want to act on.
+type CheckState = "ok" | "warning" | "pending" | "info"
 
 interface SetupChecklistProps {
   settings: CompanionSettings
@@ -34,6 +38,8 @@ function StatusLine({ label, state, detail }: { label: string; state: CheckState
           <CheckCircle2 className="h-4 w-4 text-emerald-500" />
         ) : state === "warning" ? (
           <CircleAlert className="h-4 w-4 text-amber-500" />
+        ) : state === "info" ? (
+          <Info className="h-4 w-4 text-sky-400" />
         ) : (
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
         )}
@@ -76,7 +82,19 @@ export function SetupChecklist({ settings, runtime }: SetupChecklistProps) {
   const [checkingOllama, setCheckingOllama] = useState(false)
   const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus | null>(null)
   const [copiedCommand, setCopiedCommand] = useState("")
+  // Ollama is an optional "max privacy" upgrade on the web build; keep it
+  // tucked away so first-time visitors aren't greeted by terminal commands
+  // and red errors for infrastructure they don't need.
+  const [ollamaOpen, setOllamaOpen] = useState(settings.provider === "ollama")
   const isStaticExport = process.env.NEXT_PUBLIC_STATIC_EXPORT === "true"
+
+  // WebGPU presence decides whether the in-browser model can run. When it
+  // can't, the app still works via the deterministic engine — so we frame the
+  // absence as "limited", never as a failure.
+  const [webgpuSupported, setWebgpuSupported] = useState<boolean | null>(null)
+  useEffect(() => {
+    setWebgpuSupported(isWebLLMSupported())
+  }, [])
 
   const copyCommand = useCallback(async (command: string) => {
     try {
@@ -143,69 +161,112 @@ export function SetupChecklist({ settings, runtime }: SetupChecklistProps) {
     }
   }, [settings.ollamaBaseUrl, settings.ollamaModel, isStaticExport])
 
+  // Only probe Ollama when it's actually relevant: the user is on the Ollama
+  // provider, or they've expanded the optional Ollama section to set it up.
   useEffect(() => {
-    if (settings.provider !== "ollama") return
+    if (settings.provider !== "ollama" && !ollamaOpen) return
     const timeout = window.setTimeout(() => {
       checkOllama()
     }, 350)
     return () => window.clearTimeout(timeout)
-  }, [settings.provider, settings.ollamaBaseUrl, settings.ollamaModel, checkOllama])
+  }, [settings.provider, ollamaOpen, settings.ollamaBaseUrl, settings.ollamaModel, checkOllama])
+
+  const cameraReady = hasMediaDevices
+  const webllmActive = settings.provider === "webllm"
 
   return (
     <div className="mt-4 rounded border border-border bg-card p-4">
-      <div className="mb-3 text-xs font-semibold tracking-wide text-muted-foreground">SETUP CHECKLIST</div>
+      <div className="mb-3 text-xs font-semibold tracking-wide text-muted-foreground">STATUS</div>
+
+      {/* In-browser AI — the zero-setup default. Lead with the reassuring,
+          "you're good to go" state rather than a list of things to install. */}
+      {webllmActive && (
+        <StatusLine
+          label="In-Browser AI"
+          state={webgpuSupported === false ? "info" : "ok"}
+          detail={
+            webgpuSupported === false
+              ? "This browser has no WebGPU, so replies use the built-in offline companion engine. For the full AI model, open EMPATHEIA in Chrome, Edge, or Arc."
+              : "Ready — a private AI model runs entirely in this browser. No install, nothing leaves your device. The first reply loads the model, then it's fast and works offline."
+          }
+        />
+      )}
 
       <StatusLine
         label="Camera"
-        state={hasMediaDevices ? "ok" : "warning"}
+        state={cameraReady ? "ok" : "info"}
         detail={
-          hasMediaDevices
-            ? "Camera API available. Use Start Camera in Camera panel."
-            : "Camera API not available in this browser or context."
+          cameraReady
+            ? "Optional. Press Start Camera to let EMPATHEIA read your expression."
+            : "Optional. Camera isn't available here — everything works without it."
         }
       />
 
-      <StatusLine
-        label="Provider"
-        state={
-          runtime.llmConnectionError
-            ? "warning"
-            : runtime.isLoading
-              ? "pending"
-              : settings.provider === "openrouter" && !settings.openRouterApiKey.trim()
-                ? "warning"
-                : "ok"
-        }
-        detail={
-          runtime.llmConnectionError
-            ? `Provider error: ${runtime.llmConnectionError}`
-            : runtime.isLoading
-              ? `Current provider: ${settings.provider.toUpperCase()} (processing request...)`
-              : settings.provider === "openrouter" && !settings.openRouterApiKey.trim()
-                ? "OpenRouter selected but API key is empty in Settings."
-                : `Current provider: ${settings.provider.toUpperCase()} ready.`
-        }
-      />
+      {settings.provider !== "webllm" && (
+        <StatusLine
+          label="Provider"
+          state={
+            runtime.llmConnectionError
+              ? "warning"
+              : runtime.isLoading
+                ? "pending"
+                : settings.provider === "openrouter" && !settings.openRouterApiKey.trim()
+                  ? "warning"
+                  : "ok"
+          }
+          detail={
+            runtime.llmConnectionError
+              ? `Provider error: ${runtime.llmConnectionError}`
+              : runtime.isLoading
+                ? `Current provider: ${settings.provider.toUpperCase()} (processing request...)`
+                : settings.provider === "openrouter" && !settings.openRouterApiKey.trim()
+                  ? "OpenRouter selected but API key is empty in Settings."
+                  : `Current provider: ${settings.provider.toUpperCase()} ready.`
+          }
+        />
+      )}
 
-      {settings.provider === "ollama" && (
-        <>
+      {/* Optional "max privacy" upgrade. Collapsed by default on the web so
+          first-time visitors aren't confronted with terminal commands. */}
+      <div className="mt-3 border-t border-border/60 pt-3">
+        <button
+          onClick={() => setOllamaOpen((v) => !v)}
+          className="flex w-full items-center justify-between gap-2 text-left"
+          aria-expanded={ollamaOpen}
+        >
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-foreground">
+              Run it 100% on your machine
+            </div>
+            <div className="mt-0.5 text-[11px] text-muted-foreground">
+              Optional. Install Ollama for a larger, higher-quality private model.
+            </div>
+          </div>
+          <ChevronDown
+            className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${ollamaOpen ? "rotate-180" : ""}`}
+          />
+        </button>
+      </div>
+
+      {ollamaOpen && (
+        <div className="mt-3">
           <StatusLine
             label="Ollama Endpoint"
             state={
               checkingOllama
                 ? "pending"
-                : ollamaStatus?.reachable === false
-                  ? "warning"
-                  : ollamaStatus?.reachable
-                    ? "ok"
-                    : "warning"
+                : ollamaStatus?.reachable
+                  ? "ok"
+                  : "info"
             }
             detail={
               checkingOllama
                 ? "Checking local runtime..."
                 : ollamaStatus?.reachable
                   ? `Connected. ${ollamaStatus.modelCount} model(s) found.`
-                  : ollamaStatus?.error || "Not checked yet. Click Verify Ollama."
+                  : ollamaStatus?.error
+                    ? `Not running yet — ${ollamaStatus.error}. Follow the steps below to enable it.`
+                    : "Not running yet. Follow the steps below to enable it."
             }
           />
 
@@ -216,14 +277,14 @@ export function SetupChecklist({ settings, runtime }: SetupChecklistProps) {
                 ? "pending"
                 : ollamaStatus?.modelAvailable
                   ? "ok"
-                  : "warning"
+                  : "info"
             }
             detail={
               checkingOllama
                 ? `Checking model ${settings.ollamaModel}...`
                 : ollamaStatus?.modelAvailable
                   ? `${settings.ollamaModel} is available locally.`
-                  : `Model ${settings.ollamaModel} not found. Run: ollama pull ${settings.ollamaModel}`
+                  : `Model ${settings.ollamaModel} not installed yet.`
             }
           />
 
@@ -242,20 +303,16 @@ export function SetupChecklist({ settings, runtime }: SetupChecklistProps) {
               <div className="mt-3 space-y-3 rounded border border-border bg-background p-3">
                 <div className="flex items-center justify-between">
                   <div className="text-xs font-semibold uppercase tracking-wide text-foreground">
-                    {phase === "stopped" && "Daemon not reachable"}
-                    {phase === "no-model" && "Model not installed"}
-                    {phase === "ready" && "Lifecycle commands"}
+                    {phase === "stopped" && "Step 1 — start Ollama"}
+                    {phase === "no-model" && "Step 2 — get a model"}
+                    {phase === "ready" && "Connected — lifecycle commands"}
                   </div>
                   <span
                     className={`text-[11px] uppercase tracking-wide ${
-                      phase === "ready"
-                        ? "text-emerald-500"
-                        : phase === "no-model"
-                          ? "text-amber-500"
-                          : "text-rose-400"
+                      phase === "ready" ? "text-emerald-500" : "text-sky-400"
                     }`}
                   >
-                    {phase === "ready" ? "ready" : phase === "no-model" ? "needs pull" : "needs start"}
+                    {phase === "ready" ? "ready" : "optional"}
                   </span>
                 </div>
 
@@ -323,7 +380,7 @@ export function SetupChecklist({ settings, runtime }: SetupChecklistProps) {
             <RefreshCw className={`h-3.5 w-3.5 ${checkingOllama ? "animate-spin" : ""}`} />
             Verify Ollama
           </button>
-        </>
+        </div>
       )}
     </div>
   )

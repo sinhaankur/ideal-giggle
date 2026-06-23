@@ -19,10 +19,15 @@ const FACE_DETECTOR_OPTIONS = new faceapi.TinyFaceDetectorOptions({
   scoreThreshold: 0.5,
 })
 
-// Min interval between detection passes. 2 fps is more than enough for
-// emotion-aware chat — the UI smooths over the gaps and 500 ms+ pause
-// gives the JS thread room to render and stream tokens.
-const DETECTION_INTERVAL_MS = 500
+// Adaptive detection cadence. We run faster when something is changing (the
+// expression just shifted) and ease off when the face is steady, so the read
+// feels responsive without pinning the CPU/GPU on a static face. The UI
+// smooths over the gaps either way.
+const DETECTION_INTERVAL_FAST_MS = 280 // ~3.5 fps while expressions move
+const DETECTION_INTERVAL_IDLE_MS = 650 // ~1.5 fps when steady
+// Backoff when the face leaves the frame — no point detecting hard on an
+// empty chair.
+const DETECTION_INTERVAL_NO_FACE_MS = 900
 
 // Loaded once per session, shared across mounts so toggling the panel
 // doesn't re-load weights from disk.
@@ -87,6 +92,9 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
   const detectionTimerRef = useRef<number | null>(null)
   const detectionInFlightRef = useRef(false)
   const detectionCancelledRef = useRef(false)
+  // Drives the adaptive scheduler — updated each frame from the reading.
+  const nextIntervalRef = useRef<number>(DETECTION_INTERVAL_IDLE_MS)
+  const lastEmotionRef = useRef<Emotion>("neutral")
   const depthEngineRef = useRef<FaceDepthEngine>(new FaceDepthEngine())
   const [depthReading, setDepthReading] = useState<FaceReading | null>(null)
 
@@ -241,6 +249,15 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
         setDepthReading(reading)
         setFacialExpression(reading.expressions)
         setCurrentEmotion(reading.emotion)
+
+        // Adaptive cadence: speed up right after the expression changes (or
+        // when strongly engaged), relax when the read is steady.
+        const emotionChanged = reading.emotion !== lastEmotionRef.current
+        lastEmotionRef.current = reading.emotion
+        nextIntervalRef.current =
+          emotionChanged || reading.engagement.score > 0.7
+            ? DETECTION_INTERVAL_FAST_MS
+            : DETECTION_INTERVAL_IDLE_MS
         // Only emit upstream when the frame quality is good enough — this
         // is what was making the chat see flickery emotion changes. We pass
         // the quality-aware signal too so the mood engine can weight the read.
@@ -255,6 +272,8 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
         const reading = depthEngineRef.current.ingest(null, video)
         setDepthReading(reading)
         setFacialExpression((prev) => ({ ...prev, detection: false }))
+        lastEmotionRef.current = "neutral"
+        nextIntervalRef.current = DETECTION_INTERVAL_NO_FACE_MS
         setFaceTarget((prev) => ({
           x: prev.x * 0.8 + 50 * 0.2,
           y: prev.y * 0.8 + 50 * 0.2,
@@ -285,7 +304,7 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
         detectionInFlightRef.current = false
         scheduleNextDetection()
       }
-    }, DETECTION_INTERVAL_MS)
+    }, nextIntervalRef.current)
   }, [detectFacialExpression])
 
   const startCamera = useCallback(async () => {
@@ -346,8 +365,19 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
       await modelLoad
       scheduleNextDetection()
     } catch (err) {
+      // Map the DOMException name to a human, actionable message instead of
+      // surfacing raw "NotAllowedError" strings.
+      const name = err instanceof DOMException ? err.name : ""
       const errorMsg =
-        err instanceof Error ? err.message : "Failed to start camera and microphone"
+        name === "NotAllowedError" || name === "SecurityError"
+          ? "Camera access was blocked. Allow the camera for this site in your browser, then press Start again."
+          : name === "NotFoundError" || name === "OverconstrainedError"
+            ? "No camera was found. Plug one in or pick a different device below."
+            : name === "NotReadableError"
+              ? "The camera is in use by another app. Close it (Zoom, Meet, Photo Booth…) and try again."
+              : err instanceof Error
+                ? err.message
+                : "Failed to start camera and microphone"
       setError(errorMsg)
       console.error("Camera start error:", err)
       setIsActive(false)
@@ -575,6 +605,13 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
                 : ""}
             </div>
           </div>
+          {depthReading.blinkRate > 0 && (
+            <div className="col-span-2 text-muted-foreground/80">
+              <span className="uppercase tracking-wide text-[10px]">Blink rate:</span>{" "}
+              {depthReading.blinkRate}/min
+              {depthReading.blinkRate > 28 ? " · elevated (often tension or fatigue)" : ""}
+            </div>
+          )}
           {depthReading.headPose && (
             <div className="col-span-2 text-muted-foreground/80">
               <span className="uppercase tracking-wide text-[10px]">Head pose:</span>{" "}

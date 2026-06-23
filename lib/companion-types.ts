@@ -4,11 +4,22 @@ export type Personality = "warm" | "analytical" | "playful" | "professional"
 
 export type ToneMode = "casual" | "balanced" | "deep"
 
-// Two clean primary paths:
-//   "ollama" — local LLM on the user's machine (with optional browser
-//               WebLLM fallback when Ollama is unreachable)
+// Primary paths:
+//   "webllm" — small model running entirely in the visitor's browser via
+//               WebGPU. Zero install, fully private, works for anyone on the
+//               public web. This is the default so the product "just works".
+//   "ollama" — local LLM on the user's own machine. Maximum privacy/quality,
+//               opt-in for users who install it.
 //   "openai" | "anthropic" | "google" | "openrouter" — cloud API
-export type AIProvider = "openai" | "anthropic" | "google" | "ollama" | "openrouter"
+// In every case, if the chosen runtime is unavailable the app degrades to the
+// deterministic local empathy engine so a reply is always produced.
+export type AIProvider =
+  | "webllm"
+  | "openai"
+  | "anthropic"
+  | "google"
+  | "ollama"
+  | "openrouter"
 
 export const PROVIDER_DEFAULT_MODELS = {
   openai: "gpt-4o-mini",
@@ -16,15 +27,27 @@ export const PROVIDER_DEFAULT_MODELS = {
   google: "gemini-2.0-flash-001",
 } as const
 
+const VALID_PROVIDERS: readonly AIProvider[] = [
+  "webllm",
+  "openai",
+  "anthropic",
+  "google",
+  "ollama",
+  "openrouter",
+]
+
 const envDefaultProvider = process.env.NEXT_PUBLIC_DEFAULT_PROVIDER
-const defaultProvider: AIProvider =
-  envDefaultProvider === "openai" ||
-  envDefaultProvider === "anthropic" ||
-  envDefaultProvider === "google" ||
-  envDefaultProvider === "ollama" ||
-  envDefaultProvider === "openrouter"
-    ? envDefaultProvider
-    : "ollama"
+// Electron/static-export desktop builds ship Ollama and run offline, so they
+// default to "ollama". The public web build defaults to "webllm" so a visitor
+// gets a working, private, zero-setup experience out of the box.
+const isStaticExport = process.env.NEXT_PUBLIC_STATIC_EXPORT === "true"
+const defaultProvider: AIProvider = VALID_PROVIDERS.includes(
+  envDefaultProvider as AIProvider
+)
+  ? (envDefaultProvider as AIProvider)
+  : isStaticExport
+    ? "ollama"
+    : "webllm"
 
 const envDefaultOllamaBaseUrl =
   process.env.NEXT_PUBLIC_OLLAMA_BASE_URL || "http://127.0.0.1:11434"
@@ -244,6 +267,9 @@ export interface CompanionSettings {
   maxOutputTokens: number
   contextMessages: number
   cameraDeviceId: string
+  // Preferred in-browser WebLLM model id. Empty means "let the engine pick a
+  // small, broadly-available model" (TinyLlama / Llama-3.2-1B).
+  webllmModel: string
   ollamaBaseUrl: string
   ollamaModel: string
   mcpBaseUrl: string
@@ -270,6 +296,7 @@ export const DEFAULT_SETTINGS: CompanionSettings = {
   maxOutputTokens: 300,
   contextMessages: 12,
   cameraDeviceId: "",
+  webllmModel: process.env.NEXT_PUBLIC_WEBLLM_MODEL || "",
   ollamaBaseUrl: envDefaultOllamaBaseUrl,
   ollamaModel: "llama3.2",
   mcpBaseUrl: "http://127.0.0.1:8787",
