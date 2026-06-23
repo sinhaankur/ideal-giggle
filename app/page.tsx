@@ -3589,6 +3589,7 @@ export default function CompanionApp() {
             onVaultLock={requestVaultLock}
             onVaultClear={requestVaultClear}
             timeline={empathyTimeline}
+            metaHistory={metaHistory}
             onUpdateData={handleConsciousnessCorrection}
             weightHint={
               totalSentimentScore <= -2 ? "heavy" : totalSentimentScore >= 2 ? "lighter" : "mixed"
