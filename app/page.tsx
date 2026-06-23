@@ -381,9 +381,30 @@ function getToneModeInstruction(toneMode: CompanionSettings["toneMode"]) {
   return getToneModeInstructionFromEngine(toneMode)
 }
 
-type QuickPresetId = "fast-local" | "lite-empathy" | "balanced-cloud" | "deep-empathy"
+type QuickPresetId =
+  | "browser-private"
+  | "fast-local"
+  | "lite-empathy"
+  | "balanced-cloud"
+  | "deep-empathy"
 
 function withQuickPreset(base: CompanionSettings, presetId: QuickPresetId): CompanionSettings {
+  if (presetId === "browser-private") {
+    // Zero-install, fully private: a small model runs in the browser via
+    // WebGPU. This is the recommended path for anyone arriving on the web —
+    // no download, nothing leaves the device. Falls back to the deterministic
+    // engine when WebGPU isn't available.
+    return {
+      ...base,
+      provider: "webllm",
+      toneMode: "casual",
+      personality: "warm",
+      temperature: 0.7,
+      maxOutputTokens: 260,
+      mcpAutoFallback: false,
+    }
+  }
+
   if (presetId === "lite-empathy") {
     // Same local-Ollama path as "fast-local", but pinned to the lightweight
     // empathy-tuned TinyLlama preset (see scripts/empathia-tiny.Modelfile).
@@ -823,6 +844,7 @@ export default function CompanionApp() {
 
     const savedPreset = window.localStorage.getItem(quickPresetStorageKey)
     if (
+      savedPreset === "browser-private" ||
       savedPreset === "fast-local" ||
       savedPreset === "lite-empathy" ||
       savedPreset === "balanced-cloud" ||

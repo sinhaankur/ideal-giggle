@@ -17,13 +17,13 @@ test.describe("lite empathy (TinyLlama) preset", () => {
 
     // Dismiss onboarding if it happens to be showing this run.
     const agreementCheckbox = page.locator(
-      'label:has-text("I have read and agree to use this empathy tool responsibly.") input[type="checkbox"]'
+      'label:has-text("I understand, and I\'d like to begin.") input[type="checkbox"]'
     )
     if (await agreementCheckbox.isVisible()) {
       await agreementCheckbox.check()
       await page.getByRole("button", { name: "I Agree and Continue" }).click()
     }
-    const keepDefaultsButton = page.getByRole("button", { name: "Keep default settings for now" })
+    const keepDefaultsButton = page.getByRole("button", { name: "Just use the default" })
     if (await keepDefaultsButton.isVisible()) {
       await keepDefaultsButton.click()
     }
