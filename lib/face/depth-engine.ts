@@ -178,10 +178,11 @@ interface BlinkSample {
 // The displayed emotion only switches once a challenger has beaten the
 // current label by this margin for at least DWELL_FRAMES consecutive frames.
 // Without this, two near-tied expressions (e.g. neutral 0.34 vs sad 0.36)
-// make the label strobe even when the person is sitting still. This is the
-// dominant driver of "the read feels jumpy".
-const SWITCH_MARGIN = 0.08
-const DWELL_FRAMES = 2
+// make the label strobe even when the person is sitting still. Kept light so
+// it smooths jitter WITHOUT making the read feel stuck — a clearly happy or
+// sad face should register within a frame or two.
+const SWITCH_MARGIN = 0.05
+const DWELL_FRAMES = 1
 
 export class FaceDepthEngine {
   private emaScores: RawExpressionScores | null = null
@@ -400,8 +401,11 @@ export class FaceDepthEngine {
     // off-axis/distant faces produce noisy expression scores, so they update
     // the running average more gently.
     const lightingWeight =
-      lighting.level === "good" ? 1 : lighting.level === "dim" ? 0.6 : 0.3
-    const frameWeight = Math.max(0.2, Math.min(1, engagementScore * 0.6 + lightingWeight * 0.4))
+      lighting.level === "good" ? 1 : lighting.level === "dim" ? 0.7 : 0.45
+    // Floor at 0.5 so even an imperfect frame still meaningfully tracks the
+    // current expression — a happy/sad face should register quickly, not get
+    // damped into neutral. (Was 0.2, which made the read feel stuck.)
+    const frameWeight = Math.max(0.5, Math.min(1, engagementScore * 0.5 + lightingWeight * 0.5))
 
     const smoothed = this.updateEma(detection.expressions, frameWeight)
     const argmaxKey = (Object.keys(smoothed) as Array<keyof RawExpressionScores>).reduce(
@@ -409,16 +413,16 @@ export class FaceDepthEngine {
     )
     const dominantKey = this.selectStableKey(argmaxKey, smoothed)
     const confidence = smoothed[dominantKey]
-    // Per-emotion confidence floors. The face-api expression net is noisier on
-    // some classes than others — fear and disgust in particular fire weakly on
-    // neutral faces — so we require a higher bar before committing to them and
-    // otherwise fall back to neutral.
+    // Per-emotion confidence floors. Fear and disgust fire weakly/falsely on
+    // neutral faces, so they need a slightly higher bar; happy/sad/surprise
+    // are reliable and should register readily. Kept low enough that real
+    // expressions show through (over-high floors made everything read neutral).
     const floor =
       dominantKey === "fearful" || dominantKey === "disgusted"
-        ? 0.5
+        ? 0.4
         : dominantKey === "neutral"
           ? 0.3
-          : 0.35
+          : 0.28
     const emotion: Emotion =
       confidence < floor ? "neutral" : EMOTION_MAP[dominantKey] || "neutral"
 
