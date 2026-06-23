@@ -1181,6 +1181,7 @@ export function ChatPanel({
             onFocus={() => inputRef.current?.select()}
             placeholder="Share your thoughts..."
             autoFocus
+            aria-label="Message EMPATHEIA"
             className="flex-1 border border-border bg-card px-3 py-2 text-[12px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-ring focus:border-foreground transition-all"
             autoComplete="off"
           />

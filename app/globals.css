@@ -21,14 +21,17 @@
     --secondary: 0 0% 12%;
     --secondary-foreground: 0 0% 90%;
     --muted: 0 0% 12%;
-    --muted-foreground: 0 0% 50%;
+    --muted-foreground: 0 0% 56%;
     --accent: 0 0% 16%;
     --accent-foreground: 0 0% 90%;
     --destructive: 0 60% 50%;
     --destructive-foreground: 0 0% 98%;
     --border: 0 0% 18%;
     --input: 0 0% 14%;
-    --ring: 0 0% 60%;
+    /* Bumped 50% -> 56% so muted text (and its /70-/80 opacity variants used
+       widely for secondary labels) clears WCAG AA contrast on the near-black
+       background. Focus ring brightened for visibility. */
+    --ring: 0 0% 70%;
     --chart-1: 0 0% 90%;
     --chart-2: 0 0% 70%;
     --chart-3: 0 0% 50%;
@@ -53,6 +56,48 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+
+  /* Keyboard focus visibility (WCAG 2.4.7). Only shows for keyboard/AT users
+     via :focus-visible, so mouse clicks don't get a ring. Applies app-wide as a
+     safety net; components can still style their own focus on top. */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  /* Skip link — visually hidden until focused, then anchored top-left so a
+     keyboard user can jump straight to the conversation (WCAG 2.4.1). */
+  .skip-link {
+    position: absolute;
+    left: 0.5rem;
+    top: -3rem;
+    z-index: 100;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.25rem;
+    background: hsl(var(--foreground));
+    color: hsl(var(--background));
+    font-size: 0.8125rem;
+    font-weight: 600;
+    transition: top 0.15s ease;
+  }
+  .skip-link:focus {
+    top: 0.5rem;
+  }
+}
+
+/* Respect the OS "reduce motion" setting everywhere as a safety net. The orb
+   and framer-motion already honor it in JS; this catches CSS animations and
+   transitions for users who never want movement (vestibular safety). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
