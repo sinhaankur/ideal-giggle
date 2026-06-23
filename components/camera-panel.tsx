@@ -1,7 +1,7 @@
 "use client"
 
 import { useRef, useState, useEffect, useCallback } from "react"
-import { Camera, CameraOff, Video, MonitorSmartphone, MapPin, ZoomIn } from "lucide-react"
+import { Camera, CameraOff, Video, MonitorSmartphone, MapPin, ZoomIn, ChevronDown, SlidersHorizontal } from "lucide-react"
 import * as faceapi from "face-api.js"
 import type { Emotion, FacialExpression, FaceSignal, LocationData } from "@/lib/companion-types"
 import {
@@ -9,6 +9,7 @@ import {
   type FaceReading,
   type RawFaceDetection,
 } from "@/lib/face/depth-engine"
+import { LowLightProcessor } from "@/lib/face/low-light"
 
 // face-api detector tuned for a single user in front of a webcam. The
 // default inputSize is 416 which is overkill — 224 is ~3x faster and
@@ -19,10 +20,23 @@ const FACE_DETECTOR_OPTIONS = new faceapi.TinyFaceDetectorOptions({
   scoreThreshold: 0.5,
 })
 
-// Min interval between detection passes. 2 fps is more than enough for
-// emotion-aware chat — the UI smooths over the gaps and 500 ms+ pause
-// gives the JS thread room to render and stream tokens.
-const DETECTION_INTERVAL_MS = 500
+// In low light we accept weaker detections (the brightening pass restores the
+// face, but its confidence still runs lower than in good light), so the user
+// keeps being read instead of dropping to "no face".
+const FACE_DETECTOR_OPTIONS_LOWLIGHT = new faceapi.TinyFaceDetectorOptions({
+  inputSize: 224,
+  scoreThreshold: 0.3,
+})
+
+// Adaptive detection cadence. We run faster when something is changing (the
+// expression just shifted) and ease off when the face is steady, so the read
+// feels responsive without pinning the CPU/GPU on a static face. The UI
+// smooths over the gaps either way.
+const DETECTION_INTERVAL_FAST_MS = 280 // ~3.5 fps while expressions move
+const DETECTION_INTERVAL_IDLE_MS = 650 // ~1.5 fps when steady
+// Backoff when the face leaves the frame — no point detecting hard on an
+// empty chair.
+const DETECTION_INTERVAL_NO_FACE_MS = 900
 
 // Loaded once per session, shared across mounts so toggling the panel
 // doesn't re-load weights from disk.
@@ -61,6 +75,10 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
   // framing. Manual zoom is also the fallback when face tracking is disabled.
   const [autoZoomEnabled, setAutoZoomEnabled] = useState(true)
   const [manualZoom, setManualZoom] = useState(1)
+  // Diagnostics (expression bars, engagement/pose/blink readouts) are power-
+  // user detail. Hidden by default so the panel stays calm and talk-first;
+  // one toggle reveals the full read for anyone who wants it.
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [currentEmotion, setCurrentEmotion] = useState<Emotion>("neutral")
   const [error, setError] = useState<string | null>(null)
@@ -87,7 +105,11 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
   const detectionTimerRef = useRef<number | null>(null)
   const detectionInFlightRef = useRef(false)
   const detectionCancelledRef = useRef(false)
+  // Drives the adaptive scheduler — updated each frame from the reading.
+  const nextIntervalRef = useRef<number>(DETECTION_INTERVAL_IDLE_MS)
+  const lastEmotionRef = useRef<Emotion>("neutral")
   const depthEngineRef = useRef<FaceDepthEngine>(new FaceDepthEngine())
+  const lowLightRef = useRef<LowLightProcessor>(new LowLightProcessor())
   const [depthReading, setDepthReading] = useState<FaceReading | null>(null)
 
   // Geolocation is opt-in now. Auto-prompting on mount was hostile —
@@ -183,10 +205,18 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
 
     try {
       const video = videoRef.current
+      // Normalize for low light first: in dim/dark rooms the detector runs
+      // against a brightness-boosted copy of the frame so faces don't vanish.
+      // Bright frames pass through untouched (no extra work).
+      const { source, boosted } = lowLightRef.current.process(video)
+      const detectorOptions = boosted
+        ? FACE_DETECTOR_OPTIONS_LOWLIGHT
+        : FACE_DETECTOR_OPTIONS
+
       // Single-face detector is ~2x faster than detectAllFaces for the
       // selfie scenario where we always pick the first detection anyway.
       const detection = await faceapi
-        .detectSingleFace(video, FACE_DETECTOR_OPTIONS)
+        .detectSingleFace(source, detectorOptions)
         .withFaceLandmarks()
         .withFaceExpressions()
 
@@ -194,8 +224,12 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
         const box = detection.detection.box
 
         // Face-centered framing: move viewport center toward detected face center.
-        const videoWidth = video.videoWidth || 640
-        const videoHeight = video.videoHeight || 480
+        // The detector may run on a downscaled brightened canvas, so frame the
+        // viewport against the source we actually detected on.
+        const videoWidth =
+          source instanceof HTMLCanvasElement ? source.width : video.videoWidth || 640
+        const videoHeight =
+          source instanceof HTMLCanvasElement ? source.height : video.videoHeight || 480
         const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
         const nextX = clamp(((box.x + box.width / 2) / videoWidth) * 100, 20, 80)
         const nextY = clamp(((box.y + box.height / 2) / videoHeight) * 100, 20, 80)
@@ -212,6 +246,17 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
           zoom: prev.zoom * 0.7 + nextZoom * 0.3,
         }))
 
+        // The detector may have run on a downscaled brightened canvas. The
+        // depth engine samples luminance and area against the RAW video, so
+        // map detection coordinates back into raw-video pixel space first.
+        const sx = source instanceof HTMLCanvasElement && source.width
+          ? (video.videoWidth || source.width) / source.width
+          : 1
+        const sy = source instanceof HTMLCanvasElement && source.height
+          ? (video.videoHeight || source.height) / source.height
+          : 1
+        const mapPoint = (p: { x: number; y: number }) => ({ x: p.x * sx, y: p.y * sy })
+
         // Translate face-api detection into the depth engine's structural
         // shape, then ingest. The engine handles smoothing, lighting,
         // head pose, blink rate, and engagement.
@@ -226,14 +271,12 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
             disgusted: detection.expressions.disgusted,
             surprised: detection.expressions.surprised,
           },
-          box: { x: box.x, y: box.y, width: box.width, height: box.height },
+          box: { x: box.x * sx, y: box.y * sy, width: box.width * sx, height: box.height * sy },
           landmarks: {
-            leftEye: landmarks.getLeftEye().map((p: { x: number; y: number }) => ({ x: p.x, y: p.y })),
-            rightEye: landmarks
-              .getRightEye()
-              .map((p: { x: number; y: number }) => ({ x: p.x, y: p.y })),
-            nose: landmarks.getNose().map((p: { x: number; y: number }) => ({ x: p.x, y: p.y })),
-            mouth: landmarks.getMouth().map((p: { x: number; y: number }) => ({ x: p.x, y: p.y })),
+            leftEye: landmarks.getLeftEye().map(mapPoint),
+            rightEye: landmarks.getRightEye().map(mapPoint),
+            nose: landmarks.getNose().map(mapPoint),
+            mouth: landmarks.getMouth().map(mapPoint),
           },
         }
 
@@ -241,6 +284,15 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
         setDepthReading(reading)
         setFacialExpression(reading.expressions)
         setCurrentEmotion(reading.emotion)
+
+        // Adaptive cadence: speed up right after the expression changes (or
+        // when strongly engaged), relax when the read is steady.
+        const emotionChanged = reading.emotion !== lastEmotionRef.current
+        lastEmotionRef.current = reading.emotion
+        nextIntervalRef.current =
+          emotionChanged || reading.engagement.score > 0.7
+            ? DETECTION_INTERVAL_FAST_MS
+            : DETECTION_INTERVAL_IDLE_MS
         // Only emit upstream when the frame quality is good enough — this
         // is what was making the chat see flickery emotion changes. We pass
         // the quality-aware signal too so the mood engine can weight the read.
@@ -255,6 +307,8 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
         const reading = depthEngineRef.current.ingest(null, video)
         setDepthReading(reading)
         setFacialExpression((prev) => ({ ...prev, detection: false }))
+        lastEmotionRef.current = "neutral"
+        nextIntervalRef.current = DETECTION_INTERVAL_NO_FACE_MS
         setFaceTarget((prev) => ({
           x: prev.x * 0.8 + 50 * 0.2,
           y: prev.y * 0.8 + 50 * 0.2,
@@ -285,7 +339,7 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
         detectionInFlightRef.current = false
         scheduleNextDetection()
       }
-    }, DETECTION_INTERVAL_MS)
+    }, nextIntervalRef.current)
   }, [detectFacialExpression])
 
   const startCamera = useCallback(async () => {
@@ -346,8 +400,19 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
       await modelLoad
       scheduleNextDetection()
     } catch (err) {
+      // Map the DOMException name to a human, actionable message instead of
+      // surfacing raw "NotAllowedError" strings.
+      const name = err instanceof DOMException ? err.name : ""
       const errorMsg =
-        err instanceof Error ? err.message : "Failed to start camera and microphone"
+        name === "NotAllowedError" || name === "SecurityError"
+          ? "Camera access was blocked. Allow the camera for this site in your browser, then press Start again."
+          : name === "NotFoundError" || name === "OverconstrainedError"
+            ? "No camera was found. Plug one in or pick a different device below."
+            : name === "NotReadableError"
+              ? "The camera is in use by another app. Close it (Zoom, Meet, Photo Booth…) and try again."
+              : err instanceof Error
+                ? err.message
+                : "Failed to start camera and microphone"
       setError(errorMsg)
       console.error("Camera start error:", err)
       setIsActive(false)
@@ -377,6 +442,7 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
     // Reset state
     setIsActive(false)
     depthEngineRef.current.reset()
+    lowLightRef.current.reset()
     setDepthReading(null)
     setFacialExpression({
       neutral: 0,
@@ -546,11 +612,33 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
           <div className="font-semibold uppercase tracking-wide text-[10px] mb-0.5">
             Lighting · {depthReading.lighting.level}
           </div>
-          {depthReading.lighting.recommendation}
+          {depthReading.detection && depthReading.frameQuality === "good"
+            ? "Low light — enhancing the image so I can still read your face. A frontal light would sharpen it further."
+            : depthReading.lighting.recommendation}
         </div>
       )}
 
-      {isActive && depthReading?.detection && (
+      {/* Advanced read — opt-in. Keeps the default panel calm; reveals the
+          full engagement / pose / blink / expression detail and framing
+          controls on demand. Visible whenever the camera is on so it doesn't
+          flicker away when the face briefly drops out of frame. */}
+      {isActive && (
+        <button
+          onClick={() => setAdvancedOpen((v) => !v)}
+          className="flex items-center justify-between gap-2 rounded border border-border bg-card px-3 py-2 text-left transition-colors hover:bg-accent"
+          aria-expanded={advancedOpen}
+        >
+          <span className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground">
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+            Advanced read
+          </span>
+          <ChevronDown
+            className={`h-4 w-4 text-muted-foreground transition-transform ${advancedOpen ? "rotate-180" : ""}`}
+          />
+        </button>
+      )}
+
+      {isActive && advancedOpen && depthReading?.detection && (
         <div className="grid grid-cols-2 gap-2 rounded border border-border bg-card p-3 text-[11px]">
           <div>
             <div className="text-muted-foreground/70 uppercase tracking-wide text-[10px]">
@@ -575,6 +663,13 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
                 : ""}
             </div>
           </div>
+          {depthReading.blinkRate > 0 && (
+            <div className="col-span-2 text-muted-foreground/80">
+              <span className="uppercase tracking-wide text-[10px]">Blink rate:</span>{" "}
+              {depthReading.blinkRate}/min
+              {depthReading.blinkRate > 28 ? " · elevated (often tension or fatigue)" : ""}
+            </div>
+          )}
           {depthReading.headPose && (
             <div className="col-span-2 text-muted-foreground/80">
               <span className="uppercase tracking-wide text-[10px]">Head pose:</span>{" "}
@@ -586,8 +681,8 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
         </div>
       )}
 
-      {/* Facial Expression Analysis */}
-      {isActive && facialExpression.detection && (
+      {/* Facial Expression Analysis — part of the advanced read. */}
+      {isActive && advancedOpen && facialExpression.detection && (
         <div className="rounded border border-border bg-card p-3">
           <div className="mb-2 text-xs font-semibold text-muted-foreground">
             FACIAL EXPRESSION ANALYSIS
@@ -636,7 +731,9 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
         )}
       </button>
 
-      {/* Face Tracking Controls */}
+      {/* Face Tracking Controls — advanced only. Tracking + auto-zoom are on
+          by default, so a casual user never needs to touch these. */}
+      {isActive && advancedOpen && (
       <div className="rounded border border-border bg-card p-3">
         <div className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground">
           FACE TRACKING
@@ -700,6 +797,7 @@ export function CameraPanel({ onEmotionDetected, selectedDeviceId, onDeviceChang
             : "Set a fixed zoom level. Turn Auto-Zoom on to let the camera follow your face."}
         </p>
       </div>
+      )}
 
       {/* Camera Selector */}
       {devices.length > 1 && (

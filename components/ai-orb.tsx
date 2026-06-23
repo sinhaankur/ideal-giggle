@@ -38,6 +38,30 @@ export function AIOrb({
     phase || (isSpeaking ? "speaking" : isListening ? "listening" : "idle")
   const normalizedActivity = Math.max(0.15, Math.min(1, activityLevel ?? intensity))
 
+  // Plain-language caption for the orb's state. The raw phase enum
+  // ("composing", "engaged") meant nothing to a user — these read like what
+  // a person across the table is doing, so the orb is legible without a legend.
+  const phaseCaption: Record<OrbPhase, string> = {
+    idle: "Here with you",
+    listening: "Listening…",
+    thinking: "Thinking…",
+    composing: "Finding the words…",
+    speaking: "Speaking…",
+    engaged: "With you",
+  }
+
+  // A short, human feeling word for the current read (the orb's *vibe*),
+  // shown small beneath the caption. Kept gentle and non-clinical.
+  const emotionFeeling: Record<string, string> = {
+    neutral: "present",
+    happy: "warmth",
+    sad: "tenderness",
+    angry: "heat",
+    fear: "alertness",
+    surprise: "curiosity",
+    thinking: "reflection",
+  }
+
   const emotionConfig = useMemo(() => {
     // rgb tuple is the orb's hue for this emotion. Picked so the colour
     // reads at a glance without needing the label below: warm = happy/
@@ -344,7 +368,8 @@ export function AIOrb({
             ref={canvasRef}
             className="w-full aspect-square"
             style={{ imageRendering: "auto" }}
-            aria-label={`AI companion visualization showing ${emotion} emotion`}
+            role="img"
+            aria-label={`Companion — ${phaseCaption[resolvedPhase].replace(/…/g, "")}`}
           />
           {confidence && (
             <div
@@ -361,32 +386,60 @@ export function AIOrb({
           )}
         </div>
       </motion.div>
-      <div className="absolute bottom-4 flex flex-col items-center gap-1">
+      <div className="absolute bottom-3 flex flex-col items-center gap-1">
         <AnimatePresence mode="wait" initial={false}>
-          <motion.span
+          <motion.div
             key={resolvedPhase}
-            className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground"
+            className="flex items-center gap-1.5"
             initial={motionDisabled ? false : { opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={motionDisabled ? { opacity: 0 } : { opacity: 0, y: -4 }}
             transition={{ duration: 0.25 }}
           >
-            {resolvedPhase.toUpperCase()}
-          </motion.span>
+            {/* A status dot users instantly recognize from call/recording UIs:
+                live-green when listening, pulsing while speaking/thinking. */}
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${
+                resolvedPhase === "listening"
+                  ? "bg-emerald-400"
+                  : resolvedPhase === "speaking"
+                    ? "bg-sky-400"
+                    : resolvedPhase === "thinking" || resolvedPhase === "composing"
+                      ? "bg-amber-300"
+                      : "bg-muted-foreground/50"
+              } ${
+                !motionDisabled &&
+                resolvedPhase !== "idle" &&
+                resolvedPhase !== "engaged"
+                  ? "animate-pulse"
+                  : ""
+              }`}
+              aria-hidden
+            />
+            <span className="text-[11px] font-medium tracking-wide text-foreground/90">
+              {phaseCaption[resolvedPhase]}
+            </span>
+          </motion.div>
         </AnimatePresence>
         <AnimatePresence mode="wait" initial={false}>
           <motion.span
             key={emotion}
-            className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground/60"
+            className="text-[9px] lowercase tracking-[0.18em] text-muted-foreground/60"
             initial={motionDisabled ? false : { opacity: 0, y: 3 }}
             animate={{ opacity: 1, y: 0 }}
             exit={motionDisabled ? { opacity: 0 } : { opacity: 0, y: -3 }}
             transition={{ duration: 0.25, delay: 0.05 }}
           >
-            {emotion}
+            {emotionFeeling[emotion] || emotion}
           </motion.span>
         </AnimatePresence>
       </div>
+
+      {/* Screen-reader announcement of the orb's state — keeps the visual cue
+          and the assistive cue in sync without cluttering the UI. */}
+      <span className="sr-only" role="status" aria-live="polite">
+        {phaseCaption[resolvedPhase]}
+      </span>
     </motion.div>
   )
 }

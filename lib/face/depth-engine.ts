@@ -175,17 +175,32 @@ interface BlinkSample {
   at: number
 }
 
+// The displayed emotion only switches once a challenger has beaten the
+// current label by this margin for at least DWELL_FRAMES consecutive frames.
+// Without this, two near-tied expressions (e.g. neutral 0.34 vs sad 0.36)
+// make the label strobe even when the person is sitting still. This is the
+// dominant driver of "the read feels jumpy".
+const SWITCH_MARGIN = 0.08
+const DWELL_FRAMES = 2
+
 export class FaceDepthEngine {
   private emaScores: RawExpressionScores | null = null
   private readonly alpha = 0.32 // EMA factor — lower = more smoothing
   private blinkSamples: BlinkSample[] = []
   private earWasLow = false
   private offscreenCanvas: HTMLCanvasElement | null = null
+  // Hysteresis state for the emotion label.
+  private stableKey: keyof RawExpressionScores | null = null
+  private challengerKey: keyof RawExpressionScores | null = null
+  private challengerStreak = 0
 
   reset(): void {
     this.emaScores = null
     this.blinkSamples = []
     this.earWasLow = false
+    this.stableKey = null
+    this.challengerKey = null
+    this.challengerStreak = 0
   }
 
   private getOffscreenCanvas(): HTMLCanvasElement | null {
@@ -268,17 +283,58 @@ export class FaceDepthEngine {
     return { level: "good", luminance, recommendation: null }
   }
 
-  private updateEma(scores: RawExpressionScores): RawExpressionScores {
+  // weight (0..1) scales how much this frame moves the average. Poorly-lit or
+  // off-axis frames pass a low weight so a single bad frame can't yank the
+  // smoothed read; clean, frontal frames pass ~1 and track responsively.
+  private updateEma(scores: RawExpressionScores, weight = 1): RawExpressionScores {
     if (!this.emaScores) {
       this.emaScores = { ...scores }
       return this.emaScores
     }
+    const effectiveAlpha = this.alpha * Math.max(0.15, Math.min(1, weight))
     const next = { ...this.emaScores }
     ;(Object.keys(scores) as Array<keyof RawExpressionScores>).forEach((key) => {
-      next[key] = next[key] * (1 - this.alpha) + scores[key] * this.alpha
+      next[key] = next[key] * (1 - effectiveAlpha) + scores[key] * effectiveAlpha
     })
     this.emaScores = next
     return next
+  }
+
+  // Pick the label with hysteresis: the incumbent keeps the label until a
+  // single challenger out-scores it by SWITCH_MARGIN across DWELL_FRAMES in a
+  // row. Returns the currently committed key. `argmaxKey` is this frame's raw
+  // winner; `scores` are the smoothed scores.
+  private selectStableKey(
+    argmaxKey: keyof RawExpressionScores,
+    scores: RawExpressionScores
+  ): keyof RawExpressionScores {
+    if (this.stableKey === null) {
+      this.stableKey = argmaxKey
+      this.challengerKey = null
+      this.challengerStreak = 0
+      return this.stableKey
+    }
+    if (argmaxKey === this.stableKey) {
+      // Incumbent still on top — clear any pending challenge.
+      this.challengerKey = null
+      this.challengerStreak = 0
+      return this.stableKey
+    }
+    // A different expression is on top this frame. Only honor it once it has
+    // pulled clearly ahead for long enough.
+    const lead = scores[argmaxKey] - scores[this.stableKey]
+    if (this.challengerKey === argmaxKey) {
+      this.challengerStreak += 1
+    } else {
+      this.challengerKey = argmaxKey
+      this.challengerStreak = 1
+    }
+    if (lead >= SWITCH_MARGIN && this.challengerStreak >= DWELL_FRAMES) {
+      this.stableKey = argmaxKey
+      this.challengerKey = null
+      this.challengerStreak = 0
+    }
+    return this.stableKey
   }
 
   private updateBlinkRate(landmarks: RawLandmarks, now: number): number {
@@ -318,14 +374,8 @@ export class FaceDepthEngine {
       }
     }
 
-    const smoothed = this.updateEma(detection.expressions)
-    const dominantKey = (Object.keys(smoothed) as Array<keyof RawExpressionScores>).reduce(
-      (a, b) => (smoothed[a] > smoothed[b] ? a : b)
-    )
-    const confidence = smoothed[dominantKey]
-    const emotion: Emotion =
-      confidence < 0.35 ? "neutral" : EMOTION_MAP[dominantKey] || "neutral"
-
+    // Lighting, pose and engagement are computed first so they can weight how
+    // much this frame is allowed to move the smoothed expression scores.
     const luminance = this.measureLuminance(video, detection.box)
     const lighting = this.classifyLighting(luminance)
     const headPose = approximateHeadPose(detection.landmarks, detection.box)
@@ -346,12 +396,41 @@ export class FaceDepthEngine {
       )
     )
 
+    // Trust this frame in proportion to how clean it is. Dark frames and
+    // off-axis/distant faces produce noisy expression scores, so they update
+    // the running average more gently.
+    const lightingWeight =
+      lighting.level === "good" ? 1 : lighting.level === "dim" ? 0.6 : 0.3
+    const frameWeight = Math.max(0.2, Math.min(1, engagementScore * 0.6 + lightingWeight * 0.4))
+
+    const smoothed = this.updateEma(detection.expressions, frameWeight)
+    const argmaxKey = (Object.keys(smoothed) as Array<keyof RawExpressionScores>).reduce(
+      (a, b) => (smoothed[a] > smoothed[b] ? a : b)
+    )
+    const dominantKey = this.selectStableKey(argmaxKey, smoothed)
+    const confidence = smoothed[dominantKey]
+    // Per-emotion confidence floors. The face-api expression net is noisier on
+    // some classes than others — fear and disgust in particular fire weakly on
+    // neutral faces — so we require a higher bar before committing to them and
+    // otherwise fall back to neutral.
+    const floor =
+      dominantKey === "fearful" || dominantKey === "disgusted"
+        ? 0.5
+        : dominantKey === "neutral"
+          ? 0.3
+          : 0.35
+    const emotion: Emotion =
+      confidence < floor ? "neutral" : EMOTION_MAP[dominantKey] || "neutral"
+
+    // Frame quality gates whether this read is trustworthy enough to act on.
+    // We no longer auto-fail "dark" frames: the camera panel brightens them
+    // before detection, so a dark room with a clear, confident, frontal face
+    // is still a usable read. We only fail when the face is genuinely too
+    // small, too disengaged, or the read is weak in poor light.
+    const tooSmall = areaRatio < 0.02
+    const weakInPoorLight = lighting.level === "dark" && confidence < 0.4 && !facing
     const frameQuality: FaceReading["frameQuality"] =
-      lighting.level === "dark" || areaRatio < 0.02
-        ? "poor"
-        : engagementScore < 0.4
-          ? "poor"
-          : "good"
+      tooSmall || weakInPoorLight || engagementScore < 0.35 ? "poor" : "good"
 
     return {
       detection: true,
