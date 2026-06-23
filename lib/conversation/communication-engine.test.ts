@@ -208,3 +208,25 @@ describe("composeConversationSummary — emotional arc", () => {
     expect(summary.paragraphs.length).toBeGreaterThan(0)
   })
 })
+
+describe("composeConversationSummary — closing send-off", () => {
+  const base = {
+    userTurnCount: 6,
+    empathyData: { says: [], thinks: [], does: [], feels: ["overwhelmed and tired"] },
+    feltState: null,
+    empathyCode: "",
+    durationMinutes: 10,
+  }
+
+  it("adds a warm keepable closing line when closing is set", () => {
+    const summary = composeConversationSummary({ ...base, closing: true })
+    expect(summary.paragraphs.join(" ")).toMatch(/Before you go/i)
+    // It should quote the feeling the person named.
+    expect(summary.paragraphs.join(" ")).toMatch(/overwhelmed and tired/i)
+  })
+
+  it("omits the closing line by default", () => {
+    const summary = composeConversationSummary(base)
+    expect(summary.paragraphs.join(" ")).not.toMatch(/Before you go/i)
+  })
+})

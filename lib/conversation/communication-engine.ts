@@ -843,6 +843,28 @@ export interface ConversationSummaryInput {
   // present, the summary names the emotional trajectory ("you arrived heavy
   // and softened as we talked"). Backward-compatible: omitted = no arc line.
   sentimentTrajectory?: number[]
+  // When true, append a warm, keepable closing line — a gentle send-off the
+  // person can hold onto, distinct from the diagnostic body. Used when the
+  // conversation is winding down ("Close gently").
+  closing?: boolean
+}
+
+// A short, warm send-off grounded in what the person showed up with. Not
+// advice and not a question — something to leave them with. Deterministic on
+// the strongest available signal so it feels specific, not canned.
+function composeClosingLine(input: ConversationSummaryInput): string {
+  const feels = input.empathyData.feels.filter((s) => s.trim())
+  const recentFeel = feels.length ? feels[feels.length - 1].replace(/^Onboarding \([^)]+\):\s*/i, "").replace(/[.!?]+$/, "").trim() : ""
+  const heavy = (input.sentimentTrajectory || []).slice(-3).some((v) => v <= -0.4)
+
+  if (recentFeel) {
+    return heavy
+      ? `Before you go: you let yourself name "${recentFeel}" today instead of pushing past it. That takes something. Be gentle with yourself tonight — you don't have to solve it all at once.`
+      : `Before you go: "${recentFeel}" mattered enough for you to say out loud, and that's worth honoring. Carry a little of this clarity with you.`
+  }
+  return heavy
+    ? "Before you go: showing up and putting words to hard things is its own kind of courage. Be kind to yourself for the rest of today."
+    : "Before you go: thank you for spending this time with yourself. Whatever comes next, you don't have to carry it alone."
 }
 
 // Turn a sequence of sentiment polarities into one human sentence about the
@@ -928,9 +950,11 @@ export function composeConversationSummary(
     ? `Empathy code at this point: ${input.empathyCode}.`
     : ""
 
+  const closingLine = input.closing ? composeClosingLine(input) : ""
+
   return {
     headline,
-    paragraphs: [opening, arcLine, middle, closing, codeLine].filter(Boolean),
+    paragraphs: [opening, arcLine, middle, closing, codeLine, closingLine].filter(Boolean),
     themes,
     generatedAt: new Date().toISOString(),
   }
