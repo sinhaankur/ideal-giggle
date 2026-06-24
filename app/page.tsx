@@ -63,7 +63,12 @@ import {
   probeLocalLLM,
   runtimeNameFromBaseUrl,
 } from "@/lib/api/ollama-direct"
-import { isWebLLMSupported, sendWebLLMDirect } from "@/lib/api/webllm-direct"
+import {
+  isWebLLMSupported,
+  isWebLLMReady,
+  preloadWebLLM,
+  sendWebLLMDirect,
+} from "@/lib/api/webllm-direct"
 import { assessCrisis, assessConversationSafety, type CrisisSeverity } from "@/lib/safety/crisis-safety"
 import { sessionIntentionDirective, SESSION_INTENTIONS, type SessionIntentionId } from "@/lib/conversation/session-intention"
 import { OnboardingModal } from "@/components/onboarding-modal"
@@ -718,7 +723,7 @@ export default function CompanionApp() {
   const [errorSummaryCopiedAt, setErrorSummaryCopiedAt] = useState<number | null>(null)
   const [llmConnectionError, setLlmConnectionError] = useState("")
   const [runtimeSource, setRuntimeSource] = useState<
-    "unknown" | "ollama" | "webllm" | "remote" | "fallback"
+    "unknown" | "ollama" | "webllm" | "remote" | "fallback" | "engine" | "warming"
   >("unknown")
   const [ollamaTransition, setOllamaTransition] = useState<{
     kind: "online" | "offline"
@@ -1504,6 +1509,21 @@ export default function CompanionApp() {
     setLlmConnectionError("")
     setRuntimeSource("unknown")
   }, [settings.provider])
+
+  // Proactively warm up the in-browser model in the background once the user
+  // is on the webllm provider and has agreed. The deterministic engine answers
+  // instantly meanwhile; this just means the smarter model is ready sooner. We
+  // only start after agreement so we never download for a visitor who bounces.
+  useEffect(() => {
+    if (settings.provider !== "webllm") return
+    if (!hasAgreed) return
+    if (!isWebLLMSupported() || isWebLLMReady()) return
+    // Defer slightly so it doesn't compete with first paint / hydration.
+    const t = window.setTimeout(() => {
+      void preloadWebLLM(settings.webllmModel || undefined)
+    }, 1200)
+    return () => window.clearTimeout(t)
+  }, [settings.provider, settings.webllmModel, hasAgreed])
 
   const handleConnectLlmApi = useCallback(() => {
     setShowSettings(true)
@@ -2453,10 +2473,12 @@ export default function CompanionApp() {
       }
 
       // WebLLM: the default public-web provider. Everything runs in the
-      // visitor's browser via WebGPU — no server, no install, fully private.
-      // We never touch /api/chat here. If WebGPU is unavailable (or the model
-      // errors), we degrade to the deterministic empathy engine so a reply is
-      // always produced.
+      // visitor's browser — no server, no install, fully private and
+      // session-only. To keep the conversation INSTANT on any device, we only
+      // use the in-browser model once it's actually loaded (isWebLLMReady).
+      // Until then — or when WebGPU is absent — we answer immediately with the
+      // deterministic empathy engine and warm the model up in the background,
+      // so the first reply never waits on a download.
       if (settings.provider === "webllm") {
         const userMessage: Message = {
           id: crypto.randomUUID(),
@@ -2467,12 +2489,21 @@ export default function CompanionApp() {
         }
         setRemoteFallbackMessages((prev) => [...prev, userMessage])
 
-        const browserReply = await requestBrowserWebLLMReply({
-          text,
-          sentimentEmotion,
-          responsePlan,
-          history: [...remoteFallbackMessages, userMessage],
-        })
+        // Kick off (or continue) background warmup whenever supported. Fire and
+        // forget — we never await this in the reply path.
+        if (isWebLLMSupported() && !isWebLLMReady()) {
+          void preloadWebLLM(settings.webllmModel || undefined)
+        }
+
+        // Only call the model if it's ready right now (no download wait).
+        const browserReply = isWebLLMReady()
+          ? await requestBrowserWebLLMReply({
+              text,
+              sentimentEmotion,
+              responsePlan,
+              history: [...remoteFallbackMessages, userMessage],
+            })
+          : null
 
         if (browserReply) {
           const extracted = extractDataUpdate(browserReply.text)
@@ -2504,16 +2535,20 @@ export default function CompanionApp() {
           return
         }
 
-        // WebGPU unavailable or the model failed — deterministic engine.
+        // The instant path: the deterministic empathy engine answers right
+        // away. This is NOT an error — it's either the warmup window (model
+        // still loading, will take over later) or a browser without WebGPU
+        // (the engine carries the whole conversation). Either way we keep the
+        // experience calm: no connection-error banner.
+        const warming = isWebLLMSupported() && !isWebLLMReady()
         const baseFallback = buildLocalCompanionReply(
           text,
           analysis.sentimentScore,
           suggestedNext.question,
           {
             provider: settings.provider,
-            llmConnectionError: isWebLLMSupported()
-              ? "In-browser model unavailable"
-              : "This browser does not support WebGPU",
+            // No llmConnectionError — nothing is wrong; this is the designed
+            // instant path.
             systemHealth,
             ollamaBaseUrl: settings.ollamaBaseUrl,
             ollamaModel: settings.ollamaModel,
@@ -2536,10 +2571,14 @@ export default function CompanionApp() {
             sender: "ai",
             timestamp: new Date(),
             emotion: sentimentEmotion,
-            mode: "fallback",
+            // Not tagged "fallback": this is the intended instant engine, not a
+            // degraded state.
           },
         ])
-        setRuntimeSource("fallback")
+        setLlmConnectionError("")
+        // Reflect the real runtime so the UI can show "warming a smarter model"
+        // vs. the steady on-device engine.
+        setRuntimeSource(warming ? "warming" : "engine")
         return
       }
 

@@ -56,6 +56,10 @@ const CANDIDATE_MODELS = [
 let webllmModulePromise: Promise<WebLLMModule> | null = null
 let enginePromise: Promise<Awaited<ReturnType<WebLLMModule["CreateMLCEngine"]>> | null> | null = null
 let loadedModelId: string | null = null
+// Tracks background warmup so the UI can show "preparing a smarter model" and
+// the send path can decide whether to use WebLLM or answer instantly with the
+// deterministic engine. We never block a reply on this.
+let warmupState: "idle" | "loading" | "ready" | "error" = "idle"
 
 function inBrowser(): boolean {
   return typeof window !== "undefined" && typeof navigator !== "undefined"
@@ -63,6 +67,47 @@ function inBrowser(): boolean {
 
 export function isWebLLMSupported(): boolean {
   return inBrowser() && typeof (navigator as Navigator & { gpu?: unknown }).gpu !== "undefined"
+}
+
+// True once the model is downloaded + initialized and ready to answer with no
+// wait. The send path checks this: ready → use WebLLM; not ready → answer
+// instantly with the deterministic engine (and keep warmup running).
+export function isWebLLMReady(): boolean {
+  return warmupState === "ready"
+}
+
+export function webLLMWarmupState(): "idle" | "loading" | "ready" | "error" {
+  return warmupState
+}
+
+// Kick off (or resume) background model initialization without sending a
+// message. Safe to call repeatedly — it no-ops once loading/ready. Resolves to
+// true when the engine is ready, false if unsupported or it failed. Callers
+// should NOT await this in the critical reply path; fire-and-forget and poll
+// isWebLLMReady() instead.
+export async function preloadWebLLM(preferredModel?: string): Promise<boolean> {
+  if (!isWebLLMSupported()) {
+    warmupState = "error"
+    return false
+  }
+  if (warmupState === "ready") return true
+  if (warmupState === "loading") {
+    try {
+      await enginePromise
+      return isWebLLMReady()
+    } catch {
+      return false
+    }
+  }
+  warmupState = "loading"
+  try {
+    await getEngine(preferredModel)
+    warmupState = "ready"
+    return true
+  } catch {
+    warmupState = "error"
+    return false
+  }
 }
 
 async function loadModule(): Promise<WebLLMModule> {
@@ -151,6 +196,9 @@ export async function sendWebLLMDirect(request: WebLLMDirectRequest): Promise<We
   }
 
   const { engine, modelId } = await getEngine(request.model)
+  // A successful getEngine means the model is initialized — reflect that so
+  // background-warmup callers see "ready".
+  warmupState = "ready"
 
   const response = await engine.chat.completions.create({
     messages: [{ role: "system", content: request.system }, ...request.messages],
