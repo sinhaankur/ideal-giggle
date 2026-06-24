@@ -3744,6 +3744,18 @@ export default function CompanionApp() {
           ]
         ).map(({ id, label, icon: Icon }) => {
           const active = mobilePanel === id
+          // Same discoverability nudge as the desktop Insights toggle: dot the
+          // Empathy tab when there's tracked content the user hasn't opened.
+          const showEmpathyDot =
+            id === "empathy" &&
+            !active &&
+            (empathyData.says.length +
+              empathyData.thinks.length +
+              empathyData.does.length +
+              empathyData.feels.length >
+              0 ||
+              metaHistory.length >= 2 ||
+              storedSessionHistory.length > 0)
           return (
             <button
               key={id}
@@ -3755,7 +3767,15 @@ export default function CompanionApp() {
               }`}
               aria-current={active ? "page" : undefined}
             >
-              <Icon className={`h-4 w-4 ${active ? "text-foreground" : ""}`} />
+              <span className="relative">
+                <Icon className={`h-4 w-4 ${active ? "text-foreground" : ""}`} />
+                {showEmpathyDot && (
+                  <span
+                    className="absolute -right-1.5 -top-1 h-1.5 w-1.5 rounded-full bg-emerald-400"
+                    aria-hidden
+                  />
+                )}
+              </span>
               <span
                 className={`text-[10px] font-medium uppercase tracking-wide ${
                   active ? "text-foreground" : ""
