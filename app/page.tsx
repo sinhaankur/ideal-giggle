@@ -3290,20 +3290,48 @@ export default function CompanionApp() {
             <Camera className="h-4 w-4" />
             <span className="hidden lg:inline">Camera</span>
           </button>
-          <button
-            onClick={toggleInsightsPanel}
-            className={`hidden items-center gap-2 rounded border px-3 py-2 text-sm font-medium transition-colors md:flex ${
-              showInsightsPanel
-                ? "border-foreground/40 bg-foreground/5 text-foreground"
-                : "border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground"
-            }`}
-            aria-pressed={showInsightsPanel}
-            aria-label={showInsightsPanel ? "Hide insights" : "Show insights"}
-            title={showInsightsPanel ? "Hide insights" : "Show what I'm learning about you"}
-          >
-            <PanelRightOpen className="h-4 w-4" />
-            <span className="hidden lg:inline">Insights</span>
-          </button>
+          {(() => {
+            // Nudge the user to the (hidden-by-default) Insights panel once
+            // there's something worth seeing — an empathy map building, a mood
+            // arc, or past sessions — so the depth features are discoverable.
+            const hasInsightsContent =
+              empathyData.says.length +
+                empathyData.thinks.length +
+                empathyData.does.length +
+                empathyData.feels.length >
+                0 ||
+              metaHistory.length >= 2 ||
+              storedSessionHistory.length > 0
+            const showInsightsDot = hasInsightsContent && !showInsightsPanel
+            return (
+              <button
+                onClick={toggleInsightsPanel}
+                className={`relative hidden items-center gap-2 rounded border px-3 py-2 text-sm font-medium transition-colors md:flex ${
+                  showInsightsPanel
+                    ? "border-foreground/40 bg-foreground/5 text-foreground"
+                    : "border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground"
+                }`}
+                aria-pressed={showInsightsPanel}
+                aria-label={showInsightsPanel ? "Hide insights" : "Show insights"}
+                title={
+                  showInsightsPanel
+                    ? "Hide insights"
+                    : hasInsightsContent
+                      ? "See what I'm learning about you"
+                      : "Show what I'm learning about you"
+                }
+              >
+                <PanelRightOpen className="h-4 w-4" />
+                <span className="hidden lg:inline">Insights</span>
+                {showInsightsDot && (
+                  <span
+                    className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-emerald-400"
+                    aria-hidden
+                  />
+                )}
+              </button>
+            )
+          })()}
           <button
             onClick={() => setCommandPaletteOpen(true)}
             className="flex items-center gap-2 rounded border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
