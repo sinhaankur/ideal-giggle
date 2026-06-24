@@ -107,7 +107,11 @@ export function OnboardingModal({
             <ul className={`mt-2 list-disc space-y-1 pl-5 text-muted-foreground ${embedMode ? "text-[12px]" : "text-sm"}`}>
               <li>It offers supportive reflection, not medical advice or diagnosis.</li>
               <li>For anything urgent, please reach out to a professional or a crisis line.</li>
-              <li>Your conversation shapes its responses and stays private to you.</li>
+              <li>
+                <span className="text-foreground">Private by design:</span> no account, no login.
+                It runs on your device and the conversation stays in this session — it&apos;s gone
+                when you close the tab, unless you choose to save it (encrypted, only yours).
+              </li>
             </ul>
             <p className={`mt-2 leading-relaxed text-muted-foreground/80 ${embedMode ? "text-[11px]" : "text-xs"}`}>
               In crisis? You&apos;re not alone — call or text <span className="font-semibold text-foreground">988</span> (US Suicide &amp; Crisis Lifeline), or your local emergency number.
@@ -139,8 +143,9 @@ export function OnboardingModal({
               You&apos;re all set — let&apos;s talk
             </h2>
             <p className={`mt-2 text-muted-foreground ${embedMode ? "text-[12px]" : "text-sm"}`}>
-              Nothing to install. A small AI runs right here in your browser, so your conversation
-              stays on your device. You can change how it runs anytime in Settings.
+              Nothing to install, no account. It replies instantly on your device, and a smarter
+              private model loads quietly in the background. You can switch to your own local LLM
+              (Ollama) anytime in Settings.
             </p>
 
             {/* Primary path: zero-install, private, in-browser. One obvious
@@ -158,8 +163,8 @@ export function OnboardingModal({
                   </span>
                 </div>
                 <div className={`text-muted-foreground ${embedMode ? "text-[11px]" : "text-xs"}`}>
-                  No sign-up, no install. The first reply loads a small model, then it&apos;s instant
-                  and works offline. Best in Chrome, Edge, or Arc.
+                  No sign-up, no install. Replies are instant from the start and work offline; a
+                  smarter in-browser model loads in the background (Chrome, Edge, or Arc).
                 </div>
               </div>
             </button>
