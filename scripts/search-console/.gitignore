@@ -1,0 +1,5 @@
+# Never commit OAuth secrets or cached tokens.
+client_secret.json
+token.json
+# Local virtualenv (deps installed here, isolated from system Python).
+.venv/
