@@ -681,6 +681,9 @@ export default function CompanionApp() {
   const [showInsightsPanel, setShowInsightsPanel] = useState(false)
   // Always-available grounding/crisis support, openable from the header anytime.
   const [showSupport, setShowSupport] = useState(false)
+  // One-time gentle notice when the background in-browser model finishes
+  // loading, so the user understands replies just got a little smarter.
+  const [webllmReadyNotice, setWebllmReadyNotice] = useState(false)
   useEffect(() => {
     if (typeof window === "undefined") return
     try {
@@ -1020,6 +1023,13 @@ export default function CompanionApp() {
     const timer = window.setTimeout(() => setOllamaTransition(null), 6000)
     return () => window.clearTimeout(timer)
   }, [ollamaTransition])
+
+  // Auto-dismiss the "in-browser model ready" notice after 8s.
+  useEffect(() => {
+    if (!webllmReadyNotice) return
+    const timer = window.setTimeout(() => setWebllmReadyNotice(false), 8000)
+    return () => window.clearTimeout(timer)
+  }, [webllmReadyNotice])
 
   // Auto-dismiss the "resumed consciousness" cue after 8s — a touch longer
   // than the runtime banner since it's a one-time, more meaningful moment.
@@ -1518,11 +1528,23 @@ export default function CompanionApp() {
     if (settings.provider !== "webllm") return
     if (!hasAgreed) return
     if (!isWebLLMSupported() || isWebLLMReady()) return
+    let cancelled = false
     // Defer slightly so it doesn't compete with first paint / hydration.
     const t = window.setTimeout(() => {
-      void preloadWebLLM(settings.webllmModel || undefined)
+      preloadWebLLM(settings.webllmModel || undefined)
+        .then((ready) => {
+          // Surface the one-time "smarter model is ready" notice only if it
+          // actually loaded and the user is still on this provider.
+          if (!cancelled && ready) setWebllmReadyNotice(true)
+        })
+        .catch(() => {
+          /* warmup failure is silent — the engine keeps carrying replies */
+        })
     }, 1200)
-    return () => window.clearTimeout(t)
+    return () => {
+      cancelled = true
+      window.clearTimeout(t)
+    }
   }, [settings.provider, settings.webllmModel, hasAgreed])
 
   const handleConnectLlmApi = useCallback(() => {
@@ -3624,6 +3646,25 @@ export default function CompanionApp() {
               </span>
               <button
                 onClick={() => setOllamaTransition(null)}
+                className="rounded border border-current/40 px-2 py-0.5 text-[11px] uppercase tracking-[0.12em] transition-colors hover:bg-foreground/10"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
+          {webllmReadyNotice && (
+            <div
+              className="flex items-center justify-between gap-3 border-b border-sky-500/30 bg-sky-500/5 px-4 py-2 text-[11px] text-sky-200"
+              role="status"
+              aria-live="polite"
+            >
+              <span>
+                <span aria-hidden className="mr-1">✨</span>
+                A private model finished loading on your device — replies just got a little smarter. Still nothing leaves your browser.
+              </span>
+              <button
+                onClick={() => setWebllmReadyNotice(false)}
                 className="rounded border border-current/40 px-2 py-0.5 text-[11px] uppercase tracking-[0.12em] transition-colors hover:bg-foreground/10"
               >
                 Dismiss
