@@ -25,19 +25,22 @@ export interface ComposeContext {
 // Bank of openers per intent + register. Each list has multiple entries
 // so the composer can pick a non-repeating one via the seed.
 const WITNESS_LINES = [
-  "Mm.",
-  "Yeah.",
-  "I'm here.",
-  "Stay with that.",
-  "Take your time.",
-  "Okay.",
+  "Mm. I'm right here.",
+  "Yeah. I'm with you.",
+  "I'm here — take all the time you need.",
+  "Stay with that. I'm not going anywhere.",
+  "Take your time. There's no rush here.",
+  "Okay. I hear you.",
+  "I'm listening.",
 ]
 
 const VALIDATE_LINES = [
-  "That makes sense for what just happened.",
-  "Of course you feel that. Anyone would.",
-  "That weight is real, not a story you're making up.",
-  "The fact that this lands hard says something true.",
+  "That makes complete sense for what just happened.",
+  "Of course you feel that — anyone would, and it's okay.",
+  "That weight is real. You're not making it up or being dramatic.",
+  "The fact that this lands so hard says something true about how much it matters.",
+  "It's allowed to feel this heavy. You don't have to talk yourself out of it.",
+  "That sounds genuinely hard, and I'm glad you said it out loud.",
 ]
 
 const ANCHOR_LINES = [

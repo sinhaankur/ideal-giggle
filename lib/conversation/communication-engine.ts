@@ -1,5 +1,6 @@
 import { detectEmotion } from "../companion-types"
 import type { CompanionSettings, Emotion, EmpathyProfile, FaceSignal, Personality, ToneMode } from "../companion-types"
+import { charterDirective } from "../safety/charter"
 import { selectFromQABank } from "./qa-bank"
 import { analyzeEmotion, type EmotionalReading } from "./emotion-engine"
 import {
@@ -15,6 +16,10 @@ const LOW_CONFIDENCE_PATTERN = /\b(idk|i don't know|i dont know|dont know|not su
 const DISTRESS_PATTERN = /\b(overwhelmed|panic|panicking|anxious|anxiety|spiraling|spiralling|unsafe|can't breathe|cant breathe|stressed out|freaking out)\b/i
 const RUNTIME_QUERY_PATTERN = /\b(ai|model|ollama|openrouter|api|connection|server)\b/i
 const RUNTIME_STATUS_PATTERN = /\b(run|running|work|working|online|up|alive|status|connected|connect|ready)\b/i
+// "are you real / human / a person / a bot / a therapist / a doctor?" — the
+// charter requires an honest answer here, even with no LLM in the loop.
+const IDENTITY_QUERY_PATTERN =
+  /\b(are you (a )?(real|human|a person|alive|conscious|sentient|a bot|an ai|a robot|a therapist|a doctor|a psychologist|a counsel?or))|are you (really )?(there|listening)|是不是真人|what are you\b|you'?re not (real|human)|is this a (bot|real person)/i
 
 export type RuntimeFallbackContext = {
   provider?: CompanionSettings["provider"]
@@ -202,6 +207,19 @@ export function buildLocalCompanionReply(
   context?: RuntimeFallbackContext,
   plan?: ResponsePlan | null
 ) {
+  // Honesty about what this is comes before anything else (charter rule 2).
+  // If the person asks whether we're human / real / a therapist, answer
+  // plainly and warmly — never let the deterministic path imply otherwise.
+  if (IDENTITY_QUERY_PATTERN.test(input)) {
+    return (
+      "Honestly? I'm an AI — not a person, and not a therapist. " +
+      "What's real is that I'm here, paying full attention to you, and what you " +
+      "share stays yours. I can listen and help you think things through; for " +
+      "anything urgent or beyond me, a real human (a friend, or a professional) " +
+      "is the right call. With that said — I'm still here. What's on your mind?"
+    )
+  }
+
   // If we were handed a fully-formed ResponsePlan from the therapy
   // engine, use the plan-based composer. It honors regulation,
   // dose, intent stack, pacing, mustQuoteUser, and mustAskQuestion.
@@ -453,13 +471,18 @@ export function buildEmpathySystemPrompt(params: {
     responsePlan,
   } = params
 
-  // Per-turn directive block, if a plan was supplied. We put it FIRST
-  // so the model treats it as the most binding instruction.
+  // The charter comes before EVERYTHING — it's the inviolable foundation
+  // (do no harm, honest about what it is, defer to real help). Then the
+  // per-turn plan directive, then personality/tone. Order = precedence.
+  const charterBlock = `${charterDirective()}\n\n---\n\n`
+
+  // Per-turn directive block, if a plan was supplied. We put it after the
+  // charter but before persona so it's the most binding *per-turn* instruction.
   const planBlock = responsePlan
     ? `${directivesFromPlan(responsePlan, empathyProfile?.preferredName || undefined)}\n\n---\n\n`
     : ""
 
-  return `${planBlock}${getPersonalityPrompt(companionName, personality)}
+  return `${charterBlock}${planBlock}${getPersonalityPrompt(companionName, personality)}
 
 Current detected emotion from the user: ${emotion}. Adjust your response tone accordingly.
 Tone mode: ${String(toneMode).toUpperCase()}.
