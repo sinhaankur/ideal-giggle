@@ -164,8 +164,8 @@ describe("composeFromPlan", () => {
       const out = composeFromPlan(plan, text, seed, { preferredName: "Sam" })
       if (out.includes("Sam")) {
         sawName = true
-        // Name is used as a soft lead ("Sam — ..."), not glued into a word.
-        expect(out).toMatch(/(^|\s)Sam — /)
+        // Name is used as a soft comma address ("Sam, ..."), not glued in.
+        expect(out).toMatch(/(^|\s)Sam, /)
       }
     }
     expect(sawName).toBe(true)
