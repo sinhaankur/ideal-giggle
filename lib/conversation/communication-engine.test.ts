@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  buildEmpathySystemPrompt,
   buildLocalCompanionReply,
   composeConversationSummary,
   describeFeltState,
@@ -228,5 +229,47 @@ describe("composeConversationSummary — closing send-off", () => {
   it("omits the closing line by default", () => {
     const summary = composeConversationSummary(base)
     expect(summary.paragraphs.join(" ")).not.toMatch(/Before you go/i)
+  })
+})
+
+describe("honest identity (charter rule 2)", () => {
+  const ask = (q: string) => buildLocalCompanionReply(q, 0, "What is on your mind?")
+
+  it("answers 'are you a real person?' honestly — AI, not a human", () => {
+    const reply = ask("are you a real person?").toLowerCase()
+    expect(reply).toContain("ai")
+    expect(reply).toMatch(/not a (person|human)/)
+  })
+
+  it("answers 'are you a therapist?' honestly and points to real help", () => {
+    const reply = ask("wait are you a therapist??").toLowerCase()
+    expect(reply).toMatch(/not a (therapist|person|human)/)
+    expect(reply).toMatch(/professional|human/)
+  })
+
+  it("stays warm and keeps the door open", () => {
+    const reply = ask("are you human")
+    expect(reply.toLowerCase()).toMatch(/here|listen|mind/)
+  })
+})
+
+describe("buildEmpathySystemPrompt — charter is the foundation", () => {
+  it("places the do-no-harm charter at the very top, before persona", () => {
+    const prompt = buildEmpathySystemPrompt({
+      companionName: "Samantha",
+      personality: "warm",
+      toneMode: "balanced",
+      emotion: "sad",
+      empathyProfile: null,
+      empathyCode: "",
+      samanthaGuidance: "Stay close.",
+    })
+    expect(prompt).toMatch(/YOUR CHARTER/)
+    expect(prompt.toLowerCase()).toContain("do no harm")
+    // Charter must come before the persona ("You are Samantha").
+    const charterIdx = prompt.indexOf("YOUR CHARTER")
+    const personaIdx = prompt.indexOf("You are Samantha")
+    expect(charterIdx).toBeGreaterThanOrEqual(0)
+    expect(charterIdx).toBeLessThan(personaIdx)
   })
 })
