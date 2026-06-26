@@ -24,61 +24,69 @@ export interface ComposeContext {
 
 // Bank of openers per intent + register. Each list has multiple entries
 // so the composer can pick a non-repeating one via the seed.
+// These read like a real person texting a friend: short, plain, reactive.
+// We deliberately avoid the AI tells — em-dash overuse, constant validation,
+// therapy-speak ("that weight is real", "what value is being touched"), and
+// the same rigid sentence shape every time. Mix of reactions, fragments, and
+// the occasional small question. Not every line affirms; some just sit with it.
 const WITNESS_LINES = [
-  "Mm. I'm right here.",
-  "Yeah. I'm with you.",
-  "I'm here — take all the time you need.",
-  "Stay with that. I'm not going anywhere.",
-  "Take your time. There's no rush here.",
-  "Okay. I hear you.",
-  "I'm listening.",
+  "yeah. i'm here.",
+  "mm.",
+  "ok. with you.",
+  "still here.",
+  "take your time.",
+  "no rush.",
+  "i'm listening.",
+  "go on.",
 ]
 
 const VALIDATE_LINES = [
-  "That makes complete sense for what just happened.",
-  "Of course you feel that — anyone would, and it's okay.",
-  "That weight is real. You're not making it up or being dramatic.",
-  "The fact that this lands so hard says something true about how much it matters.",
-  "It's allowed to feel this heavy. You don't have to talk yourself out of it.",
-  "That sounds genuinely hard, and I'm glad you said it out loud.",
+  "yeah, that's a lot.",
+  "ugh. that's rough.",
+  "honestly, that'd get to anyone.",
+  "makes sense you'd feel that.",
+  "that's heavy. ok.",
+  "no wonder you're worn down.",
+  "i get why that stings.",
+  "that's fair. it's a lot to hold.",
 ]
 
 const ANCHOR_LINES = [
-  "Let's slow it down for a second. Feet on the floor.",
-  "Before anything else — one slow exhale.",
-  "Your body's running the show right now. Let's give it a beat.",
-  "Notice what's solid under you. Just for a moment.",
+  "ok, let's slow down a sec. feet on the floor.",
+  "one slow breath first. then we keep going.",
+  "your body's pretty wound up right now. give it a beat.",
+  "just notice what's solid under you for a moment.",
 ]
 
 const AFFIRM_LINES = [
-  "You showed up. That part isn't nothing.",
-  "Naming it the way you just did takes something.",
-  "You're being more honest than most people manage on a good day.",
-  "The fact that you can say it out loud is the move.",
+  "you showed up. that's not nothing.",
+  "saying that out loud takes something.",
+  "you're being more honest than most people manage.",
+  "that took guts to admit.",
 ]
 
 const BRIDGE_LINES = [
-  "What does it tell you about what matters to you?",
-  "What part of you was hoping for something different?",
-  "If you trace this back, what value is being touched?",
+  "what's that really about for you?",
+  "what were you hoping would happen instead?",
+  "what matters to you that got touched here?",
 ]
 
 const MOBILIZE_LINES = [
-  "What's the smallest thing — really small — that could move this an inch?",
-  "If 'next step' had to fit in 10 minutes, what would it be?",
-  "What's one tiny thing future-you would thank you for tonight?",
+  "what's the tiniest thing that'd move this even a little?",
+  "if it had to fit in ten minutes, what'd you do?",
+  "one small thing tonight that future-you would thank you for?",
 ]
 
 const REFRAME_LINES = [
-  "I wonder if there's a version of this where it's less about you failing and more about something asking to be named.",
-  "What if the heaviness isn't a sign you're broken but a sign you've been carrying too much alone?",
-  "Is it possible the part of you that's frustrated is also the part that still cares?",
+  "what if this isn't you failing, just you carrying too much alone?",
+  "maybe the frustration is the part of you that still cares. worth a thought.",
+  "could be this is less about you being broken and more about being tired.",
 ]
 
 const SUMMARY_OPENER = [
-  "So if I'm tracking — ",
-  "Pulling the thread, what I'm hearing is — ",
-  "Here's what I think you're working through — ",
+  "ok so, what i'm hearing: ",
+  "pulling it together: ",
+  "here's what's landing for me: ",
 ]
 
 function pickSeeded<T>(pool: T[], seed: number): T {
@@ -125,33 +133,32 @@ function composeReflect(
   const snippet = quotedSnippet(userText)
   if (!snippet) {
     return pickFresh(
-      [
-        "Say more about that.",
-        "Mm. Go on.",
-        "Tell me what just shifted as you said that.",
-      ],
+      ["say more?", "go on, i'm listening.", "what happened?", "tell me more."],
       seed,
       avoid
     )
   }
   // When the user named a body sensation, sometimes reflect through it — it
-  // lands as much closer listening than a bare word-quote.
+  // lands as closer listening than a bare word-quote. Kept casual.
   const body = bodyMention(bodyAnchors)
   if (body && seed % 2 === 0) {
     return pickFresh(
       [
-        `"${snippet}" — and I can hear ${body} right there with it. What's that part holding?`,
-        `When you say "${snippet}", ${body} makes sense. Stay with it a second — what's underneath?`,
+        `i can hear ${body} in that. what's it holding?`,
+        `"${snippet}" — yeah, ${body} tracks. what's under it?`,
       ],
       seed,
       avoid
     )
   }
+  // Vary the shape so it's never the same quote-back formula every turn. Some
+  // just react to the snippet; some ask; some sit with it.
   return pickFresh(
     [
-      `When you say "${snippet}" — what's underneath that for you?`,
-      `Mm. "${snippet}". Stay with that for a beat.`,
-      `"${snippet}" — yeah. What part of it feels loudest right now?`,
+      `"${snippet}" — what's under that?`,
+      `yeah, "${snippet}". what part of that hits hardest?`,
+      `"${snippet}". say more about that bit.`,
+      `i keep landing on "${snippet}". what's going on there?`,
     ],
     seed,
     avoid
@@ -161,10 +168,10 @@ function composeReflect(
 function composeClarify(seed: number): string {
   return pickSeeded(
     [
-      "What were you doing right before this hit?",
-      "Who else is in this picture with you?",
-      "Where in the day did this start?",
-      "What's the part of it you most want me to understand?",
+      "what happened right before this hit?",
+      "who else is in this with you?",
+      "when did it start today?",
+      "what's the part you most want me to get?",
     ],
     seed
   )
@@ -174,8 +181,8 @@ function composeAnchor(bodyAnchors: string[], seed: number): string {
   if (bodyAnchors.includes("shallow breath") || bodyAnchors.includes("racing heart")) {
     return pickSeeded(
       [
-        "Let's slow the breath first. In for four, out for six. Then we can keep going.",
-        "Your nervous system is online and loud. One slow exhale before we say anything else.",
+        "let's slow the breath first. in for four, out for six. then we keep going.",
+        "your heart's going fast. one slow exhale before anything else.",
       ],
       seed
     )
@@ -183,8 +190,8 @@ function composeAnchor(bodyAnchors: string[], seed: number): string {
   if (bodyAnchors.includes("tight chest")) {
     return pickSeeded(
       [
-        "Soften the chest if you can. Even a millimeter. The story can wait.",
-        "Hand on your chest. Just notice. We don't have to fix anything yet.",
+        "see if the chest can soften, even a little. the story can wait.",
+        "hand on your chest. just notice. we don't have to fix anything yet.",
       ],
       seed
     )
@@ -202,11 +209,11 @@ function maybeAddName(line: string, name: string | undefined, seed: number): str
   // ~1 in 3 eligible lines, deterministic on the seed.
   if (seed % 3 !== 0) return line
   // Only attach to a statement, not a question, and only if the name isn't
-  // already there. Prepend as a soft address: "Yeah — Sam, that ..." reads
-  // worse than a gentle leading "Sam — ", so use that form.
+  // already there. A comma address ("sam, that's a lot") reads more like a
+  // real person than the em-dash form.
   if (line.includes(clean)) return line
   if (line.trimEnd().endsWith("?")) return line
-  return `${clean} — ${line.charAt(0).toLowerCase()}${line.slice(1)}`
+  return `${clean}, ${line.charAt(0).toLowerCase()}${line.slice(1)}`
 }
 
 // Render a full response from a plan + the user's latest message. The
@@ -233,6 +240,15 @@ export function composeFromPlan(
       const t = piece.trim()
       if (t) avoid.push(t)
     }
+  }
+
+  // Reflect lines embed the user's quote, so two turns can share an identical
+  // *template* without any pickFresh collision (the strings differ only by
+  // content the avoid-list can't match). When there's a previous reply, nudge
+  // the seed so the whole composition shifts to different variants — a robust
+  // guarantee that consecutive turns don't read the same.
+  if (context?.lastReply) {
+    seed = seed + 1 + (context.lastReply.length % 5)
   }
 
   const push = (line: string) => {
@@ -301,8 +317,8 @@ export function composeFromPlan(
         const opener = pickSeeded(SUMMARY_OPENER, seed)
         push(
           snippet
-            ? `${opener}"${snippet}" — and what's living under that.`
-            : `${opener}what's living under what you've named.`
+            ? `${opener}"${snippet}", and what's sitting under it.`
+            : `${opener}there's something under what you've said.`
         )
         break
       }
