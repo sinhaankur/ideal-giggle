@@ -18,9 +18,9 @@ export interface VaultModalProps {
 
 const COPY: Record<VaultModalMode, { title: string; helper: string; cta: string }> = {
   create: {
-    title: "Seal your consciousness",
+    title: "Save your space (your “consciousness”)",
     helper:
-      "Set a passphrase (8+ characters) to encrypt your consciousness — who you are, your empathy map, and the path we've walked together. This passphrase is the only way to unlock it later; there is no recovery.",
+      "This saves your space here — who you are, your empathy map, and the path we've walked together (we call it your “consciousness”). Set a passphrase (8+ characters) to encrypt it. This passphrase is the only way to unlock it later; there is no recovery.",
     cta: "Encrypt and save",
   },
   unlock: {
@@ -29,13 +29,13 @@ const COPY: Record<VaultModalMode, { title: string; helper: string; cta: string 
     cta: "Unlock",
   },
   "confirm-clear": {
-    title: "Clear your consciousness from this device?",
-    helper: "This deletes the encrypted consciousness from local storage. Your downloaded backup file (if any) is unaffected.",
+    title: "Delete your saved space from this device?",
+    helper: "This deletes your encrypted consciousness from this device's local storage. Your downloaded backup file (if any) is unaffected.",
     cta: "Delete from device",
   },
   "confirm-lock": {
-    title: "Lock your consciousness now?",
-    helper: "This wipes the unlock key from memory. You will be asked for your passphrase next time you visit.",
+    title: "Lock your saved space now?",
+    helper: "This wipes the unlock key from memory, so your consciousness stays encrypted. You will be asked for your passphrase next time you visit.",
     cta: "Lock",
   },
 }
