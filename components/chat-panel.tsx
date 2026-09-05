@@ -134,6 +134,10 @@ export function ChatPanel({
   const [dailyQuote, setDailyQuote] = useState<DailyQuote | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const recognitionRef = useRef<any>(null)
+  // True when the user tapped stop, so the continuous recognizer's onend knows
+  // not to auto-restart. Distinguishes "browser ended the session" from "user
+  // is done talking".
+  const userStoppedRef = useRef(false)
   // Snapshot of the input when listening starts, so the live transcript is
   // appended to what the user already typed instead of replacing it.
   const inputBeforeListenRef = useRef("")
@@ -220,7 +224,11 @@ export function ChatPanel({
     setSpeechSupported(true)
 
     const recognition = new SpeechRecognition()
-    recognition.continuous = false
+    // Keep listening through natural pauses — someone talking through feelings
+    // pauses a lot, and continuous=false cut them off after the first sentence
+    // (the "voice doesn't work good" bug). We now stay on until they tap to stop
+    // (or a real error), accumulating the whole spoken thought.
+    recognition.continuous = true
     recognition.interimResults = true
     recognition.lang = "en-US"
 
@@ -240,8 +248,11 @@ export function ChatPanel({
       const base = inputBeforeListenRef.current
       const joiner = base && !base.endsWith(" ") ? " " : ""
       setInput(`${base}${joiner}${transcript}`)
+      // In continuous mode we DON'T stop on a final result — keep listening
+      // through pauses. When a phrase finalises, fold it into the base so the
+      // next phrase appends after it instead of overwriting.
       if (event.results[event.results.length - 1].isFinal) {
-        setIsListening(false)
+        inputBeforeListenRef.current = `${base}${joiner}${transcript}`
       }
     }
 
@@ -261,6 +272,12 @@ export function ChatPanel({
     }
 
     recognition.onend = () => {
+      // The browser ends a continuous session on its own after a while. If the
+      // user didn't tap stop, quietly restart so their voice input keeps working
+      // for a long, paused, real conversation. Otherwise, settle the UI.
+      if (!userStoppedRef.current) {
+        try { recognition.start(); return } catch { /* fall through to stop */ }
+      }
       setIsListening(false)
     }
 
@@ -291,12 +308,15 @@ export function ChatPanel({
   const toggleListening = useCallback(() => {
     if (!recognitionRef.current) return
     if (isListening) {
+      // Deliberate stop — tell onend not to auto-restart.
+      userStoppedRef.current = true
       recognitionRef.current.stop()
       setIsListening(false)
     } else {
       // Snapshot current input so the transcript appends rather than replaces,
       // then start. onstart flips isListening; if start() throws (e.g. already
       // running), surface it instead of leaving the UI in a wrong state.
+      userStoppedRef.current = false
       inputBeforeListenRef.current = input
       setMicError("")
       try {

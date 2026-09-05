@@ -7,6 +7,7 @@ import { useChat } from "@ai-sdk/react"
 import { Settings, Download, Camera, MessageSquare, Heart, Search, PanelRightOpen, LifeBuoy } from "lucide-react"
 import { ChatPanel } from "@/components/chat-panel"
 import { AmbientBackground } from "@/components/ambient-background"
+import { ReportProblem } from "@/components/report-problem"
 import { VaultModal, type VaultModalMode } from "@/components/vault-modal"
 import {
   deriveVaultKey,
@@ -3345,6 +3346,11 @@ export default function CompanionApp() {
             <LifeBuoy className="h-4 w-4" />
             <span className="hidden md:inline">Support</span>
           </button>
+          {/* Report a problem / request a fix — a quiet channel so people can
+              tell us when something (camera, voice…) isn't working, or ask for
+              something. No backend: opens email or a GitHub issue with safe,
+              non-personal diagnostics attached. */}
+          <ReportProblem />
 
           {/* Desktop view toggles — keep the default surface calm; reveal the
               camera and the insights/empathy map only when the user wants them. */}
