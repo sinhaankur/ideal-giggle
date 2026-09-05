@@ -41,7 +41,7 @@ const OPEN_PROMPT_POOL = [
   "Walk me through grounding.",
   "What would a kind friend say?",
   "What is one small step I can take?",
-  "Tell me where my map is empty.",
+  "What still matters to me, even now?",
   "Mirror back what I said in your own words.",
   "Where am I being too hard on myself?",
   "What feeling am I avoiding right now?",
@@ -851,7 +851,7 @@ export function ChatPanel({
       {isOnboardingActive && (
         <div className="border-b border-border bg-card px-4 py-3">
           <div className="mb-2 flex items-center justify-between text-[11px] uppercase tracking-wide text-muted-foreground">
-            <span>Onboarding Progress</span>
+            <span>Getting to know you</span>
             <span>
               {introAnswered}/{introTotal}
             </span>
@@ -863,7 +863,7 @@ export function ChatPanel({
             />
           </div>
           <p className="mt-2 text-[11px] text-muted-foreground">
-            Share concrete details for each intro step. After onboarding, responses switch to full conversation mode.
+            No rush — say as much or as little as feels right. The more I understand, the more I can truly be here with you.
           </p>
         </div>
       )}

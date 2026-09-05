@@ -3135,6 +3135,13 @@ export default function CompanionApp() {
       window.localStorage.setItem(agreementStorageKey, "accepted")
     }
     setHasAgreed(true)
+    // Let them talk immediately. Someone arriving in a hard moment shouldn't have
+    // to make a tech decision (which model / how private) before their first word.
+    // We drop straight into the conversation on the safe, fully-private default
+    // (on-device / browser) and surface the model choice as an OPTIONAL nudge
+    // (the "how private" chip) they can open any time — never a blocking gate.
+    // The agreement + crisis line above remain the one thing they must see.
+    setShowQuickStartModal(false)
   }, [agreementStorageKey])
 
   return (
