@@ -6,6 +6,7 @@ import Link from "next/link"
 import { useChat } from "@ai-sdk/react"
 import { Settings, Download, Camera, MessageSquare, Heart, Search, PanelRightOpen, LifeBuoy } from "lucide-react"
 import { ChatPanel } from "@/components/chat-panel"
+import { AmbientBackground } from "@/components/ambient-background"
 import { VaultModal, type VaultModalMode } from "@/components/vault-modal"
 import {
   deriveVaultKey,
@@ -3138,6 +3139,9 @@ export default function CompanionApp() {
 
   return (
     <main className="relative flex h-screen flex-col overflow-hidden bg-background">
+      {/* Living, mood-aware atmosphere behind everything (decorative, at the
+          very back). Eases its palette toward how the person feels. */}
+      <AmbientBackground emotion={currentEmotion} />
       {/* Skip link — first focusable element, jumps keyboard users past the
           header straight into the conversation. */}
       <a href="#conversation" className="skip-link">
