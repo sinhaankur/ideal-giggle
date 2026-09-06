@@ -70,6 +70,7 @@ import {
   isWebLLMReady,
   preloadWebLLM,
   sendWebLLMDirect,
+  sendWebLLMDirectStream,
   onWebLLMProgress,
 } from "@/lib/api/webllm-direct"
 import { assessCrisis, assessConversationSafety, type CrisisSeverity } from "@/lib/safety/crisis-safety"
@@ -111,6 +112,25 @@ function applyDataUpdateBlock(existing: EmpathyData, update: Partial<Record<keyo
   })
 
   return next
+}
+
+// For LIVE streaming display only: hide the model's internal control blocks
+// ([EMPATHY_DATA: {...}] / [META: {...}]) as tokens arrive — including a
+// PARTIAL block still being generated — so the user never glimpses raw JSON
+// mid-stream. The authoritative extraction still runs on the final text.
+function stripControlBlocksForDisplay(text: string): string {
+  // Remove any complete control blocks first.
+  let out = text
+    .replace(/\[EMPATHY_DATA:[\s\S]*?\]/g, "")
+    .replace(/\[META:[\s\S]*?\]/g, "")
+  // Then, if a block has *started* but not closed yet (streaming), cut from its
+  // opening marker to the end. Also cut a bare trailing "[" that could be the
+  // first char of a marker about to arrive, so nothing flickers.
+  const markerStart = out.search(/\[(EMPATHY_DATA|META)\b|\[E?M?P?A?T?H?Y?_?D?A?T?A?:?\s*\{[\s\S]*$|\[M?E?T?A?:?\s*\{[\s\S]*$/)
+  if (markerStart !== -1) out = out.slice(0, markerStart)
+  const trailingBracket = out.search(/\[[A-Z_]*$/)
+  if (trailingBracket !== -1) out = out.slice(0, trailingBracket)
+  return out.trimEnd()
 }
 
 function extractDataUpdate(text: string): { cleanText: string; update?: Partial<Record<keyof EmpathyData, string>> } {
@@ -1769,11 +1789,16 @@ export default function CompanionApp() {
       sentimentEmotion,
       responsePlan,
       history,
+      onToken,
     }: {
       text: string
       sentimentEmotion: Emotion
       responsePlan: ResponsePlan | null
       history: Message[]
+      // When provided, the reply streams: onToken fires with clean, display-safe
+      // partial text (control blocks masked) as the model generates. The final
+      // full text is still returned for the authoritative extraction/persistence.
+      onToken?: (displaySafePartial: string) => void
     }) => {
       // The in-browser engine is the primary runtime for the "webllm" provider
       // and also serves as the offline fallback for "ollama". For any other
@@ -1791,7 +1816,7 @@ export default function CompanionApp() {
           content: m.text,
         }))
 
-        return await sendWebLLMDirect({
+        const req = {
           // Empty string lets the engine auto-pick a small, available model.
           model: settings.webllmModel || undefined,
           system: buildSystemPrompt(
@@ -1809,7 +1834,16 @@ export default function CompanionApp() {
           temperature: settings.temperature,
           topP: settings.topP,
           maxTokens: settings.maxOutputTokens,
-        })
+        }
+
+        // Stream when a token sink is given — the reply appears word-by-word,
+        // with control blocks masked from the live view. Otherwise, one shot.
+        if (onToken) {
+          return await sendWebLLMDirectStream(req, (_delta, fullSoFar) => {
+            onToken(stripControlBlocksForDisplay(fullSoFar))
+          })
+        }
+        return await sendWebLLMDirect(req)
       } catch {
         return null
       }
@@ -2530,13 +2564,36 @@ export default function CompanionApp() {
           void preloadWebLLM(settings.webllmModel || undefined)
         }
 
-        // Only call the model if it's ready right now (no download wait).
+        // Only call the model if it's ready right now (no download wait). When
+        // ready, STREAM the reply into a live message so it appears word-by-word.
+        const streamingId = crypto.randomUUID()
+        let streamStarted = false
         const browserReply = isWebLLMReady()
           ? await requestBrowserWebLLMReply({
               text,
               sentimentEmotion,
               responsePlan,
               history: [...remoteFallbackMessages, userMessage],
+              onToken: (displaySafePartial) => {
+                if (!displaySafePartial) return
+                if (!streamStarted) {
+                  streamStarted = true
+                  setRemoteFallbackMessages((prev) => [
+                    ...prev,
+                    {
+                      id: streamingId,
+                      text: displaySafePartial,
+                      sender: "ai",
+                      timestamp: new Date(),
+                      emotion: sentimentEmotion,
+                    },
+                  ])
+                } else {
+                  setRemoteFallbackMessages((prev) =>
+                    prev.map((m) => (m.id === streamingId ? { ...m, text: displaySafePartial } : m)),
+                  )
+                }
+              },
             })
           : null
 
@@ -2553,18 +2610,28 @@ export default function CompanionApp() {
             setMetaHistory((prev) => [...prev.slice(-19), { ...metaExtracted.meta!, at: new Date().toISOString() }])
           }
 
-          setRemoteFallbackMessages((prev) => [
-            ...prev,
-            {
-              id: crypto.randomUUID(),
-              text:
-                metaExtracted.cleanText ||
-                "I am here with you. Could you tell me a little more?",
-              sender: "ai",
-              timestamp: new Date(),
-              emotion: sentimentEmotion,
-            },
-          ])
+          const finalText =
+            metaExtracted.cleanText ||
+            "I am here with you. Could you tell me a little more?"
+          // Finalize: if we streamed a live message, replace its text with the
+          // authoritative clean text (control blocks fully removed); otherwise
+          // append the reply as a new message.
+          if (streamStarted) {
+            setRemoteFallbackMessages((prev) =>
+              prev.map((m) => (m.id === streamingId ? { ...m, text: finalText } : m)),
+            )
+          } else {
+            setRemoteFallbackMessages((prev) => [
+              ...prev,
+              {
+                id: streamingId,
+                text: finalText,
+                sender: "ai",
+                timestamp: new Date(),
+                emotion: sentimentEmotion,
+              },
+            ])
+          }
           setLlmConnectionError("")
           setRuntimeSource("webllm")
           return
