@@ -70,6 +70,7 @@ import {
   isWebLLMReady,
   preloadWebLLM,
   sendWebLLMDirect,
+  onWebLLMProgress,
 } from "@/lib/api/webllm-direct"
 import { assessCrisis, assessConversationSafety, type CrisisSeverity } from "@/lib/safety/crisis-safety"
 import { sessionIntentionDirective, SESSION_INTENTIONS, type SessionIntentionId } from "@/lib/conversation/session-intention"
@@ -686,6 +687,16 @@ export default function CompanionApp() {
   // One-time gentle notice when the background in-browser model finishes
   // loading, so the user understands replies just got a little smarter.
   const [webllmReadyNotice, setWebllmReadyNotice] = useState(false)
+  // Live download/init progress for the on-device model, so the one-time ~600 MB
+  // fetch shows "preparing a warmer companion — 42%" instead of a dead wait.
+  const [webllmProgress, setWebllmProgress] = useState<{ progress: number; text: string } | null>(null)
+  useEffect(() => {
+    const unsub = onWebLLMProgress((p) => {
+      // Hide once fully ready; show a gentle line while it's downloading.
+      setWebllmProgress(p.progress >= 1 ? null : p)
+    })
+    return unsub
+  }, [])
   useEffect(() => {
     if (typeof window === "undefined") return
     try {
@@ -3327,11 +3338,13 @@ export default function CompanionApp() {
               }`}
             />
             <span className="text-sm text-muted-foreground">
-              {systemHealth === "fallback"
-                ? "Local Fallback Active"
-                : systemHealth === "busy"
-                  ? "System Busy"
-                  : "System Ready"}
+              {webllmProgress
+                ? `Preparing a warmer companion — ${Math.round(webllmProgress.progress * 100)}%`
+                : systemHealth === "fallback"
+                  ? "Local Fallback Active"
+                  : systemHealth === "busy"
+                    ? "System Busy"
+                    : "System Ready"}
             </span>
           </div>
           {/* Always-available support — grounding tools + crisis resources,
